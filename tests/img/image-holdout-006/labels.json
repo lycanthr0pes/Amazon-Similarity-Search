@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "collection_id": "image-holdout-006",
+  "condition_id": "desk_edge_clamp_mount",
+  "label_policy": {
+    "match": "A visible clamp grips a desk edge.",
+    "mismatch": "A freestanding base is visible and no clamp is present.",
+    "ambiguous": "The mount is hidden, unclear, or the image is not usable product evidence."
+  },
+  "labels_fixed_before_clip": true,
+  "labels": [
+    {"candidate_id": "candidate-01", "label": "mismatch"},
+    {"candidate_id": "candidate-02", "label": "ambiguous"},
+    {"candidate_id": "candidate-03", "label": "match"},
+    {"candidate_id": "candidate-04", "label": "mismatch"},
+    {"candidate_id": "candidate-05", "label": "mismatch"},
+    {"candidate_id": "candidate-06", "label": "ambiguous"},
+    {"candidate_id": "candidate-07", "label": "mismatch"},
+    {"candidate_id": "candidate-08", "label": "mismatch"},
+    {"candidate_id": "candidate-09", "label": "ambiguous"},
+    {"candidate_id": "candidate-10", "label": "match"},
+    {"candidate_id": "candidate-11", "label": "match"},
+    {"candidate_id": "candidate-12", "label": "ambiguous"}
+  ],
+  "class_counts": {
+    "match": 3,
+    "mismatch": 5,
+    "ambiguous": 4
+  }
+}

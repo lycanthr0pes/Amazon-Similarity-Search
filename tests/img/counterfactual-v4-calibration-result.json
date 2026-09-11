@@ -1,0 +1,94 @@
+{
+  "schema_version": "1.0",
+  "role": "development_counterfactual_v4_batch_calibration_result",
+  "development_dataset_sha256": "2ae66b6271065a690e1c847820ecc608f00df326dd9f4cfeaa4d82a9a4821fb7",
+  "labels_sha256": "4688f56123e0a3e2f10aa9a79ecd371ef7cfd80a8b8522e62c10689a5220a2c9",
+  "evaluation_contract_sha256": "6af2dcecbcabe19d3418a808a4bce7815fb625f1f869e831e80a6c6ed1fb1490",
+  "external_call_count": 0,
+  "reused_fixed_references_and_candidates": true,
+  "score_profile_sha256": "8fc2c9a3e8d4537c5029e4e66aa9bef15757bb2180db4ed15a79bca37d3f81c4",
+  "calibration_profile_sha256": "92a5c223cbece8659e1513859f58a4d6401de6782dd2f0753e8e553440bc1f6a",
+  "common_decision_threshold": 0.0,
+  "labels_used_for_calibration": false,
+  "calibrated": {
+    "specification_id": "counterfactual-minimum-positive-calibrated-v4",
+    "absolute_assessment": "fail",
+    "absolute_failure_reasons": [
+      "chair_color_class_count_ineligible",
+      "chair_mesh_class_count_ineligible",
+      "independent_holdout_not_run"
+    ],
+    "conditions": {
+      "counterfactual-development-001:visual-condition-001": {
+        "calibration_status": "calibrated",
+        "observed_count": 10,
+        "observed_minimum": -1.0,
+        "observed_maximum": -0.09821015592070456,
+        "center": -0.5491050779603522,
+        "half_span": 0.4508949220396477,
+        "assessment": "pass",
+        "match_count": 4,
+        "mismatch_count": 6,
+        "correct_count": 10,
+        "evaluation_count": 10,
+        "accuracy": 1.0,
+        "pairwise_auc": 1.0
+      },
+      "counterfactual-development-002:visual-condition-001": {
+        "calibration_status": "calibrated",
+        "observed_count": 12,
+        "observed_minimum": -0.9308159108714469,
+        "observed_maximum": 0.34474292950409813,
+        "center": -0.2930364906836744,
+        "half_span": 0.6377794201877725,
+        "assessment": "ineligible",
+        "match_count": 9,
+        "mismatch_count": 2
+      },
+      "counterfactual-development-002:visual-condition-002": {
+        "calibration_status": "insufficient_diversity",
+        "observed_count": 12,
+        "observed_minimum": -1.0,
+        "observed_maximum": -0.012413479672375575,
+        "center": null,
+        "half_span": null,
+        "assessment": "ineligible",
+        "match_count": 11,
+        "mismatch_count": 0
+      },
+      "counterfactual-development-002:visual-condition-003": {
+        "calibration_status": "calibrated",
+        "observed_count": 12,
+        "observed_minimum": -0.6196949163683897,
+        "observed_maximum": 0.5234037858729945,
+        "center": -0.048145565247697586,
+        "half_span": 0.5715493511206922,
+        "assessment": "pass",
+        "match_count": 6,
+        "mismatch_count": 4,
+        "correct_count": 10,
+        "evaluation_count": 10,
+        "accuracy": 1.0,
+        "pairwise_auc": 1.0
+      }
+    },
+    "correct_count": 20,
+    "evaluation_count": 20,
+    "accuracy": 1.0,
+    "pairwise_auc": 1.0,
+    "worst_condition_auc": 1.0
+  },
+  "selection": {
+    "schema_version": "1.0",
+    "policy_id": "counterfactual-development-relative-accuracy-v1",
+    "decision": "pass",
+    "selection_basis": "relative_development_accuracy",
+    "tie_breaker": "accuracy",
+    "winner_specification_id": "counterfactual-minimum-positive-calibrated-v4",
+    "loser_specification_id": "counterfactual-minimum-positive-v4",
+    "winner_accuracy": 1.0,
+    "eligible_for_independent_holdout": true,
+    "qualified_for_ranking": false
+  },
+  "qualified_for_ranking": false
+}

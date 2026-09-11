@@ -1,0 +1,162 @@
+{
+  "schema_version": "1.0",
+  "case_id": "image-holdout-004",
+  "role": "development_e2e_formal_image_assessment",
+  "visual_requirements": {
+    "color": "black",
+    "product_type": "electric_kettle"
+  },
+  "candidate_acquisition": {
+    "source": "isolated_chromium_rendered_category_search_results",
+    "top_level_navigation_count": 1,
+    "external_request_limit": 100,
+    "external_request_count": 100,
+    "blocked_before_network_count": 70,
+    "retry_count": 0,
+    "dom_candidate_limit": 12,
+    "dom_candidate_count": 12,
+    "saved_candidate_count": 10,
+    "status": "succeeded"
+  },
+  "label_frozen_before_clip": true,
+  "references": [
+    {
+      "angle": "front",
+      "path": "references/front.png",
+      "sha256": "48af782bdb6eb2bfb375dfcdb9c3502e17603a66e83a6ae23e3905eaf077fa95"
+    },
+    {
+      "angle": "left",
+      "path": "references/left.png",
+      "sha256": "ae7bd630ef95bd588f72b49d0075222981492dc84a0fb4e30680a40f2b257ac5"
+    },
+    {
+      "angle": "right",
+      "path": "references/right.png",
+      "sha256": "27fa6010c08f5c83ca89dedab81bc83c9dd5df050f010d02e1c24d83d619b52a"
+    },
+    {
+      "angle": "rear",
+      "path": "references/rear.png",
+      "sha256": "2430c70b90f65f73318ce012b27d3212f999307c20a25aadff6ea8a39426691c"
+    }
+  ],
+  "candidates": [
+    {
+      "candidate_id": "candidate-01",
+      "path": "candidates/candidate-01.png",
+      "sha256": "f1aeb235d99c56e68f84ea906586f6c0c9686117c6b6e9d54c05517cb43fbe84",
+      "width": 512,
+      "height": 506,
+      "label": "irrelevant",
+      "visible_mismatch": "not_black"
+    },
+    {
+      "candidate_id": "candidate-02",
+      "path": "candidates/candidate-02.png",
+      "sha256": "b702535c4eec225fd9b4022efe0ab0407585da88ebb19eabedfbb64d6d6da152",
+      "width": 512,
+      "height": 508,
+      "label": "irrelevant",
+      "visible_mismatch": "not_black"
+    },
+    {
+      "candidate_id": "candidate-03",
+      "path": "candidates/candidate-03.png",
+      "sha256": "02d3e5d40f4b4bb4320bdf81451f770f13cc1ab7f7279bac7e4c23453ffa63b6",
+      "width": 444,
+      "height": 512,
+      "label": "irrelevant",
+      "visible_mismatch": "not_black"
+    },
+    {
+      "candidate_id": "candidate-04",
+      "path": "candidates/candidate-04.png",
+      "sha256": "c42bd25e0cf271f51133d2d4d12a324da63918c64cf3715b092a2e7ce2757698",
+      "width": 512,
+      "height": 466,
+      "label": "irrelevant",
+      "visible_mismatch": "not_black"
+    },
+    {
+      "candidate_id": "candidate-05",
+      "path": "candidates/candidate-05.png",
+      "sha256": "87073ec4d218c690a9b53a73f9227223ad8bd2b00cdeacfff15432acf3904811",
+      "width": 414,
+      "height": 512,
+      "label": "irrelevant",
+      "visible_mismatch": "not_black"
+    },
+    {
+      "candidate_id": "candidate-06",
+      "path": "candidates/candidate-06.png",
+      "sha256": "bf2df47907f7ed7c4a6113be90de13cda756f19ee342476511db674967f052ff",
+      "width": 482,
+      "height": 512,
+      "label": "relevant"
+    },
+    {
+      "candidate_id": "candidate-07",
+      "path": "candidates/candidate-07.png",
+      "sha256": "c47bafbd4baa530aa3c161e00e012454d2d4299b33b4ef192597e3026554bd18",
+      "width": 482,
+      "height": 512,
+      "label": "relevant"
+    },
+    {
+      "candidate_id": "candidate-08",
+      "path": "candidates/candidate-08.png",
+      "sha256": "801723ef77280fcb1dbf4cdbf27ba2fecdcf6bbfdea1c2057890dd4554d68575",
+      "width": 512,
+      "height": 468,
+      "label": "relevant"
+    },
+    {
+      "candidate_id": "candidate-09",
+      "path": "candidates/candidate-09.png",
+      "sha256": "0c8b23e4d1d033527d528a625ed78505f92c20ea0bfddac03982b835be950c06",
+      "width": 512,
+      "height": 422,
+      "label": "relevant"
+    },
+    {
+      "candidate_id": "candidate-10",
+      "path": "candidates/candidate-10.png",
+      "sha256": "4f4503354d2efa2f4d274c5452089d1897ccba834a4ba2ec26c6ef085071f27a",
+      "width": 462,
+      "height": 512,
+      "label": "irrelevant",
+      "visible_mismatch": "not_black"
+    }
+  ],
+  "eligibility": {
+    "formal_acceptance_eligible": true,
+    "relevant_count": 4,
+    "irrelevant_count": 6,
+    "minimum_per_label": 3,
+    "reason": "minimum_label_composition_satisfied"
+  },
+  "generation": {
+    "provider": "gpt-image",
+    "status": "succeeded",
+    "call_limit": 4,
+    "call_count": 4,
+    "retry_count": 0,
+    "candidate_images_sent": false
+  },
+  "clip_evaluation": {
+    "status": "completed",
+    "auc_threshold": 0.8,
+    "median_separation_required": true,
+    "assessment": "pass"
+  },
+  "retention": {
+    "product_urls": false,
+    "product_ids": false,
+    "product_titles": false,
+    "raw_dom": false,
+    "cookies": false,
+    "credentials": false,
+    "raw_provider_response": false
+  }
+}

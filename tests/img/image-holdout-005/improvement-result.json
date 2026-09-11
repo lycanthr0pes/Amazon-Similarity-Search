@@ -1,0 +1,83 @@
+{
+  "schema_version": "1.0",
+  "case_id": "image-holdout-005",
+  "scope": "offline_exploratory_improvement_validation",
+  "independent_holdout": false,
+  "production_change": false,
+  "score_domain": "raw_clip_cosine",
+  "acceptance_threshold": {
+    "minimum_pairwise_auc": 0.8,
+    "relevant_median_above_irrelevant": true
+  },
+  "transform_results": {
+    "current": {
+      "pairwise_auc": 0.291666667,
+      "relevant_median": 0.80103781,
+      "irrelevant_median": 0.843338524,
+      "median_separated": false
+    },
+    "center_square": {
+      "pairwise_auc": 0.375,
+      "relevant_median": 0.856323428,
+      "irrelevant_median": 0.871224519,
+      "median_separated": false
+    },
+    "center_two_by_three": {
+      "pairwise_auc": 0.458333333,
+      "relevant_median": 0.886940227,
+      "irrelevant_median": 0.898674344,
+      "median_separated": false
+    },
+    "upper_sixty_percent": {
+      "pairwise_auc": 0.375,
+      "relevant_median": 0.783577968,
+      "irrelevant_median": 0.800098739,
+      "median_separated": false
+    },
+    "upper_seventy_five_percent": {
+      "pairwise_auc": 0.375,
+      "relevant_median": 0.819131397,
+      "irrelevant_median": 0.844665558,
+      "median_separated": false
+    }
+  },
+  "contrastive_single_negative": {
+    "prototype_source": "same_dataset_excluded_from_its_fold",
+    "folds": [
+      {"prototype": "candidate-02", "mismatch": "no_headrest", "pairwise_auc": 0.35},
+      {"prototype": "candidate-04", "mismatch": "no_headrest", "pairwise_auc": 0.45},
+      {"prototype": "candidate-05", "mismatch": "no_headrest", "pairwise_auc": 0.35},
+      {"prototype": "candidate-06", "mismatch": "not_black", "pairwise_auc": 0.55},
+      {"prototype": "candidate-07", "mismatch": "no_headrest", "pairwise_auc": 0.5},
+      {"prototype": "candidate-12", "mismatch": "not_black", "pairwise_auc": 0.25}
+    ],
+    "minimum_auc": 0.25,
+    "median_auc": 0.4,
+    "maximum_auc": 0.55
+  },
+  "contrastive_two_negatives": {
+    "prototype_source": "same_dataset_excluded_from_its_fold",
+    "fold_count": 8,
+    "folds": [
+      {"prototypes": ["candidate-02", "candidate-06"], "pairwise_auc": 0.375},
+      {"prototypes": ["candidate-02", "candidate-12"], "pairwise_auc": 0.3125},
+      {"prototypes": ["candidate-04", "candidate-06"], "pairwise_auc": 0.5},
+      {"prototypes": ["candidate-04", "candidate-12"], "pairwise_auc": 0.125},
+      {"prototypes": ["candidate-05", "candidate-06"], "pairwise_auc": 0.375},
+      {"prototypes": ["candidate-05", "candidate-12"], "pairwise_auc": 0.3125},
+      {"prototypes": ["candidate-07", "candidate-06"], "pairwise_auc": 0.5625},
+      {"prototypes": ["candidate-07", "candidate-12"], "pairwise_auc": 0.375}
+    ],
+    "minimum_auc": 0.125,
+    "median_auc": 0.375,
+    "maximum_auc": 0.5625
+  },
+  "leave_one_out_label_centroids": {
+    "label_source": "same_dataset",
+    "pairwise_auc": 0.208333333,
+    "relevant_median": -0.023895275,
+    "irrelevant_median": -0.007147886
+  },
+  "assessment": "no_validated_improvement",
+  "conclusion": "No tested transform or same-dataset contrastive method met the fixed AUC and median-separation criteria."
+}

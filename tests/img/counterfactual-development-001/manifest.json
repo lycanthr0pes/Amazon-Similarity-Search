@@ -1,0 +1,50 @@
+{
+  "schema_version": "1.0",
+  "case_id": "counterfactual-development-001",
+  "role": "development_counterfactual_calibration",
+  "source_case_id": "image-holdout-004",
+  "source_manifest_sha256": "c96b3c13450ebf08983ecbbd34be33558de14f84bde981e00e288487a1f90799",
+  "conditions": [
+    {
+      "condition_id": "visual-condition-001",
+      "source_phrase": "黒い",
+      "attribute_key": "appearance.color"
+    }
+  ],
+  "references": [
+    {
+      "role": "desired_anchor",
+      "path": "references/desired-anchor.png",
+      "sha256": "30db60e332f53eef3255cc26677ace5b12497252ebb068af1492adf8c1b9dd6b"
+    },
+    {
+      "role": "counterfactual",
+      "condition_id": "visual-condition-001",
+      "operation": "not_black",
+      "path": "references/counterfactual-not-black.png",
+      "sha256": "8931969ecb1aafe9187ddd1ef2a2122a94aafbc9d1ca28a1c8c12234c5013cc9"
+    }
+  ],
+  "candidate_labels": [
+    {"candidate_id": "candidate-01", "visual-condition-001": "mismatch"},
+    {"candidate_id": "candidate-02", "visual-condition-001": "mismatch"},
+    {"candidate_id": "candidate-03", "visual-condition-001": "mismatch"},
+    {"candidate_id": "candidate-04", "visual-condition-001": "mismatch"},
+    {"candidate_id": "candidate-05", "visual-condition-001": "mismatch"},
+    {"candidate_id": "candidate-06", "visual-condition-001": "match"},
+    {"candidate_id": "candidate-07", "visual-condition-001": "match"},
+    {"candidate_id": "candidate-08", "visual-condition-001": "match"},
+    {"candidate_id": "candidate-09", "visual-condition-001": "match"},
+    {"candidate_id": "candidate-10", "visual-condition-001": "mismatch"}
+  ],
+  "generation": {
+    "provider": "gpt-image",
+    "scope": "test_only",
+    "call_limit": 2,
+    "call_count": 2,
+    "retry_count": 0,
+    "candidate_images_sent": false,
+    "human_reference_confirmation": true
+  },
+  "label_frozen_before_clip": true
+}

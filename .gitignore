@@ -44,3 +44,9 @@ docs/API Docs _ Outscraper.html
 *~
 .DS_Store
 Thumbs.db
+
+# Local model weights and original evaluation inputs
+/models/clip-vit-base-patch32-12b36594/
+/tests/csv/
+/tests/img/case2/case2.xlsx
+/tests/img/case3/case3.xlsx

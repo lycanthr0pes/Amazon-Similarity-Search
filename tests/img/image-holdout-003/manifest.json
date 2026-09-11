@@ -1,0 +1,112 @@
+{
+  "schema_version": "1.0",
+  "case_id": "image-holdout-003",
+  "role": "development_e2e_candidate_acquisition",
+  "visual_requirements": {
+    "color": "red",
+    "product_type": "electric_kettle",
+    "handle_color": "black"
+  },
+  "candidate_acquisition": {
+    "source": "isolated_chromium_rendered_search_results",
+    "top_level_navigation_count": 1,
+    "external_request_limit": 100,
+    "external_request_count": 100,
+    "blocked_before_network_count": 64,
+    "retry_count": 0,
+    "dom_candidate_count": 9,
+    "saved_candidate_count": 7,
+    "status": "succeeded"
+  },
+  "label_frozen_before_clip": true,
+  "references": [],
+  "candidates": [
+    {
+      "candidate_id": "candidate-01",
+      "path": "candidates/candidate-01.png",
+      "sha256": "ee04c36de9158dfba1153a969ddce06634b61a917bc933ed583d846aa18dc769",
+      "width": 940,
+      "height": 940,
+      "label": "irrelevant",
+      "visible_mismatch": "not_red"
+    },
+    {
+      "candidate_id": "candidate-02",
+      "path": "candidates/candidate-02.png",
+      "sha256": "fc58a8ccd3065ed4dd2786ded73a9127a51eb3422d9df17548e644cf772c0cdb",
+      "width": 940,
+      "height": 792,
+      "label": "irrelevant",
+      "visible_mismatch": "not_red"
+    },
+    {
+      "candidate_id": "candidate-03",
+      "path": "candidates/candidate-03.png",
+      "sha256": "83294112607d5d22286ae23c7f4c3a2a9280aa8198d3d8b023112e2dc00f13a9",
+      "width": 940,
+      "height": 896,
+      "label": "irrelevant",
+      "visible_mismatch": "not_red_and_not_black_handle"
+    },
+    {
+      "candidate_id": "candidate-04",
+      "path": "candidates/candidate-04.png",
+      "sha256": "5030c0c47d12a154a09f7360622f88de05df3bcd017bd242d5909e56c1db2c91",
+      "width": 940,
+      "height": 896,
+      "label": "irrelevant",
+      "visible_mismatch": "not_red_and_not_black_handle"
+    },
+    {
+      "candidate_id": "candidate-05",
+      "path": "candidates/candidate-05.png",
+      "sha256": "45a16f282e9d8a2868ca32668079a5db62bedbe355068f1f0c8b104d6c15192d",
+      "width": 928,
+      "height": 944,
+      "label": "irrelevant",
+      "visible_mismatch": "not_red_and_not_black_handle"
+    },
+    {
+      "candidate_id": "candidate-06",
+      "path": "candidates/candidate-06.png",
+      "sha256": "f856e2f9e823e88c61ed54083852578fb4d84b697c6c21c59f9fc37b5ad7b15d",
+      "width": 808,
+      "height": 940,
+      "label": "irrelevant",
+      "visible_mismatch": "not_black_handle"
+    },
+    {
+      "candidate_id": "candidate-07",
+      "path": "candidates/candidate-07.png",
+      "sha256": "edc990676ffa74be152cc40bcc36569281a50ba64aa3a5b9391b343d2a5ea8d6",
+      "width": 828,
+      "height": 944,
+      "label": "irrelevant",
+      "visible_mismatch": "not_red_and_not_black_handle"
+    }
+  ],
+  "eligibility": {
+    "formal_acceptance": false,
+    "relevant_count": 0,
+    "irrelevant_count": 7,
+    "reason": "fewer_than_three_relevant_candidates"
+  },
+  "generation": {
+    "provider": "gpt-image",
+    "status": "not_started",
+    "call_count": 0,
+    "retry_count": 0
+  },
+  "clip_evaluation": {
+    "status": "not_started"
+  },
+  "retention": {
+    "product_urls": false,
+    "product_ids": false,
+    "product_titles": false,
+    "raw_dom": false,
+    "cookies": false,
+    "credentials": false,
+    "raw_provider_response": false
+  }
+}

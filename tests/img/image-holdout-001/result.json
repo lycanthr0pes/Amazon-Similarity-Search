@@ -1,0 +1,43 @@
+{
+  "schema_version": "1.0",
+  "case_id": "image-holdout-001",
+  "runtime": "openai/clip-vit-base-patch32",
+  "preprocessing_profile": "clip-rgb-bicubic-contain-mean-pad-224-v1",
+  "candidate_scores": [
+    {
+      "candidate_id": "candidate-01",
+      "label": "relevant",
+      "image_score": 0.956313209
+    },
+    {
+      "candidate_id": "candidate-02",
+      "label": "irrelevant",
+      "image_score": 0.865547134
+    },
+    {
+      "candidate_id": "candidate-03",
+      "label": "irrelevant",
+      "image_score": 0.807093262
+    },
+    {
+      "candidate_id": "candidate-04",
+      "label": "relevant",
+      "image_score": 0.844999933
+    }
+  ],
+  "relevant_median": 0.900656571,
+  "irrelevant_median": 0.836320198,
+  "pairwise_auc": 0.75,
+  "reference_phash": {
+    "duplicate_threshold": 5,
+    "minimum_pair_distance": 4,
+    "duplicate_pairs": [
+      [
+        "left",
+        "right"
+      ]
+    ]
+  },
+  "formal_acceptance_eligible": false,
+  "assessment": "development_e2e_diagnostic_only"
+}

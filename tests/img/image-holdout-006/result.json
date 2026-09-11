@@ -1,0 +1,54 @@
+{
+  "schema_version": "1.0",
+  "case_id": "image-holdout-006",
+  "evaluation_role": "independent_unknown_condition_holdout",
+  "external_call_count_during_clip": 0,
+  "runtime_sha256": "bf5e3355bf11e924fdff2f8703e7a5331d7fd94b06f8fcde32c6083b34bddd05",
+  "score_profile_sha256": "8fc2c9a3e8d4537c5029e4e66aa9bef15757bb2180db4ed15a79bca37d3f81c4",
+  "calibration_profile_sha256": "92a5c223cbece8659e1513859f58a4d6401de6782dd2f0753e8e553440bc1f6a",
+  "labels_used_for_calibration": false,
+  "calibration_candidate_count": 12,
+  "common_decision_threshold": 0.0,
+  "calibration": {
+    "status": "calibrated",
+    "observed_minimum": -1.0,
+    "observed_maximum": 0.4920875621654818,
+    "center": -0.2539562189172591,
+    "half_span": 0.7460437810827409
+  },
+  "reference_phash_distance": 14,
+  "evaluation": {
+    "match": {
+      "count": 3,
+      "minimum": 0.2848454482413482,
+      "median": 0.9830520535151414,
+      "maximum": 1.0
+    },
+    "mismatch": {
+      "count": 5,
+      "minimum": -0.7011413021029926,
+      "median": -0.13391125284680927,
+      "maximum": 0.15084636705228902
+    },
+    "ambiguous": {
+      "count": 4,
+      "minimum": -1.0,
+      "median": -0.28995263910161007,
+      "maximum": 0.7115969800940305
+    },
+    "true_positive": 3,
+    "false_negative": 0,
+    "true_negative": 4,
+    "false_positive": 1,
+    "accuracy": 0.875,
+    "pairwise_auc": 1.0
+  },
+  "acceptance_criteria": {
+    "minimum_match": 3,
+    "minimum_mismatch": 3,
+    "minimum_accuracy": 0.9,
+    "minimum_pairwise_auc": 0.8
+  },
+  "assessment": "fail",
+  "qualified_for_ranking": false
+}

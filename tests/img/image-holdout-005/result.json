@@ -1,0 +1,117 @@
+{
+  "schema_version": "1.0",
+  "case_id": "image-holdout-005",
+  "runtime": "openai/clip-vit-base-patch32",
+  "preprocessing_profile": "clip-rgb-bicubic-contain-mean-pad-224-v1",
+  "candidate_scores": [
+    {
+      "candidate_id": "candidate-01",
+      "label": "relevant",
+      "image_score": 0.857770193
+    },
+    {
+      "candidate_id": "candidate-02",
+      "label": "irrelevant",
+      "image_score": 0.92549797
+    },
+    {
+      "candidate_id": "candidate-03",
+      "label": "ambiguous",
+      "image_score": 0.971516035
+    },
+    {
+      "candidate_id": "candidate-04",
+      "label": "irrelevant",
+      "image_score": 0.980259215
+    },
+    {
+      "candidate_id": "candidate-05",
+      "label": "irrelevant",
+      "image_score": 0.904252364
+    },
+    {
+      "candidate_id": "candidate-06",
+      "label": "irrelevant",
+      "image_score": 0.917840554
+    },
+    {
+      "candidate_id": "candidate-07",
+      "label": "irrelevant",
+      "image_score": 0.948540731
+    },
+    {
+      "candidate_id": "candidate-08",
+      "label": "relevant",
+      "image_score": 0.980219513
+    },
+    {
+      "candidate_id": "candidate-09",
+      "label": "relevant",
+      "image_score": 0.907911614
+    },
+    {
+      "candidate_id": "candidate-10",
+      "label": "relevant",
+      "image_score": 0.893126196
+    },
+    {
+      "candidate_id": "candidate-11",
+      "label": "ambiguous",
+      "image_score": 0.940346677
+    },
+    {
+      "candidate_id": "candidate-12",
+      "label": "irrelevant",
+      "image_score": 0.894691036
+    }
+  ],
+  "relevant_median": 0.900518905,
+  "irrelevant_median": 0.921669262,
+  "pairwise_auc": 0.291666667,
+  "reference_phash": {
+    "duplicate_threshold": 5,
+    "minimum_pair_distance": 6,
+    "pair_distances": [
+      {
+        "first": "front",
+        "second": "left",
+        "distance": 30
+      },
+      {
+        "first": "front",
+        "second": "right",
+        "distance": 28
+      },
+      {
+        "first": "front",
+        "second": "rear",
+        "distance": 6
+      },
+      {
+        "first": "left",
+        "second": "right",
+        "distance": 6
+      },
+      {
+        "first": "left",
+        "second": "rear",
+        "distance": 28
+      },
+      {
+        "first": "right",
+        "second": "rear",
+        "distance": 26
+      }
+    ],
+    "duplicate_pairs": []
+  },
+  "acceptance_criteria": {
+    "minimum_relevant": 3,
+    "minimum_irrelevant": 3,
+    "minimum_pairwise_auc": 0.8,
+    "relevant_median_above_irrelevant": true,
+    "reference_duplicates_forbidden": true
+  },
+  "formal_acceptance_eligible": true,
+  "assessment": "fail"
+}

@@ -1,0 +1,83 @@
+{
+  "schema_version": "1.0",
+  "case_id": "image-holdout-001",
+  "role": "development_e2e_diagnostic",
+  "visual_requirements": [
+    "white",
+    "cylindrical",
+    "tabletop_humidifier"
+  ],
+  "label_frozen_before_clip": true,
+  "candidate_acquisition": {
+    "browser": "Chromium 151",
+    "top_level_navigations": 1,
+    "outbound_requests": 59,
+    "request_limit": 100,
+    "dom_candidates": 12,
+    "saved_candidates": 4,
+    "automatic_retries": 0,
+    "credentials_used": false
+  },
+  "references": [
+    {
+      "angle": "front",
+      "path": "references/front.png",
+      "sha256": "a7a3174fa14d80857fd91ec3bf39b72b9556bc94a54274d3d03f50a0640ed3c5"
+    },
+    {
+      "angle": "left",
+      "path": "references/left.png",
+      "sha256": "13da3877ae7cf42461e09e7bb280c97dffdd1c2227d63b039a7c0f076a8fc605"
+    },
+    {
+      "angle": "right",
+      "path": "references/right.png",
+      "sha256": "978f1570a741837565759f62f810a7956d0110919c449e910743e453ce8b3417"
+    },
+    {
+      "angle": "rear",
+      "path": "references/rear.png",
+      "sha256": "c0acba8fce892abbacbc926582c0c1579a041089504ed30fa8640e6a4dfef892"
+    }
+  ],
+  "candidates": [
+    {
+      "candidate_id": "candidate-01",
+      "path": "candidates/candidate-01.png",
+      "sha256": "3bbfaf63c060e04d31e69ef05400fbb7a4ac0d2f2b600576b7eb8e732eef8d36",
+      "width": 320,
+      "height": 320,
+      "label": "relevant"
+    },
+    {
+      "candidate_id": "candidate-02",
+      "path": "candidates/candidate-02.png",
+      "sha256": "d151db76a7cfaa7cee8fff7018a95ab9c57801875537df60022bda04db83714d",
+      "width": 235,
+      "height": 320,
+      "label": "irrelevant",
+      "visible_mismatch": "not_cylindrical"
+    },
+    {
+      "candidate_id": "candidate-03",
+      "path": "candidates/candidate-03.png",
+      "sha256": "981b665f0647f0855048afd15c129723ba0987c1d0307dbcab7cb919048d51c2",
+      "width": 320,
+      "height": 320,
+      "label": "irrelevant",
+      "visible_mismatch": "not_white"
+    },
+    {
+      "candidate_id": "candidate-04",
+      "path": "candidates/candidate-04.png",
+      "sha256": "3320dc2fc0af96ca6739bcf2d81579bbdbe531337315d01ac675eff269389958",
+      "width": 259,
+      "height": 320,
+      "label": "relevant"
+    }
+  ],
+  "eligibility": {
+    "formal_acceptance": false,
+    "reason": "fewer_than_three_relevant_and_three_irrelevant_candidates"
+  }
+}

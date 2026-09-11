@@ -1,0 +1,96 @@
+{
+  "schema_version": "1.0",
+  "role": "development_counterfactual_v4_result",
+  "development_dataset_sha256": "2ae66b6271065a690e1c847820ecc608f00df326dd9f4cfeaa4d82a9a4821fb7",
+  "labels_sha256": "4688f56123e0a3e2f10aa9a79ecd371ef7cfd80a8b8522e62c10689a5220a2c9",
+  "evaluation_contract_sha256": "6af2dcecbcabe19d3418a808a4bce7815fb625f1f869e831e80a6c6ed1fb1490",
+  "external_call_count": 0,
+  "reused_fixed_references_and_candidates": true,
+  "current": {
+    "specification_id": "counterfactual-mean-positive-v2",
+    "absolute_assessment": "fail",
+    "correct_count": 16,
+    "evaluation_count": 20,
+    "accuracy": 0.8,
+    "pairwise_auc": 0.84,
+    "worst_condition_auc": 0.9583333333333334
+  },
+  "v4": {
+    "specification_id": "counterfactual-minimum-positive-v4",
+    "score_profile_id": "clip-counterfactual-minimum-positive-margin-unqualified-v4",
+    "score_profile_sha256": "8fc2c9a3e8d4537c5029e4e66aa9bef15757bb2180db4ed15a79bca37d3f81c4",
+    "absolute_assessment": "fail",
+    "absolute_failure_reasons": [
+      "pooled_diagnostic_accuracy_below_0.90",
+      "chair_color_class_count_ineligible",
+      "chair_mesh_class_count_ineligible"
+    ],
+    "correct_count": 17,
+    "evaluation_count": 20,
+    "accuracy": 0.85,
+    "pairwise_auc": 0.93,
+    "worst_condition_auc": 1.0,
+    "conditions": {
+      "counterfactual-development-001:visual-condition-001": {
+        "assessment": "pass",
+        "pairwise_auc": 1.0,
+        "threshold": -0.7626390193398531,
+        "balanced_accuracy": 1.0,
+        "sensitivity": 1.0,
+        "specificity": 1.0
+      },
+      "counterfactual-development-002:visual-condition-001": {
+        "assessment": "ineligible",
+        "match_count": 9,
+        "mismatch_count": 2
+      },
+      "counterfactual-development-002:visual-condition-002": {
+        "assessment": "ineligible",
+        "match_count": 11,
+        "mismatch_count": 0
+      },
+      "counterfactual-development-002:visual-condition-003": {
+        "assessment": "pass",
+        "pairwise_auc": 1.0,
+        "threshold": -0.08483346029019756,
+        "balanced_accuracy": 1.0,
+        "sensitivity": 1.0,
+        "specificity": 1.0
+      }
+    },
+    "pooled_diagnostic": {
+      "threshold": -0.47284997230807874,
+      "balanced_accuracy": 0.8500000000000001,
+      "sensitivity": 0.9,
+      "specificity": 0.8
+    }
+  },
+  "rejected_reference_self_calibration": {
+    "hard_clamp": {
+      "correct_count": 16,
+      "evaluation_count": 20,
+      "pairwise_auc": 0.72,
+      "headrest_pairwise_auc": 0.5
+    },
+    "monotonic_without_hard_clamp": {
+      "correct_count": 16,
+      "evaluation_count": 20,
+      "pairwise_auc": 0.84,
+      "headrest_pairwise_auc": 1.0
+    },
+    "assessment": "rejected_no_improvement"
+  },
+  "selection": {
+    "schema_version": "1.0",
+    "policy_id": "counterfactual-development-relative-accuracy-v1",
+    "decision": "pass",
+    "selection_basis": "relative_development_accuracy",
+    "tie_breaker": "accuracy",
+    "winner_specification_id": "counterfactual-minimum-positive-v4",
+    "loser_specification_id": "counterfactual-mean-positive-v2",
+    "winner_accuracy": 0.85,
+    "eligible_for_independent_holdout": true,
+    "qualified_for_ranking": false
+  },
+  "qualified_for_ranking": false
+}

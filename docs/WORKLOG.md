@@ -4908,3 +4908,14 @@ SigLIP点を見る前にassistantが胴体の膨らみで同順位群を固定�
 任意入力を確認画面に保持し、固定の合成条件・商品・画像で結果表示まで操作するモックを実装予定として定義した。画像なし、戻る、二重操作防止、生成・調査中表示、共通React部品・StyleX、ローカルのフォント・画像、実バックエンド・Bonsai・外部API・credentialへの非依存と自動接続なしを明記した。REQUIREMENTS.mdに残っていた納品待ち制約を訂正し、UI-017〜UI-020を未実装として追加した。AGENTS.md、README.md、NEXT-STEPS.md、GOAL.md、DEVELOPMENT.md、BACKEND.md、CHANGELOG.mdも同期した。
 
 検証: 指定値・色の網羅性、6桁表記、旧文言の除去、要件ID、過去の個別計画・作業記録・マージ済み変更履歴の保持を確認した。`uv run --frozen --offline --no-sync python tools/check_markdown_links.py` と `git diff --check` は成功。文書だけの変更のため、Python機能テスト・Ruff・lock検査・ブラウザ検証は未実行。UI・モックの実装、起動、API接続、Figma編集、外部通信、依存取得は行っていない。既存の未コミット差分を保持し、今回もcommit/pushは未実施。
+
+
+## 2026-09-11: 既存変更の段階的なGit反映
+
+利用者のcommit・push指示に基づき、既存差分を文書・runtime設定、次期検索基盤、診断runner、画像評価fixtureの4段階へ分割した。文書・runtime設定は `c447bac`、次期検索基盤は `20b218f`、診断runnerは `cbc0799` でmainへ反映した。
+
+準備済み環境で `uv run --frozen --offline --no-sync pytest -m 'not live_api' -q` を実行し、3,045 passed・20 skipped・30 deselectedを確認した。lock整合、Ruff、format、Markdownリンク、diff検査も成功した。実provider、モデル推論、画面起動、外部API検証は実行していない。
+
+固定CLIPモデル3ファイルと、検索文・商品情報を含む原本CSVおよびcase2・case3のExcelはローカルに保持し、`.gitignore` へ登録した。画像評価用の固定画像・manifest・数値結果は回帰テストと併せて管理する。過去の各作業にある「未コミット」は当時の状態として保持する。
+
+Git管理ファイルだけの別チェックアウトでも、同じオフラインテストが3,045 passed・20 skipped・30 deselectedで成功した。lock整合、Ruff、format、Markdownリンク、全コミット差分の空白検査も成功し、ローカルに除外したモデル・CSV・Excelへ通常gateが依存しないことを確認した。

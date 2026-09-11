@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "collection_id": "image-holdout-006",
+  "condition_id": "desk_edge_clamp_mount",
+  "generator": "gpt-image-test-only",
+  "generation_call_limit": 2,
+  "generation_calls_used": 2,
+  "retry_count": 0,
+  "candidate_images_sent_to_generator": false,
+  "references": [
+    {
+      "role": "desired",
+      "path": "references/desired-clamp.png",
+      "sha256": "8ec3130a2c6a349744ba5fb23d41210be42891e6098cbbe8c7bee03e81198707"
+    },
+    {
+      "role": "counterfactual",
+      "path": "references/counterfactual-base.png",
+      "sha256": "16f60330355fc9758bafcb803b21f738b9b77166f33792c96f2a4af5d37fc9f0"
+    }
+  ],
+  "human_pair_confirmation": "confirmed",
+  "clip_execution": "completed"
+}

@@ -1,0 +1,99 @@
+{
+  "schema_version": 1,
+  "collection_id": "image-holdout-006",
+  "search_category": "desk_lamp",
+  "condition_id": "desk_edge_clamp_mount",
+  "top_level_navigation_count": 1,
+  "retry_count": 0,
+  "external_requests_sent": 100,
+  "external_requests_blocked_before_send": 40,
+  "external_request_limit": 100,
+  "candidate_limit": 12,
+  "candidate_count": 12,
+  "candidates": [
+    {
+      "candidate_id": "candidate-01",
+      "path": "candidates/candidate-01.png",
+      "sha256": "0322d87475c9edd85a983a779ad459186c0ea0793a19bf7d437575b5bbcd3310",
+      "source_width": 260,
+      "source_height": 320
+    },
+    {
+      "candidate_id": "candidate-02",
+      "path": "candidates/candidate-02.png",
+      "sha256": "095a58653e378396d54b3a1804e5f4d027ca9e4322af538fbe74a8b3c9231430",
+      "source_width": 200,
+      "source_height": 200
+    },
+    {
+      "candidate_id": "candidate-03",
+      "path": "candidates/candidate-03.png",
+      "sha256": "e76bb97c4dcd88cd2d4d72a21d10d2e0714e91067b7c96fbb3401ce3df28d42f",
+      "source_width": 299,
+      "source_height": 320
+    },
+    {
+      "candidate_id": "candidate-04",
+      "path": "candidates/candidate-04.png",
+      "sha256": "7fae135972ac98b921dbce0bf6b18453747f6d926ea0a12bbad9bf9c132c8c00",
+      "source_width": 320,
+      "source_height": 318
+    },
+    {
+      "candidate_id": "candidate-05",
+      "path": "candidates/candidate-05.png",
+      "sha256": "da7c7616cb0236e9b8681ec2939d190a2d08055904731c50f42bc86eabd4e584",
+      "source_width": 243,
+      "source_height": 320
+    },
+    {
+      "candidate_id": "candidate-06",
+      "path": "candidates/candidate-06.png",
+      "sha256": "f7b2105f70273d7622f70cbe6c1bdfa3c9d846bbcc27084d32a920169fe06a35",
+      "source_width": 320,
+      "source_height": 320
+    },
+    {
+      "candidate_id": "candidate-07",
+      "path": "candidates/candidate-07.png",
+      "sha256": "00d6b2ef86b7b944304c037e19dd2a17410c9d5a56e397b2fb2125c0c25dd438",
+      "source_width": 260,
+      "source_height": 320
+    },
+    {
+      "candidate_id": "candidate-08",
+      "path": "candidates/candidate-08.png",
+      "sha256": "9ec66366d24c60f3f9bebab4b654fdc5411f2c1e4e9bd90afbce3e9ecfb2c9b3",
+      "source_width": 320,
+      "source_height": 320
+    },
+    {
+      "candidate_id": "candidate-09",
+      "path": "candidates/candidate-09.png",
+      "sha256": "5da5aa4b1b09bb2ceea2ae062597b9d1fe0e9bdd63e468a9f41dd19f463d188c",
+      "source_width": 200,
+      "source_height": 200
+    },
+    {
+      "candidate_id": "candidate-10",
+      "path": "candidates/candidate-10.png",
+      "sha256": "792215ff25b67c78a46e8a79dcb472a947ae5493ed2f661a53d1140010086957",
+      "source_width": 301,
+      "source_height": 320
+    },
+    {
+      "candidate_id": "candidate-11",
+      "path": "candidates/candidate-11.png",
+      "sha256": "9e7ea608c07e903a54c385b754c8358dd9c7ac62c88d8f6cd36c7d54df78d7af",
+      "source_width": 320,
+      "source_height": 266
+    },
+    {
+      "candidate_id": "candidate-12",
+      "path": "candidates/candidate-12.png",
+      "sha256": "6eb55cbb9bf3dab6fad6c45aa93e1a627b0d6271ba10df5cbc6cf674f1ef6daa",
+      "source_width": 320,
+      "source_height": 298
+    }
+  ]
+}

@@ -1,0 +1,184 @@
+{
+  "schema_version": "1.0",
+  "case_id": "image-holdout-005",
+  "role": "development_e2e_formal_image_assessment",
+  "visual_requirements": {
+    "color": "black",
+    "product_type": "office_chair",
+    "backrest_material": "mesh",
+    "feature": "headrest"
+  },
+  "candidate_acquisition": {
+    "source": "isolated_chromium_rendered_category_search_results",
+    "top_level_navigation_count": 1,
+    "external_request_limit": 100,
+    "external_request_count": 100,
+    "blocked_before_network_count": 70,
+    "retry_count": 0,
+    "dom_candidate_limit": 12,
+    "dom_candidate_count": 12,
+    "saved_candidate_count": 12,
+    "status": "succeeded"
+  },
+  "label_frozen_before_clip": true,
+  "references": [
+    {
+      "angle": "front",
+      "path": "references/front.png",
+      "sha256": "d4033de8b889ca1775fda781f61ced548aa75e880d16af30322eb9f6f92ffe27"
+    },
+    {
+      "angle": "left",
+      "path": "references/left.png",
+      "sha256": "1684a99a441948a9ad488c9ad4674a2ac68d2821202ed67cc605abbc18f6ccc6"
+    },
+    {
+      "angle": "right",
+      "path": "references/right.png",
+      "sha256": "52185609c896185e91dc4f0cd0e66cf8928696de651ffa7e67f464d926de55e8"
+    },
+    {
+      "angle": "rear",
+      "path": "references/rear.png",
+      "sha256": "022276312b24a721ec76e904fd1173c453e60c155dbcb39b18a078c57124f097"
+    }
+  ],
+  "candidates": [
+    {
+      "candidate_id": "candidate-01",
+      "path": "candidates/candidate-01.png",
+      "sha256": "be41f960bec56ab53c2cd9e847f7a4633eacca252c1b057198d3941d77a4b1f0",
+      "width": 512,
+      "height": 512,
+      "label": "relevant"
+    },
+    {
+      "candidate_id": "candidate-02",
+      "path": "candidates/candidate-02.png",
+      "sha256": "99607b0ef767228935ce192a210c615c60b182a846c8da3007b22add1eb3c017",
+      "width": 512,
+      "height": 512,
+      "label": "irrelevant",
+      "visible_mismatch": "no_headrest"
+    },
+    {
+      "candidate_id": "candidate-03",
+      "path": "candidates/candidate-03.png",
+      "sha256": "faf1e588486e4421fce3ff62a38eb6f9e575de56e76b57abf37db39c78bc3e3f",
+      "width": 312,
+      "height": 512,
+      "label": "ambiguous",
+      "ambiguity": "distinct_headrest_not_visually_confirmable"
+    },
+    {
+      "candidate_id": "candidate-04",
+      "path": "candidates/candidate-04.png",
+      "sha256": "e9ecabf5575dac27fd69a72cef9e33c38409f874acc057d0ef4f1b7a6983149f",
+      "width": 328,
+      "height": 512,
+      "label": "irrelevant",
+      "visible_mismatch": "no_headrest"
+    },
+    {
+      "candidate_id": "candidate-05",
+      "path": "candidates/candidate-05.png",
+      "sha256": "6e76ea174e49d21fe3a53b44e651dea17e990317f45ad273c1a40df7ee4fee55",
+      "width": 512,
+      "height": 512,
+      "label": "irrelevant",
+      "visible_mismatch": "no_headrest"
+    },
+    {
+      "candidate_id": "candidate-06",
+      "path": "candidates/candidate-06.png",
+      "sha256": "b5b2db66e8104ed665c68d2c35b60d8167a97abe881af2ea99e4e2204d17008f",
+      "width": 338,
+      "height": 512,
+      "label": "irrelevant",
+      "visible_mismatch": "not_black"
+    },
+    {
+      "candidate_id": "candidate-07",
+      "path": "candidates/candidate-07.png",
+      "sha256": "60ab773da7739a12fde1266649c588dac441bb81fbe168f447b16e30d9b6badd",
+      "width": 386,
+      "height": 512,
+      "label": "irrelevant",
+      "visible_mismatch": "no_headrest"
+    },
+    {
+      "candidate_id": "candidate-08",
+      "path": "candidates/candidate-08.png",
+      "sha256": "7fd0357241106cfe690285df3aeea85b4a05327ce55f7d8ddbea9c594aad170f",
+      "width": 270,
+      "height": 512,
+      "label": "relevant"
+    },
+    {
+      "candidate_id": "candidate-09",
+      "path": "candidates/candidate-09.png",
+      "sha256": "c4d873634654048d720a51b966add2e5d6aef8836ed6f125c20cb05b9f2c7c6f",
+      "width": 512,
+      "height": 512,
+      "label": "relevant"
+    },
+    {
+      "candidate_id": "candidate-10",
+      "path": "candidates/candidate-10.png",
+      "sha256": "7d19ee34281d438ab17f3d80b2eb3acd4c4eb814781ff4fa6236ace784421e33",
+      "width": 512,
+      "height": 512,
+      "label": "relevant"
+    },
+    {
+      "candidate_id": "candidate-11",
+      "path": "candidates/candidate-11.png",
+      "sha256": "2f7c2fd8702f18c60351a6baa9ffdbc4412d1dc79d4de0620c6cf44df32e1a77",
+      "width": 498,
+      "height": 512,
+      "label": "ambiguous",
+      "ambiguity": "multiple_chairs_and_black_mesh_backrest_not_visually_confirmable"
+    },
+    {
+      "candidate_id": "candidate-12",
+      "path": "candidates/candidate-12.png",
+      "sha256": "c3a2f4556e8db6dd3abb278c15e302908e6a9ffcc2d72ff2458d8905cde90b8f",
+      "width": 512,
+      "height": 512,
+      "label": "irrelevant",
+      "visible_mismatch": "not_black"
+    }
+  ],
+  "eligibility": {
+    "formal_acceptance_eligible": true,
+    "relevant_count": 4,
+    "irrelevant_count": 6,
+    "ambiguous_count": 2,
+    "minimum_per_label": 3,
+    "reason": "minimum_label_composition_satisfied"
+  },
+  "generation": {
+    "provider": "gpt-image",
+    "scope": "test_only",
+    "status": "succeeded",
+    "call_limit": 4,
+    "call_count": 4,
+    "retry_count": 0,
+    "candidate_images_sent": false
+  },
+  "clip_evaluation": {
+    "status": "completed",
+    "auc_threshold": 0.8,
+    "median_separation_required": true,
+    "assessment": "fail"
+  },
+  "retention": {
+    "product_urls": false,
+    "product_ids": false,
+    "product_titles": false,
+    "raw_dom": false,
+    "cookies": false,
+    "credentials": false,
+    "raw_provider_response": false
+  }
+}

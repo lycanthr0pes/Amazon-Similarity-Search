@@ -1,0 +1,137 @@
+{
+  "schema_version": "1.0",
+  "role": "development_counterfactual_calibration_result",
+  "score_profile_id": "clip-counterfactual-margin-unqualified-v1",
+  "score_profile_sha256": "66f2cf0277bfc5600906884ea4b7d5d7d1d948bcbeff774a5d10fe7d20cb1300",
+  "runtime_sha256": "bf5e3355bf11e924fdff2f8703e7a5331d7fd94b06f8fcde32c6083b34bddd05",
+  "auc_threshold": 0.8,
+  "median_separation_required": true,
+  "minimum_class_count": 3,
+  "generation_call_count": 6,
+  "generation_retry_count": 0,
+  "decision_thresholds_calibrated": false,
+  "qualified_for_ranking": false,
+  "assessment": "fail",
+  "failure_reasons": [
+    "pooled_eligible_condition_auc_below_threshold",
+    "chair_headrest_auc_below_threshold",
+    "chair_color_class_count_ineligible",
+    "chair_mesh_class_count_ineligible"
+  ],
+  "pooled_eligible_conditions": {
+    "included": [
+      "counterfactual-development-001:visual-condition-001",
+      "counterfactual-development-002:visual-condition-003"
+    ],
+    "match_scores": [-0.427023432, -0.525278039, -0.098210156, -0.338458122, 0.253337635, 0.442435198, 0.985432264, 1.0, 0.863376633, 0.918292068],
+    "mismatch_scores": [-1.0, -1.0, -1.0, -1.0, -1.0, -1.0, 0.657438971, 0.430993156, 0.794596994, 0.327469377],
+    "pairwise_auc": 0.78,
+    "match_median": 0.3478864165,
+    "mismatch_median": -1.0,
+    "diagnostic_threshold": -0.7626390195,
+    "diagnostic_balanced_accuracy": 0.8,
+    "diagnostic_sensitivity": 1.0,
+    "diagnostic_specificity": 0.6,
+    "assessment": "fail"
+  },
+  "cases": [
+    {
+      "case_id": "counterfactual-development-001",
+      "reference_phash_min_distance": 20,
+      "conditions": [
+        {
+          "condition_id": "visual-condition-001",
+          "match_count": 4,
+          "mismatch_count": 6,
+          "ambiguous_count": 0,
+          "pairwise_auc": 1.0,
+          "match_median": -0.382740777,
+          "mismatch_median": -1.0,
+          "diagnostic_threshold": -0.7626390195,
+          "diagnostic_balanced_accuracy": 1.0,
+          "assessment": "pass"
+        }
+      ],
+      "candidate_scores": [
+        {"candidate_id": "candidate-01", "margins": {"visual-condition-001": {"raw_margin": -0.060597176, "reference_distance": 0.04771725, "normalized_margin": -1.0}}},
+        {"candidate_id": "candidate-02", "margins": {"visual-condition-001": {"raw_margin": -0.07064984, "reference_distance": 0.04771725, "normalized_margin": -1.0}}},
+        {"candidate_id": "candidate-03", "margins": {"visual-condition-001": {"raw_margin": -0.059189999, "reference_distance": 0.04771725, "normalized_margin": -1.0}}},
+        {"candidate_id": "candidate-04", "margins": {"visual-condition-001": {"raw_margin": -0.072204106, "reference_distance": 0.04771725, "normalized_margin": -1.0}}},
+        {"candidate_id": "candidate-05", "margins": {"visual-condition-001": {"raw_margin": -0.065473432, "reference_distance": 0.04771725, "normalized_margin": -1.0}}},
+        {"candidate_id": "candidate-06", "margins": {"visual-condition-001": {"raw_margin": -0.020376384, "reference_distance": 0.04771725, "normalized_margin": -0.427023432}}},
+        {"candidate_id": "candidate-07", "margins": {"visual-condition-001": {"raw_margin": -0.025064824, "reference_distance": 0.04771725, "normalized_margin": -0.525278039}}},
+        {"candidate_id": "candidate-08", "margins": {"visual-condition-001": {"raw_margin": -0.004686319, "reference_distance": 0.04771725, "normalized_margin": -0.098210156}}},
+        {"candidate_id": "candidate-09", "margins": {"visual-condition-001": {"raw_margin": -0.016150291, "reference_distance": 0.04771725, "normalized_margin": -0.338458122}}},
+        {"candidate_id": "candidate-10", "margins": {"visual-condition-001": {"raw_margin": -0.050242885, "reference_distance": 0.04771725, "normalized_margin": -1.0}}}
+      ]
+    },
+    {
+      "case_id": "counterfactual-development-002",
+      "reference_phash_min_distance": 6,
+      "conditions": [
+        {
+          "condition_id": "visual-condition-001",
+          "match_count": 9,
+          "mismatch_count": 2,
+          "ambiguous_count": 1,
+          "pairwise_auc": 1.0,
+          "match_median": 0.360566848,
+          "mismatch_median": -0.4624291475,
+          "diagnostic_threshold": null,
+          "assessment": "ineligible"
+        },
+        {
+          "condition_id": "visual-condition-002",
+          "match_count": 11,
+          "mismatch_count": 0,
+          "ambiguous_count": 1,
+          "pairwise_auc": null,
+          "match_median": 1.0,
+          "mismatch_median": null,
+          "diagnostic_threshold": null,
+          "assessment": "ineligible"
+        },
+        {
+          "condition_id": "visual-condition-003",
+          "match_count": 6,
+          "mismatch_count": 4,
+          "ambiguous_count": 2,
+          "pairwise_auc": 0.75,
+          "match_median": 0.8908343505,
+          "mismatch_median": 0.5442160635,
+          "diagnostic_threshold": 0.8289868135,
+          "diagnostic_balanced_accuracy": 0.8333333333333333,
+          "diagnostic_sensitivity": 0.6666666666666666,
+          "diagnostic_specificity": 1.0,
+          "assessment": "fail"
+        }
+      ],
+      "aggregate_min": {
+        "pairwise_auc": 0.5833333333333334,
+        "match_median": 0.3499301505,
+        "mismatch_median": 0.336838098,
+        "assessment": "fail"
+      },
+      "aggregate_mean": {
+        "pairwise_auc": 0.7083333333333334,
+        "match_median": 0.7427287355,
+        "mismatch_median": 0.5455912093333334,
+        "assessment": "fail"
+      },
+      "candidate_scores": [
+        {"candidate_id": "candidate-01", "margins": {"visual-condition-001": {"raw_margin": -0.000892718, "reference_distance": 0.041193623, "normalized_margin": -0.021671273}, "visual-condition-002": {"raw_margin": 0.00440828, "reference_distance": 0.006035173, "normalized_margin": 0.730431498}, "visual-condition-003": {"raw_margin": 0.004642306, "reference_distance": 0.018324579, "normalized_margin": 0.253337635}}},
+        {"candidate_id": "candidate-02", "margins": {"visual-condition-001": {"raw_margin": 0.014853055, "reference_distance": 0.041193623, "normalized_margin": 0.360566848}, "visual-condition-002": {"raw_margin": 0.009259554, "reference_distance": 0.006035173, "normalized_margin": 1.0}, "visual-condition-003": {"raw_margin": 0.012047293, "reference_distance": 0.018324579, "normalized_margin": 0.657438971}}},
+        {"candidate_id": "candidate-03", "margins": {"visual-condition-001": {"raw_margin": 0.006833145, "reference_distance": 0.041193623, "normalized_margin": 0.165878718}, "visual-condition-002": {"raw_margin": 0.000789484, "reference_distance": 0.006035173, "normalized_margin": 0.130813769}, "visual-condition-003": {"raw_margin": 0.003845887, "reference_distance": 0.018324579, "normalized_margin": 0.209875894}}},
+        {"candidate_id": "candidate-04", "margins": {"visual-condition-001": {"raw_margin": 0.014261513, "reference_distance": 0.041193623, "normalized_margin": 0.346206819}, "visual-condition-002": {"raw_margin": 0.002880046, "reference_distance": 0.006035173, "normalized_margin": 0.477210245}, "visual-condition-003": {"raw_margin": 0.007897768, "reference_distance": 0.018324579, "normalized_margin": 0.430993156}}},
+        {"candidate_id": "candidate-05", "margins": {"visual-condition-001": {"raw_margin": 0.026424656, "reference_distance": 0.041193623, "normalized_margin": 0.641474419}, "visual-condition-002": {"raw_margin": 0.009448678, "reference_distance": 0.006035173, "normalized_margin": 1.0}, "visual-condition-003": {"raw_margin": 0.014560656, "reference_distance": 0.018324579, "normalized_margin": 0.794596994}}},
+        {"candidate_id": "candidate-06", "margins": {"visual-condition-001": {"raw_margin": -0.019067469, "reference_distance": 0.041193623, "normalized_margin": -0.46287429}, "visual-condition-002": {"raw_margin": 0.002352689, "reference_distance": 0.006035173, "normalized_margin": 0.389829559}, "visual-condition-003": {"raw_margin": 0.008107439, "reference_distance": 0.018324579, "normalized_margin": 0.442435198}}},
+        {"candidate_id": "candidate-07", "margins": {"visual-condition-001": {"raw_margin": 0.020175393, "reference_distance": 0.041193623, "normalized_margin": 0.489769816}, "visual-condition-002": {"raw_margin": 0.008432363, "reference_distance": 0.006035173, "normalized_margin": 1.0}, "visual-condition-003": {"raw_margin": 0.006000739, "reference_distance": 0.018324579, "normalized_margin": 0.327469377}}},
+        {"candidate_id": "candidate-08", "margins": {"visual-condition-001": {"raw_margin": 0.019132763, "reference_distance": 0.041193623, "normalized_margin": 0.464459331}, "visual-condition-002": {"raw_margin": 0.005447601, "reference_distance": 0.006035173, "normalized_margin": 0.902642075}, "visual-condition-003": {"raw_margin": 0.018057632, "reference_distance": 0.018324579, "normalized_margin": 0.985432264}}},
+        {"candidate_id": "candidate-09", "margins": {"visual-condition-001": {"raw_margin": 0.018924276, "reference_distance": 0.041193623, "normalized_margin": 0.459398191}, "visual-condition-002": {"raw_margin": 0.015513913, "reference_distance": 0.006035173, "normalized_margin": 1.0}, "visual-condition-003": {"raw_margin": 0.030896406, "reference_distance": 0.018324579, "normalized_margin": 1.0}}},
+        {"candidate_id": "candidate-10", "margins": {"visual-condition-001": {"raw_margin": 0.009905506, "reference_distance": 0.041193623, "normalized_margin": 0.24046211}, "visual-condition-002": {"raw_margin": 0.00709188, "reference_distance": 0.006035173, "normalized_margin": 1.0}, "visual-condition-003": {"raw_margin": 0.015821014, "reference_distance": 0.018324579, "normalized_margin": 0.863376633}}},
+        {"candidate_id": "candidate-11", "margins": {"visual-condition-001": {"raw_margin": 0.025958264, "reference_distance": 0.041193623, "normalized_margin": 0.630152481}, "visual-condition-002": {"raw_margin": 0.006391673, "reference_distance": 0.006035173, "normalized_margin": 1.0}, "visual-condition-003": {"raw_margin": 0.012677625, "reference_distance": 0.018324579, "normalized_margin": 0.691837161}}},
+        {"candidate_id": "candidate-12", "margins": {"visual-condition-001": {"raw_margin": -0.019030795, "reference_distance": 0.041193623, "normalized_margin": -0.461984005}, "visual-condition-002": {"raw_margin": 0.006272903, "reference_distance": 0.006035173, "normalized_margin": 1.0}, "visual-condition-003": {"raw_margin": 0.016827316, "reference_distance": 0.018324579, "normalized_margin": 0.918292068}}}
+      ]
+    }
+  ]
+}
