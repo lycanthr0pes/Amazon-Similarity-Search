@@ -1,8 +1,22 @@
 # amazon-explorer
 
-> **次期フロントエンド（2026-09-11）:** このリポジトリで自前開発する方針へ変更した。外部納品を着手条件とせず、[利用フロー](SEARCH-FLOW.md) と [画面設計](docs/FRONTEND.md#11-次期フロントエンドの自前開発方針) に沿って進める。実装はReact + StyleX、Figmaはレイアウトの参考とし、視覚仕様は画面設計を正本とする。任意入力から固定の合成結果まで操作できる[オフラインモック](docs/FRONTEND.md#14-オフラインモック実装予定)を先行作成する。今回は文書更新までで、UI・モック実装とバックエンド・API接続は後続作業である。
+> **次期フロントエンド（2026-09-11）:** [frontend/](frontend/) にReact + StyleXのデスクトップ画面と[オフラインモック](docs/FRONTEND.md#14-オフラインモック)を実装した。任意入力から条件・画像の確認、商品調査、固定結果と履歴まで操作できる。Figmaはレイアウトの参考、[画面設計](docs/FRONTEND.md#13-次期uiの視覚統一契約)は視覚仕様の正本とする。実バックエンド・APIには未接続で、検証結果は [EXEC-117](docs/GOAL.md#exec-117-react-stylexのオフライン画面) に記録する。
 
 amazon-explorer は、日本語の自然文から Amazon.co.jp の商品候補を検索し、条件への近さで並べる Python アプリケーションである。ローカルの Bonsai 8B が入力を商品属性 JSON に変換し、Outscraper が商品候補を取得する。商品名・属性の TF-IDF 類似度、価格、除外条件を組み合わせて順位を決め、Streamlit または CLI で結果を確認できる。
+
+## オフラインで画面を確認する
+
+Node.js 22.12以上とnpmを用意し、リポジトリ直下から次を実行する。Python、Bonsai、APIキーは不要である。
+
+```sh
+cd frontend
+npm ci
+npm run dev
+```
+
+`http://127.0.0.1:5173` をデスクトップのブラウザで開く。`npm ci` は公開パッケージとNoto Sans JPを取得する環境準備で、実行時のフォント・画像はローカル配信だけを使う。入力はそのまま確認画面に残るが、条件・画像・12件の商品は固定の合成データであり、実際の理解・検索は行わない。
+
+画像なし経路と、参考画像1枚の確認→了承→比較画像の確認を選べる。完了した結果は同じタブの`sessionStorage`へ最大30件・30日間保存し、再読込しても履歴を開ける。進行中の検索状態は再読込で初期化され、タブを閉じた後の永続履歴は提供しない。起動・検証コマンドと失敗表示の確認方法は [モックの実行手順](docs/FRONTEND.md#141-配置と実行手順) を参照する。
 
 ## 実装フロー
 
@@ -25,6 +39,7 @@ amazon-explorer は、日本語の自然文から Amazon.co.jp の商品候補�
 - `src/schemas.py`: Pydanticデータモデル
 - `src/search_v2/`: 次期検索のstrict境界、schema 3.0のtyped proposal付き承認・画像失敗回復state、参考画像1枚の了承後にCloudflareで条件別偽画像だけを生成するoffline境界、Outscraper完了結果から `typed-ranking-v4` までのoffline pipeline、5秒application deadline付きspawn子processへ隔離した画像DNS resolverとpinned-IP HTTPS transport、typed decisionからschema 2.0/3.0表示履歴への変換、owner分離した30日検索履歴、local job・暫定schema 5.0履歴用ASGI API factory
 - `src/ui/streamlit_ui.py`: Streamlit UI
+- `frontend/`: React + TypeScript + StyleXの画面、オフライン状態遷移、タブ内履歴、ローカル資材、ブラウザテスト
 - `tests/`: 現行 `src` を直接検証する回帰テスト
 - `docs/old/examples/`: 段階別に作成した旧検証コードの参照用スナップショット
 

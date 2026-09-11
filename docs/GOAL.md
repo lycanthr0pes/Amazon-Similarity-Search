@@ -2,24 +2,24 @@
 
 ## 次期フロントエンドの自前開発（2026-09-11）
 
-利用者の明示決定により、次期画面はこのリポジトリで自前開発する。外部納品待ちを解除し、[SEARCH-FLOW.md](../SEARCH-FLOW.md) と [FRONTEND.md](FRONTEND.md#11-次期フロントエンドの自前開発方針) を目標仕様にする。今回の対象は方針・設計・残作業・履歴の文書更新だけで、実装・起動・テスト・API接続は後続作業である。過去の個別EXECにある委託・納品待ちの記述は当時の判断と検証範囲として残し、現在の着手制約には使わない。
+利用者の明示決定により、次期画面はこのリポジトリで自前開発する。外部納品待ちを解除し、[SEARCH-FLOW.md](../SEARCH-FLOW.md) と [FRONTEND.md](FRONTEND.md#11-次期フロントエンドの自前開発方針) を目標仕様にする。React + StyleXのオフライン画面を[EXEC-117](#exec-117-react-stylexのオフライン画面)で実装した。実バックエンド/API接続は後続作業である。過去の個別EXECにある委託・納品待ちの記述は当時の判断と検証範囲として残し、現在の着手制約には使わない。
 
-[TASK-008](#task-008-次期検索フロー-v2-の実装) と [TASK-001](#task-001-検索処理のジョブ化) の後続作業:
+[TASK-008](#task-008-次期検索フロー-v2-の実装) と [TASK-001](#task-001-検索処理のジョブ化) の画面実装と後続作業:
 
-1. React + StyleXで画面構成・状態・API契約を整理し、全ボタン共通の幅・高さ、配置先、ビルド・起動手順を決める。Figmaはレイアウトの参考とし、[視覚統一契約](FRONTEND.md#13-次期uiの視覚統一契約) を優先する。
-2. [オフラインモック](FRONTEND.md#14-オフラインモック実装予定) と次期画面を共通部品で実装する。任意入力を確認画面に保持し、固定の合成条件・商品・画像で条件確認・任意画像確認・最終確認・商品調査・結果まで操作できるようにする。画像なし・戻る・二重操作防止と指定アニメーションを検証する。フォント・画像はローカルに用意し、実バックエンド・Bonsai・外部API・credentialを使わず実サービスへ自動接続しない。履歴と失敗時の操作は既存の目標仕様に従って実装・検証する。
+1. `frontend/` にReact + StyleXの画面とモックを配置した。通常ボタンは176×48px、検索履歴一覧の「削除」「開く」は96×36px、開発起動は `npm run dev` とする。Figmaはレイアウトの参考とし、[視覚統一契約](FRONTEND.md#13-次期uiの視覚統一契約) を優先する。
+2. [オフラインモック](FRONTEND.md#14-オフラインモック) を共通部品で実装した。任意入力・条件編集、画像あり/なし、段階的承認、商品調査、結果・履歴、失敗回復、期限切れと二重操作防止をChromiumで確認した。フォント・画像はローカル資材で、実バックエンド・Bonsai・外部API・credentialを使わない。
 3. 最終承認controllerとserver起動構成を整備し、ローカルAPIへ接続する。candidateの現行契約と既存暫定APIの差分は接続前に確認する。
 4. 実サービスを含む検証は、送信先・内容・回数・credential・費用を提示して明示承認を得た範囲で行う。
 
 検索実行のローカル専用・単一host・単一process・worker 1本、SigLIP 2既定、Bonsai用途制限、検索語と画像の確認手順は維持する。自前開発への変更を既存画面やAPIの接続完了として扱わない。
 
-2026-09-11追加決定: React + StyleX、Figmaはレイアウト参考、Noto Sans JP、6桁の色コード、白黒基調と指定された青・灰色、共通ボタンと進行アニメーションを文書の正本へ固定する。今回の成果は文書更新だけであり、UI-017〜UI-020の画面・モック実装とブラウザ検証は未着手。共通ボタンの幅・高さの数値は利用者判断で後続設計へ残す。
+2026-09-11追加決定: React + StyleX、Figmaはレイアウト参考、Noto Sans JP、6桁の色コード、白黒基調と指定された青・灰色、共通ボタンと進行アニメーションを文書の正本へ固定する。文書化に続く実装指示を受け、UI-017〜UI-020のモックを実装した。実サービス接続・品質検証は対象外。検証結果はEXEC-117へ記録する。
 
 ## 1. 文書の役割
 
 この文書は、amazon-explorer が目指す利用者価値、現在確認できる到達点、未接続の計画境界、成功条件を一か所で示す。個々の作業状態や実行手順を置き換えるものではない。
 
-- 現在の実装事実は `src/`、`tools/`、`tests/`、`specs/`、`pyproject.toml` を正とする
+- 現在の実装事実は `src/`、`frontend/`、`tools/`、`tests/`、`specs/`、`pyproject.toml` を正とする
 - 商品検索の次期利用者フローは [SEARCH-FLOW.md](../SEARCH-FLOW.md)、技術契約は [BACKEND.md](BACKEND.md#13-次期検索バックエンド-v2基盤を一部実装)、テスト方針は [DEVELOPMENT.mdの統合済みテスト方針](DEVELOPMENT.md#統合済みテスト方針) を正とする
 - 大規模タスクと小規模タスクはこの文書の [大規模タスク一覧](#統合済み大規模タスク一覧) と [小規模タスク一覧](#統合済み小規模タスク一覧)、構造的負債は [ISSUES.md](ISSUES.md#統合済み技術的負債トラッカー) で管理する
 - 複雑な変更の実行方法は [Execution Plan規約](DEVELOPMENT.md#統合済みexecution-plan規約)、進行中のPlanはこの文書で管理する
@@ -182,6 +182,13 @@ Cloudflare画像、複数query、検索履歴などは承認済み仕様であ�
 
 | 文書 | 状態 | 役割 |
 |---|---|---|
+| [EXEC-123](#exec-123-角の輪郭濃度を補正) | 完了 | 添付画像で残る角の薄れを補正 |
+| [EXEC-122](#exec-122-完了段階の配色とスクロール維持) | 完了 | 完了した丸の青背景と更新時のスクロール維持 |
+| [EXEC-121](#exec-121-枠線の濃淡を画素で検証して改善) | 完了 | 100%表示の角の薄さを再現し、内側1px輪郭へ変更 |
+| [EXEC-120](#exec-120-細い外枠の描画改善) | 完了 | 円弧の角丸と整数行高で1px枠の描画を整える |
+| [EXEC-119](#exec-119-トグルの動き角丸履歴操作の調整) | 完了 | 滑らかな切替と角丸、履歴ボタンの縮小、危険色の統一 |
+| [EXEC-118](#exec-118-主要ボタンとトグル丸枠の表示修正) | 完了 | dev/prodのボタン配色、スイッチと円形表示の修正 |
+| [EXEC-117](#exec-117-react-stylexのオフライン画面) | 完了 | 自然文入力から結果・履歴までの自前UIとブラウザ検証 |
 | [Execution Plan規約](DEVELOPMENT.md#統合済みexecution-plan規約) | 規約 | 複雑タスクの作成、進捗、検証、判断、rollbackの共通要件 |
 | [EXEC-094](#exec-094-省略された仕様名の推論を改善する) | 進行中 | 省略された仕様名の実Bonsai診断と、本番要求の比較・修正 |
 | [EXEC-095](#exec-095-仕様定義を与えたbonsaiの属性同定を検証する) | 完了 | 定義追加7/12→11/12、資料不足・曖昧16件の保留0件。RAG進行基準未達 |
@@ -544,7 +551,14 @@ TASK-006自体では外部AI、Bonsai、Outscraper、Amazonの実通信、課金
 
 ### TASK-008: 次期検索フロー v2 の実装
 
-- 状態: 進行中（暫定production profileは限定liveでCloudflare 2 calls、Outscraper 1 task、24商品画像、CLIP 7 batches、ranking v5まで成功した。最終承認からlocal job・schema 5.0履歴とlocal ASGI API factoryまでをoffline接続済み。本番quotaは設けない。server起動構成、最終承認controller、UIと新service込み実provider E2Eは未完了。gpt-imageはテスト専用で、次期フロントエンドは自前開発の設計・実装を後続に残す）
+- 枠線の再改善: [EXEC-121](#exec-121-枠線の濃淡を画素で検証して改善) で100%表示の角の画素濃度を検証し、内側1px輪郭へ変更した。
+- 枠の描画改善: [EXEC-120](#exec-120-細い外枠の描画改善) で角丸方式と行高を調整した。
+- 表示調整: [EXEC-119](#exec-119-トグルの動き角丸履歴操作の調整) で滑らかな切替・角丸、履歴一覧の小型ボタン、危険外枠色を更新した。
+- 表示修正: [EXEC-118](#exec-118-主要ボタンとトグル丸枠の表示修正) でボタン配色・トグル・円枠を更新。
+
+- 現在の画面実装: [EXEC-117](#exec-117-react-stylexのオフライン画面)。2026-09-11の利用者指示により、文書のみの段階からReact + StyleXのオフライン実装へ進む。
+
+- 状態: 進行中（暫定production profileは限定liveでCloudflare 2 calls、Outscraper 1 task、24商品画像、CLIP 7 batches、ranking v5まで成功した。最終承認からlocal job・schema 5.0履歴とlocal ASGI API factoryまでをoffline接続済み。本番quotaは設けない。server起動構成、最終承認controller、UIと新service込み実provider E2Eは未完了。gpt-imageはテスト専用で、次期フロントエンドのオフラインモックはEXEC-117で実装し、実API接続を後続に残す）
 - 最新: [EXEC-080](#exec-080-4方向生成を製品フローから除去) で4方向生成を公開フローから外した。新providerとローカル3D生成を採用せず、E2E実検索の停止を維持する。
 - 過去のlive: [EXEC-078](#exec-078-自然言語から画像確認ランキング履歴までのbackend-live-e2e) は旧6-callフローの23商品ranking・履歴再読込を確認した。4方向品質不合格の観測を残し、新フローの検証に読み替えない。
 - 先行実装: EXEC-077の参考画像承認境界とEXEC-076のlocal job・履歴HTTP APIを維持し、EXEC-080で後続生成を偽画像だけに変更する。次期フロントエンドへの接続は自前開発の後続作業とする。
@@ -9660,3 +9674,189 @@ rollback: 明示CLIP設定へ戻すか今回のbefore snapshotから対象差分
 
 
 EXEC-116結果: candidate既定をsiglip2_appearanceへ接続し、独立768次元adapter/runtime、新ranking/profile、画像承認、JSON復元とSQLite履歴を確認した。旧CLIPは明示設定で保持し、失敗時の自動fallbackはない。全体offlineは3045 passed/20 skipped/30 deselected（122.06秒）、最終関連26件成功。資材読取によるatime更新を改変と誤判定しない回帰を追加し、内容hashと変更検知を保持した。保存済み21商品を本番adapterで再採点し、全点の試験値との差0.0、順位完全一致。実推論31.127秒、子process peak803200KiB、CPU2threads、encoder呼出し2回。全体test同時の計測で単独速度比較ではない。新外部API実行0回、委託UI/iGPU/未知カテゴリは未検証。詳細は[WORKLOG193](WORKLOG.md#193-candidateの既定画像評価へsiglip-2を接続2026-09-11)。
+
+## EXEC-117: React + StyleXのオフライン画面
+
+状態: 完了。作成・更新: 2026-09-11。担当: Codex。期限: 未定。
+
+目的: 任意の自然文入力から、固定デモ条件の確認、任意の参考画像・比較画像の確認、最終確認、5工程の商品調査、結果・履歴までをデスクトップで操作できるようにする。[TASK-008](#task-008-次期検索フロー-v2-の実装)、[視覚契約](FRONTEND.md#13-次期uiの視覚統一契約)、UI-017〜UI-020に対応する。
+
+対象は新設する `frontend/` のReact + TypeScript + StyleX、ローカルの合成画像・Noto Sans JP、純粋な状態遷移と固定データ、ブラウザ内のモック履歴、関連文書。Figmaのnode 59:22を構成参考として確認し、今回の白黒・青・灰色の指定を優先する。Viteと公式StyleX unpluginを使い、共通ボタンは幅176px・高さ48pxとする。公開npm依存と必要なブラウザの取得は利用者承認済みの環境準備。実バックエンド・Bonsai・外部API・認証情報・実商品検索、commit/pushは対象外。
+
+現状: フロントエンドのpackageとソースは存在しない。Python経路を変更せず独立して作成する。通常検索とモックで共有できる表示部品へ固定データを渡すが、本作業では実サービスadapterを設けない。
+
+- [x] 規則、Figmaの構成、正本仕様、Node.js 22の環境を確認。
+- [x] 意図した状態遷移のREDを確認し、同じテストをGREENにする。
+- [x] 共通部品と全画面、ローカル資材、履歴と回復操作を実装。
+- [x] TypeScript、単体テスト、production build、実Chromiumで両経路・操作・配色・外部通信遮断を検証。
+- [x] Python既存offline gate、文書リンク、差分を確認し、実装事実と残作業を同期。
+
+検証は `frontend/` で `npm test`、`npm run build`、`npm run test:e2e`、repository rootで標準offline gateと `git diff --check`。RED/GREENの理由・コマンド・test hashと最終件数は本節へ追記する。ブラウザには合成入力のみ使い、実利用者入力やcredentialをログへ残さない。
+
+rollback: この作業で追加した `frontend/` と関連文書の差分だけを取り消す。既存Python実装・cache・モデル資材を変更しない。失敗時は同じ画面で回復でき、実サービスへfallbackしない。
+
+
+EXEC-117検証記録（2026-09-11）:
+
+- `cd frontend && npm run check`: 成功。strict TypeScript（未使用宣言も検査）とPrettier。
+- `cd frontend && npm test`: 成功、40件（状態遷移20件、履歴20件）。
+- `cd frontend && npm run build`: 成功。StyleXのCSS事前生成とローカルフォント・画像を含むproduction build。
+- `cd frontend && npm run test:e2e`: 成功、18件、18.4秒。Chromiumで任意入力保持、画像なし、先行1枚で停止、了承後の比較画像、最終確認、5工程、結果・履歴、両承認15分期限、7種類の固定失敗/0件、戻る、再生成取消、中止取消、保存・削除再試行、未保存破棄取消、詳細のカード内展開を確認した。fetch/XHRと外部originを拒否し、ローカルの文書・JS/CSS・フォント・画像だけで動作した。
+- 176×48px・角丸100pxのボタンと3種のホバー、本文/見出し/フォント/背景、現在工程の青い丸と1.5秒周期、生成波の1.5秒周期・停止、フォーカス復帰をブラウザで照合した。末尾の点は共通部品の0.5秒intervalで更新する。開発server `127.0.0.1:5173` でもStyleXが反映され、ブラウザ例外0件。入力・参考画像・結果のスクリーンショットを目視確認した。
+- 最初のPython全体gateは3044 passed/20 skipped/30 deselectedに対しMarkdownリンクテスト1件失敗。新しいEXEC-117の見出しに含む `+` のanchor正規化を二重hyphenと誤記したためで、リンクを単一hyphenへ修正した。既存Pythonコードの変更はない。最終gate結果を後記する。
+
+TDDの追跡:
+
+| 対象 | REDとGREENのコマンド・結果 | 同一テストSHA-256 |
+|---|---|---|
+| 入力画面の参考画像ON/OFF | `cd frontend && npm test -- --run src/model.test.ts`: RED exit 1（true期待にfalse）、修正後19件GREEN exit 0 | `e2dc82bad8b912bb0fe6960d57e3529cf95a790738b3383d566a4a33adf124e0` |
+| 固定商品の不一致・履歴の不正配列拒否 | `cd frontend && npm test -- src/model.test.ts src/history.test.ts`: RED exit 1（5 failed/35 passed）、GREEN exit 0（40 passed） | model: `00a24e0b1febeb5be5932b0a3c06c8fc4fbc0a6f8b519dc7b019afe60a8719db` / history: `62005c077e35ddf8dce1d7881eae1b774b714e071a1df27fbcc34128f0de73f9` |
+| 比較生成中の参考画像保持・最終確認の画像・詳細履歴の削除後復帰 | `cd frontend && npm run test:e2e -- --grep 'reference and comparison|history deletion'`: RED exit 1（画像欠落・削除済み詳細の残存）、GREEN exit 0 | `7244fc9fd7b1160b2f7865c3b85fb674330fb32df720eab83381132f113a4ae2` |
+| 商品詳細を開いて他カードを保持 | `cd frontend && npm run test:e2e -- e2e/interaction.spec.ts`: RED exit 1（結果10件が0件へ消失）、GREEN exit 0（4 passed） | `888951edebbc95f1f691715384f9a7b46019b0dc930a2a75bc86c9e9b8db7833` |
+
+初回の状態遷移テストは未実装moduleの欠落でRED、履歴はstubで14件REDを確認してから実装した。初回整形でtest hashが変わったため、上表は書式を含め同一hashのままRED/GREENを確認できた回帰を記録する。後からテストを弱めて成功させていない。追加の回復試験 `recovery.spec.ts` は `6d0fe69987600ddc8ca032c3d61632b5a851a583db4dfed017deac05ffecaa3b`。
+
+境界: 通常検索で共有する表示部品をモックデータへ接続した。日本語/英語検索語編集、実サービスadapter、最終承認controller・server・API接続は後続作業。固定データの一致/確認できない/合わない表示は検索品質の証明ではない。フォントはNoto Sans JP Variable（同書体）をローカルに同梱。公開npm依存とChromiumの取得、Figma node 59:22と公式StyleX資料の読取だけを外部準備として実施し、実商品検索・モデル推論・課金APIは実行していない。commit/pushは未実施。
+
+最終gate: `uv lock --check --offline`、Ruff check、372ファイルのformat check、Python全体offline（3045 passed / 20 skipped / 30 deselected、74.35秒）が成功した。現行Markdownとfrontend/READMEのローカルリンク・見出し・コードフェンス検査、`git diff --check`も成功。実装とオフライン受入を完了し、実API接続を後続に残す。
+
+
+## EXEC-118: 主要ボタンとトグル・丸枠の表示修正
+
+状態: 完了。作成・更新: 2026-09-11。
+
+目的: 利用者報告の白背景・白文字を直し、オン/オフを指定色のトグルへ変更し、白い円形外枠を滑らかに描画する。対象は `frontend/index.html`、共通表示部品、2か所の画像利用設定、関連ブラウザ回帰と仕様文書。実サービスと既存Pythonの処理は対象外。
+
+原因: 開発配信ではStyleXの層より後にreset層が登録され、共通の `color: inherit` がprimaryの黒文字を上書きしていた。productionでは正常だったため、productionだけの既存検証では検出できなかった。headでresetを先に宣言するHTML差替え実験で、dev/prod両方の通常・無効・処理中・ホバーが正常になることを確認した。
+
+手順: 修正前のブラウザ回帰REDを記録し、同じテストでdev/prodのGREENを確認する。トグルはnative checkboxを `role="switch"` として扱い、56×32pxの背景、24pxの白いつまみ、ON青/OFF濃灰色、Spaceとラベルクリック・disabledを共通化する。全体の44px円と調査工程の36px円はSVGの2px白線とし、図形の拡大で線幅が変わらないようにする。型・整形、unit、build、ブラウザ全体、文書リンク・差分を確認する。純粋な表示変更のためPython機能テストの再実行は対象外とし、関連するMarkdown検査を行う。
+
+rollbackは今回の差分だけを戻し、EXEC-117から残る未コミット変更を保つ。実行結果とRED/GREENのtest hashは完了時に追記する。
+
+
+EXEC-118結果: `index.html` のhead先頭でreset層を先に宣言し、開発時に後着する共通CSSがStyleXを上書きしないようにした。入力・条件確認の画像利用設定を同じToggle部品へ置換した。白い円枠は共通SVGへ分離し、全体44px/工程36px、2pxの白線、形状精度と拡大時の線幅を固定した。データ・状態遷移・既存Pythonは変更していない。
+
+検証（すべて2026-09-11、frontendで実行）:
+
+- `npm run check`: TypeScriptとPrettier成功。
+- `npm test`: 40件成功。
+- `npm run build`: 成功。
+- `UI_TEST_MODE=development npm run test:e2e -- controls.spec.ts --workers=4`: 4件成功（5.4秒）。開発用5175番で通常・無効・ホバー・処理中文言の色、トグルのクリック/Space/disabled/状態保持、DPR 1/2の円を検証した。
+- `npm run test:e2e -- --workers=4`: production配信4173番で22件成功（42.3秒）。既存18件を含む。
+- 4枚のDPR別画像と利用者確認用5173番を目視・computed styleで確認した。白い円に欠け・楕円化はなく、白背景のボタンは黒文字、トグルONは青だった。5173番のブラウザ例外は0件。
+- 現行Markdownリンク・見出し検査と `git diff --check`: 成功。純粋な表示修正なのでPython機能テストは再実行していない。
+
+RED/GREEN記録: 変更前の `UI_TEST_MODE=development npm run test:e2e -- controls.spec.ts --workers=4` はexit 1、4件失敗（黒文字期待に白、switch未実装、SVG未実装2件）。同じ時点のproductionは3件失敗/色1件成功だった。test hashは `fd934dcbbd12b2bbbd4a6cea3662ed32f80ad7516e75cb339c8ada11bc2aaad0`。その後、SVGの白線検査を生のhex属性から共有tokenのcomputed strokeへ修正し、最終hashは `c703ddf8098ad2ef20def751a0c324e53f27dde3eb52e358264256ccb04ec107`。ボタン色のテスト内容は同じ。最終hashでswitch/SVGのRED（3件失敗）を確認し、実装後はdev4件・production22件がGREENとなった。最終REDのボタンだけは成功しており、初回の色REDと区別する。検査を弱めてボタンを成功させていない。
+
+仕様の配色・サイズ・役割と開発版の検証コマンドをFRONTEND、REQUIREMENTS、SEARCH-FLOW、DEVELOPMENTへ同期した。追加のツール取得・外部サービス実行・commit/pushは行っていない。
+
+## EXEC-119: トグルの動き・角丸・履歴操作の調整
+
+状態: 完了。作成・更新: 2026-09-11。
+
+目的: 利用者指定に合わせ、トグルの切替とウィンドウ・ボタンの角丸を滑らかにし、検索履歴一覧の「削除」「開く」を小さくする。すべての「削除」は危険ボタンとし、追加指定の外枠色 `#901010` を共通tokenへ適用する。背景・文字・ホバー色は従来仕様を維持する。
+
+対象: `frontend/` の共通表示部品・StyleX・履歴一覧・ブラウザ回帰と関連仕様。トグルの移動と背景色は240ms、`cubic-bezier(0.22, 1, 0.36, 1)`。動きを減らす設定では即時に切り替える。ウィンドウ・カードの15px、ボタンの100pxを維持し、`corner-shape: squircle` で滑らかな曲線にする。未対応ブラウザは通常の角丸へ戻る。真円の進行アイコンとトグルは維持する。履歴一覧だけ96×36pxを採用し、削除を左、開くを右の同じ行へ離して配置する。通常操作と確認ダイアログは176×48pxとする。
+
+手順: 変更前に専用ブラウザテストのREDを記録する。同じテストで連続切替・中間フレーム・動きの抑制・サイズ・削除配色・曲線のGREENを確認する。TypeScript/整形、unit、build、productionブラウザ全体と開発配信の表示回帰、スクリーンショット目視、Markdownリンク・差分を検証する。既存Pythonの処理に変更はないためPython機能テストの再実行は対象外。実サービス・credential・追加依存取得・commit/pushは対象外。
+
+rollbackはこの表示差分だけを戻し、先行する未コミット実装と文書差分を保持する。結果とtest hashは完了時に追記する。
+
+
+EXEC-119結果: 共通Toggleに移動・背景色の240ms補間と動きの抑制設定を追加した。ウィンドウ・カード・ボタンはStyleXのsquircleへ変更し、真円の部品は維持した。通常寸法に加えて96×36pxの小型寸法を共通tokenへ追加し、履歴一覧の2ボタンだけへ適用した。3か所の削除をDeleteButtonへまとめ、危険ボタンの外枠を共通の `#901010` にした。
+
+専用テスト `frontend/e2e/motion.spec.ts` のSHA-256は `547625880f5438d220bcdfb34d43206e27211ced97b4ba93efaa8503342acf8e`。変更前の `UI_TEST_MODE=development npm run test:e2e -- motion.spec.ts --workers=4` はexit 1、4 failed / 1 passed（8.0秒）。アニメーションなし、旧176px幅、旧危険色、通常の角丸で失敗した。動きを減らす設定の即時切替は既存実装でも成功した。同じテスト内容を実装後も維持した。既存flow.spec.tsの危険外枠色の期待値だけは追加指定の色へ更新した。
+
+初回GREEN確認は開発版8 passed / 1 failed。指定の表示は成功したが、削除確認取消後のフォーカス復帰が失敗した。既存DialogのcleanupがshowModalを閉じずにフォーカスを戻していたため、開発版StrictModeの再setupで起動元が正しく記録されなかった。cleanupで同じdialogをcloseしてから戻すように直し、同じテストで解消した。
+
+検証（2026-09-11、frontendで実行）:
+
+- `npm run check`: TypeScript・Prettier成功。
+- `npm test`: unit40件成功。
+- `npm run build`: 成功。
+- `UI_TEST_MODE=development npm run test:e2e -- motion.spec.ts controls.spec.ts --workers=4`: 9件成功（5.6秒）。中間フレーム、連続切替、動きの抑制、サイズと左右配置、3か所の削除通常/ホバー色、曲線と半径、取消後フォーカス、既存ボタン配色と白円枠を確認した。
+- `npm run test:e2e -- --workers=4`: production配信で27件成功（42.9秒）。画像あり/なし、履歴・失敗回復を含む。実バックエンド・外部APIへの接続は行っていない。
+- 開発画面5173番でも入力・履歴・削除確認をDPR 2で目視し、ブラウザ例外0件、取消後の起動元フォーカス復帰を確認した。squircleの表示はChromiumで確認し、未対応ブラウザでの実表示は未検証。
+- 現行Markdownのリンク・見出しと `git diff --check`: 成功。Python処理に変更はなく機能テストは再実行していない。
+
+仕様・開発規則・要件・残作業・変更履歴を同期した。追加の依存取得、実サービス実行、commit/pushは行っていない。
+
+## EXEC-120: 細い外枠の描画改善
+
+状態: 完了。作成・更新: 2026-09-11。
+
+目的: 実ブラウザでも外枠が掠れて見えるという報告に対し、原因候補を比較して1px・指定色を維持したまま描画を改善する。対象は共通部品・画面StyleX・既存表示テスト・現行仕様。実バックエンド、Python、外部サービス、ブラウザやOSの設定変更は対象外。
+
+原因候補: 1px曲線のアンチエイリアス、squircleの狭い角の形状、行高の端数に由来する小数座標、表示倍率/DPRの画素補間。ローカルChromiumではopacity 1・filterなし・transformなしを確認したが、補足14pxの行高24.5px/25.2pxによりヘッダーボタンy=45.25px、入力panel y=536.6875pxとなっていた。利用者の実ブラウザやGPU固有の原因は未確定。DPR 1/1.25/2の現行画面と通常の円弧を比較した。
+
+実装: squircle指定を除き、ウィンドウ等15px・ボタン100pxの標準border-radiusで円弧を描く。補足14pxの行高を24pxに揃え、端数の累積を減らす。線幅・色・ボタン寸法・SVGの進行丸とトグルは維持する。既存テストを円弧の契約へ更新し、代表枠の整数座標を検証してRED/GREENを記録する。開発/ビルド配信の表示回帰、DPR別の目視、型/整形/build、文書リンク・差分を検証する。変更のない状態モデルとPythonの機能テストは再実行しない。
+
+rollbackは今回の角丸・行高差分だけを戻し、既存の未コミット変更を保持する。検証結果と制約は完了時に追記する。
+
+
+EXEC-120結果: 共通表示と画面StyleXのsquircleを除去し、標準border-radiusの円弧へ変更した。補足・段階ラベル・説明・履歴の14px文字は行高24pxへ揃えた。幅1440pxの入力画面でheader高さ90px、headerボタンy=45px、panel y=534px、textarea y=643px、主要ボタンy=938pxとなり、代表枠の座標・寸法が整数になった。一般の任意viewport・DPRで物理画素が整数になるとは主張しない。
+
+描画比較: Chromium 153、viewport1440×1100、DPR 1/1.25/2、ローカルフォント読込後の入力画面で比較した。DPR1.25のheaderボタン上辺をCSS x=1200pxで横切る画素列（画像x=1500、y=53〜60）は、変更前のRGB各成分が `[0,0,0,145,127,0,0,0]`、角丸だけ円弧へ変えた場合と最終実装が `[0,0,0,192,128,0,0,0]` だった。白線画素のピークは145→192/255、強度の和を255で割った値は1.067→1.255となり、同じCSS1px線でもsquircle経路で薄くなる差を再現した。DPR1の上辺は変更前後とも白255の1画素、DPR2は白255の2画素だった。この測定は代表位置のラスタライズ差であり、全GPUや利用者実機の不具合原因を断定するものではない。比較画像は一時領域 `/tmp/amazon-border-diagnostic/` に保存した。
+
+RED/GREEN: 更新したmotion.spec.tsのSHA-256は `169f6840a5356f2d781af28f2168a8ba067d3c8768d539f460397c58fa13e3f2`。`UI_TEST_MODE=development npm run test:e2e -- motion.spec.ts -g 'integer frame'` は実装前exit1、1件失敗（squircleと小数座標を検出）。同じtest内容を維持し、実装後の `UI_TEST_MODE=development npm run test:e2e -- motion.spec.ts controls.spec.ts --workers=4` は9件成功（5.3秒）。`npm run test:e2e -- --workers=4` はビルド配信で27件成功（42.7秒）。主要ボタンと危険ボタンの配色・1px線・通常/小型寸法・トグルとSVG円・履歴操作・検索両経路と失敗回復を維持した。TypeScript/Prettier、build、Markdownリンク・見出し、git diff --checkも成功した。
+
+残る境界: 125%等ではCSS1pxが物理画素の整数幅と一致しないためアンチエイリアス自体は残る。利用者のブラウザ/GPU/DPIそのものは未確認。線を太くする、指定色を明るくする、影を加える、ブラウザ設定を変更する対応は行っていない。状態モデル・Pythonの機能テストは再実行せず、実サービス・追加依存取得・commit/pushも行っていない。
+
+## EXEC-121: 枠線の濃淡を画素で検証して改善
+
+状態: 完了。作成・更新: 2026-09-11。
+
+目的: EXEC-120後もChromeの100%表示でボタンとウィンドウの両方が掠れて見えるとの利用者報告に対応する。前回の角丸・行高だけでは解消できていない。CSS border、SVG stroke、SVG背景、outline、ぼかしなし内側輪郭を同一条件で比較し、表示スタイルだけでなく角の画素濃度を検査する。
+
+調査: ChromiumのDPR1・100%でもCSS borderとSVG strokeは角の濃度が落ちた。半径24pxのボタンの左上角を10〜80度で法線方向に積分した濃度換算線幅は、CSS borderの最小0.569px・平均0.855pxに対し、内側輪郭は最小0.909px・平均1.047pxだった。半径15pxの枠では最小0.623→0.803px、平均0.850→0.938pxとなった。この値はアンチエイリアスの画素濃度を積分した比較量であり、CSSの幾何学的線幅そのものではない。画素密度1/1.25/1.5/2で描画比較し、SVG/outlineへの変更だけでは解消しないことを確認した。
+
+実装方針: 指定の1px輪郭を `box-shadow: inset 0 0 0 1px <指定色>` で一度だけ描く。実borderを0にし、除去分を余白へ移して要素の外形と内容位置を維持する。白/危険色、通常/小型寸法、角丸15px/100px、フォーカス表示、トグル・進行円を維持する。外側の影、ぼかし、ハイライトは追加しない。対象は共通部品と画面StyleX、ブラウザ回帰、仕様文書。モデル・Python・外部サービスは対象外。
+
+手順: 実装前に角の画素濃度を測るブラウザ回帰を作り、REDとhashを記録する。実装後も同じテストでGREENを確認し、既存検査をCSS border値から実際に表示する1px輪郭の色・幅へ更新する。開発/ビルド配信の回帰、型/整形/build、DPR別の画像比較、文書リンク・差分を確認する。ユーザーの実機で解消したと自己判定せず、手元の比較と区別する。
+
+rollbackは今回の輪郭と余白の変更のみを戻す。先行する未コミット差分を保持し、追加依存取得・実サービス・commit/pushは行わない。
+
+
+EXEC-121結果: 共通Button、画像カード、生成中ポップ、調査行、dialogと、画面のheader・panel・入力欄・結果/履歴カード等を内側1px輪郭へ変更した。余白の補正により、1440px viewportのheaderはx96/y24/1248×90、headerボタンはx1143/y45/176×48、panelはx160/y534/1120×485、textareaはx193/y643/718×168で、変更前の外形・配置を維持した。トグルと進行表示のSVGは変更していない。
+
+RED/GREEN: 新規 `frontend/e2e/frame.spec.ts` のSHA-256は `b5e139b555ff2210a2a437f438c9ef6715e4b343d9a3d53b423d46056eeb3ece`。実装前の `UI_TEST_MODE=development npm run test:e2e -- frame.spec.ts` はexit1・1件失敗で、ボタン/ウィンドウの角の最小濃度と平均濃度の4検査が失敗した。実装後もtest内容/hashを保ち、角の最低濃度、平均濃度、過度に太くないこと、直線が白255の1画素で内側隣接画素は黒であることが成功した。既存の配色検査は描画方式に合わせてbox-shadowの1pxと色を検査するよう更新した。
+
+検証: `npm run check`（TypeScript/Prettier）、`npm run build` はexit0。`UI_TEST_MODE=development npm run test:e2e -- frame.spec.ts controls.spec.ts motion.spec.ts --workers=4` はexit0・10件成功（5.4秒）。`npm run test:e2e -- --workers=4` はビルド配信でexit0・28件成功（42.6秒）。画像あり/なしの検索操作、履歴・回復、通常/危険/主要ボタン、トグル・進行丸、枠の画素検査を含む。5173番の開発画面もDPR1/1.25/1.5/2で描画・撮影し、例外0件と外形・配置の一致を確認した。比較画像は一時領域 `/tmp/amazon-stroke-diagnostic/` に保存した。
+
+境界: ローカルChromium 153での濃淡改善であり、利用者のChrome/GPUそのものの解消確認ではない。非整数DPRでは画素補間が残る。DPR2の比較は従来も新方式も同程度であり、一律の改善とは扱わない。変更のない状態モデル・Pythonの機能テストは再実行していない。実サービス、追加依存取得、commit/pushは行っていない。現行仕様・開発規則・要件・変更履歴を同期した。`python tools/check_markdown_links.py` はexit0（16文書・1753リンク・1315アンカー・2243見出し）、`git diff --check` もexit0。
+
+
+## EXEC-122: 完了段階の配色とスクロール維持
+
+状態: 完了。作成・更新: 2026-09-11。
+
+目的: 全体段階バーの完了した丸の背景を `#3a83f7` にし、画面更新で先頭へ戻さない。対象はStepper、Appの画面更新時フォーカス、ブラウザ回帰、関連仕様。調査内の工程アイコン、状態モデル、外部サービスは変更しない。現在は完了した丸が黒背景で、state.screen/view変更時に見出しfocusとscrollTo(0,0)が走る。
+
+手順: 完了/現在/未到達と戻る操作の色、操作直後と非同期処理完了時のスクロール維持をブラウザテストでRED確認する。Stepperの塗り分けを変更し、見出しのfocusはpreventScrollを指定してscrollToを除く。画面が短くなった場合のブラウザによる末尾への位置制限は許容する。型/整形/build、開発・ビルド配信のブラウザ回帰、Markdownリンク・差分を検証する。データ/保存/認証境界への影響はない。rollbackは今回の配色とfocus差分だけを戻し、既存の未コミット変更を維持する。結果・RED/GREENのhashと未検証範囲を完了時に記録する。
+
+
+EXEC-122実装: Stepperの現在以前の丸を青背景にし、未到達・戻った後の後続段階は黒背景へ戻す。白いSVG外枠と現在位置アイコンを維持した。Appの画面更新effectは見出しへ `focus({ preventScroll: true })` を行い、`window.scrollTo(0, 0)` を削除した。
+
+RED/GREEN: `frontend/e2e/navigation.spec.ts` のSHA-256は `c5969c0a9715f381069992e6a5f05ef8ffc557e01413ebf07bbe9c6a5f1cedf8`。実装前の `UI_TEST_MODE=development npm run test:e2e -- navigation.spec.ts --workers=2` はexit1・2件失敗（完了した丸の青期待に黒、処理開始前のscrollY=480維持期待に0）。同一hashの実装後検証 `UI_TEST_MODE=development npm run test:e2e -- navigation.spec.ts controls.spec.ts motion.spec.ts frame.spec.ts --workers=4` はexit0・12件成功（6.1秒）。完了/現在/未到達の色と戻る操作、処理開始直後のスクロール、条件整理・画像生成完了後のscrollY=120維持、見出しフォーカスを確認した。`npm run check` と `npm run build` もexit0。
+
+
+最終検証: `npm run test:e2e -- --workers=4` はビルド配信でexit0・30件成功（43.1秒）。検索の画像あり/なし、履歴・失敗回復、フォーカスと表示回帰を含む。`python tools/check_markdown_links.py` と `git diff --check` はexit0。現行仕様と要件・開発コマンド・変更履歴を同期した。状態モデルとPythonは未変更のため機能単体テストを再実行していない。ローカルChromium/合成データでの検証であり、実バックエンド・外部サービス・利用者実機の確認は行っていない。追加依存取得・commit/pushは行っていない。
+
+
+## EXEC-123: 角の輪郭濃度を補正
+
+状態: 完了。作成・更新: 2026-09-11。
+
+目的: 添付された半径15pxの白枠の角に残る掠れを改善する。対象は共通の角丸枠と表示検証・仕様。1pxの線位置・指定色・寸法・内容・スクロール維持を保つ。前回の1回描画では曲線の部分画素が薄く、法線上の最低ピーク濃度が0.448だった。同位置へ同じ1px輪郭を2回合成すると0.680になり、直線部分と着色画素の範囲を広げず曲線の濃度が上がる。CSS border、SVG filter、重ね描画をローカルChromiumで比較した。
+
+手順: frame.spec.tsに曲線ピーク濃度と輪郭の外への着色検査を追加してREDを確認する。従来のRGB値積分の上限1.2は幾何学的な線幅ではなく、濃度補正も太い線と判定するため、直線1pxに加え円弧の幾何学的範囲外の画素検査へ置き換える。最小濃度と平均濃度の既存下限は維持する。StyleXの同一1px内側輪郭を重ね、透明な部分画素だけの濃度を補う。文字や面へのfilterは使わない。開発/ビルドの表示回帰、DPR1/1.25/1.5/2の画像、型/整形/build、文書リンクを確認する。モデル・Python・実サービス・認証・データ構造は対象外。rollbackは今回の重ね描画だけを戻す。
+
+
+EXEC-123実装: components.tsx/screens.tsxの同一1px内側輪郭を2回合成するよう変更した。白と危険色の両方に適用し、通常・ホバー時の指定色と従来の外形・余白・半径を保持する。陰影の移動やぼかし、文字や背景面へのfilterは追加していない。前回の「一度だけ描く」規則を今回の濃度補正へ更新した。
+
+RED/GREEN: frame.spec.tsのSHA-256は `84ce5a3ba2bf490931378278cdfa6122b17536d9d89b4662edc816e7d4137bc6`。実装前 `UI_TEST_MODE=development npm run test:e2e -- frame.spec.ts` はexit1・1件失敗（ボタン0.492/ウィンドウ0.448のピーク濃度が0.65を下回る）。同一hashの実装後 `UI_TEST_MODE=development npm run test:e2e -- frame.spec.ts controls.spec.ts motion.spec.ts navigation.spec.ts --workers=4` はexit0・12件成功（4.5秒）。従来の最小/平均濃度下限と直線1pxを維持し、新規のピーク濃度と輪郭の幾何学的範囲外の非着色も成功した。既存のボタン配色検査は同位置の2個のbox-shadowへ同期した。
+
+型/整形とbuildはexit0。5173番の現行画面をDPR1/1.25/1.5/2で撮影し、ブラウザ例外0件、textareaのx193/y643/718×168pxを維持した。各DPRで同一座標の角の変更前後も撮影した。一時比較画像は `/tmp/corner-before-*.png`、`/tmp/corner-after-*.png`、画面全体は `/tmp/corner-final-*.png`。ローカルChromiumの確認であり、利用者実機での解消確認ではない。
+
+
+最終結果: `npm run test:e2e -- --workers=4` はビルド配信でexit0・30件成功（40.8秒）。画像あり/なしの検索、履歴・失敗回復、角の画素検査、完了した段階の青背景、画面更新時のスクロール維持を含む。`python tools/check_markdown_links.py` と `git diff --check` はexit0。変更のない状態モデル・Pythonの単体テスト、実サービス、追加依存取得、commit/pushは実行していない。

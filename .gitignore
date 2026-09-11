@@ -25,6 +25,9 @@ htmlcov/
 # Build output
 build/
 dist/
+node_modules/
+frontend/test-results/
+frontend/playwright-report/
 *.egg-info/
 
 # Application-generated data

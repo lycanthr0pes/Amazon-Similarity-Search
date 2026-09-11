@@ -1,0 +1,69 @@
+@layer reset {
+  * {
+    box-sizing: border-box;
+  }
+  body {
+    margin: 0;
+    background: #000000;
+    color: #ffffff;
+    min-width: 1184px;
+    font-family: "Noto Sans JP Variable", "Noto Sans JP", sans-serif;
+    font-size: 16px;
+    line-height: 1.75;
+  }
+  h1,
+  h2,
+  h3,
+  h4,
+  p,
+  figure {
+    margin: 0;
+  }
+  h1 {
+    font-size: 40px;
+    line-height: 1.45;
+    letter-spacing: -0.035em;
+  }
+  h2 {
+    font-size: 32px;
+    line-height: 1.5;
+  }
+  h3 {
+    font-size: 24px;
+    line-height: 1.5;
+  }
+  h4 {
+    font-size: 20px;
+    line-height: 1.5;
+  }
+  button,
+  input,
+  textarea,
+  select {
+    font: inherit;
+    color: inherit;
+  }
+  button,
+  input,
+  textarea,
+  select,
+  a {
+    outline-offset: 5px;
+  }
+  :focus-visible {
+    outline: 2px solid #ffffff;
+  }
+  h1:focus {
+    outline: none;
+  }
+  button:disabled {
+    cursor: not-allowed;
+  }
+  a {
+    color: #ffffff;
+  }
+  img {
+    display: block;
+    max-width: 100%;
+  }
+}

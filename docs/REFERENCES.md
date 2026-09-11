@@ -409,3 +409,13 @@ uv run --frozen --offline --no-sync pytest -m 'not live_api'
 - [SigLIP 2論文](https://arxiv.org/abs/2502.14786): 意味理解・localization・dense featureの学習方針。一般ベンチマークを今回の商品画像精度やiGPU性能の代用にはしない。
 
 2026-09-11、EXEC-115準備で[Outscraper Amazon Products Scraper公式料金](https://outscraper.com/amazon-scraper/)を再確認した。無料枠を見込まない2 USD/1000商品で24件0.048 USDと見積もる。実課金額や強制金額capではなく、実行は別途当該範囲の明示承認後。
+
+## React + StyleXのオフライン画面（2026-09-11、EXEC-117）
+
+- [StyleX公式Vite統合](https://stylexjs.com/docs/learn/installation/vite/): `@stylexjs/unplugin` によるVite統合、生成CSSの集約、共通CSS入口を確認し、[vite.config.ts](../frontend/vite.config.ts) と [global.css](../frontend/src/global.css) に適用した。
+- [Figmaの先行参考画像確認](https://www.figma.com/design/PEVM5G4854vaDqdWgSA3ui?node-id=59-22): 先行画像を左、説明を右に置くデスクトップ構成の参考。色・文字・装飾・操作配置は [FRONTEND.mdの視覚統一契約](FRONTEND.md#13-次期uiの視覚統一契約) を優先する。
+- Noto Sans JPは `@fontsource-variable/noto-sans-jp` のローカル配布資材を使う。ライブラリとフォントの採用版は [package-lock.json](../frontend/package-lock.json)、固定合成SVGは [public/images/](../frontend/public/images/) を参照する。実商品画像や既存利用者の検索履歴からは作成していない。
+
+## 滑らかな角丸と操作部品（2026-09-11、EXEC-119）
+
+- [Chrome for Developers: The corner cases of implementing CSS corner-shape in Blink](https://developer.chrome.com/blog/implementing-corner-shape): 2026-09-11に確認。`corner-shape` が `border-radius` で定めた角の曲線を変更することと、`squircle` の境界線描画を説明したChromeの一次資料。ウィンドウ・カード・ボタンの滑らかな曲線の根拠とし、仕様値と未対応ブラウザの扱いは [FRONTEND.md](FRONTEND.md#133-幅高さ余白角丸) に記載する。

@@ -4919,3 +4919,283 @@ SigLIP点を見る前にassistantが胴体の膨らみで同順位群を固定�
 固定CLIPモデル3ファイルと、検索文・商品情報を含む原本CSVおよびcase2・case3のExcelはローカルに保持し、`.gitignore` へ登録した。画像評価用の固定画像・manifest・数値結果は回帰テストと併せて管理する。過去の各作業にある「未コミット」は当時の状態として保持する。
 
 Git管理ファイルだけの別チェックアウトでも、同じオフラインテストが3,045 passed・20 skipped・30 deselectedで成功した。lock整合、Ruff、format、Markdownリンク、全コミット差分の空白検査も成功し、ローカルに除外したモデル・CSV・Excelへ通常gateが依存しないことを確認した。
+
+
+## 196. React + StyleXの画面とオフラインモックを実装（2026-09-11）
+
+文書化に続く利用者の実装指示により、[EXEC-117](GOAL.md#exec-117-react-stylexのオフライン画面) で `frontend/` を新設した。React 19・TypeScript・Vite 8・公式StyleX unpluginとローカルNoto Sans JP、合成SVGを使う。Figma node 59:22の構成を参照し、配色・文字・角丸・176×48pxの共通ボタン・進行表示・生成/調査アニメーションはFRONTEND.mdの指定を適用した。
+
+任意入力の保持と固定条件の区別、条件編集と反映、参考画像1枚での停止、明示了承後の比較画像、最終確認、5工程の商品調査、固定商品12件と0件結果、1〜30件の表示切替を実装した。商品情報の一致・確認できない・合わないを合成データとして表示し、詳細はカード内で開く。戻る・二重操作防止・15分の承認期限・生成上限・中止確認・画像拡大・モーダルのフォーカス復帰を含む。
+
+履歴はタブ内sessionStorageへ最大30件・30日間保持し、保存失敗時は結果を残して保存だけ再試行する。削除失敗・取消では履歴を残し、保存できていない結果の破棄には確認を挟む。再読込は検索を再実行せず入力画面へ戻り、保存済み履歴を開ける。7種類の固定失敗/0件シナリオをqueryで指定できる。実バックエンド・Bonsai・外部API・credentialと自動fallbackを設けない。
+
+検証: strict TypeScript/Prettier、40単体テスト、production build、Chromium18件成功（18.4秒）。ブラウザ試験では外部originとfetch/XHRを遮断し、ローカル配信だけで両経路と回復操作を確認した。入力・参考画像・結果の画面を目視し、開発serverでもStyleX反映と例外0件を確認した。レビュー指摘から入力画像toggle、生成中参考画像の保持、最終確認の画像表示、削除後復帰、商品詳細の展開を修正し、同一テストのRED/GREENをEXEC-117へ記録した。
+
+初回Python全体gateは新規EXECリンクのanchor誤記で1件失敗（他3044件成功）し、修正した。最終gate結果は下記へ追記する。依存・Chromiumのインストールは利用者承認済みの準備として行い、Figmaと公式StyleX資料を読んだ。実provider E2E・検索品質・API接続は未検証。既存Python・モデル・cacheへ変更を加えず、commit/pushはしていない。
+
+最終gate: lock整合、Ruff check、372ファイルのformat、Python3045 passed / 20 skipped / 30 deselected（74.35秒）、現行文書とfrontend/READMEのリンク・見出し検査、`git diff --check`が成功。UI40件・ブラウザ18件と合わせ、オフラインモックの実装・受入を完了した。
+
+
+## 197. 主要ボタンの文字色・トグル・白い円枠を修正（2026-09-11）
+
+利用者報告に基づき[EXEC-118](GOAL.md#exec-118-主要ボタンとトグル丸枠の表示修正)を実施した。開発配信だけでreset層の `color: inherit` が主要ボタンの黒文字を上書きしていたため、HTMLで先にreset層を登録した。通常・無効・処理中は白背景/黒文字、ホバーは反転となる。画像利用のチェックボックスを共有トグルへ変更し、ON青・OFF濃灰色・白いつまみ、ラベルとSpaceでの操作、操作中の無効状態を維持した。全体と商品調査の白円枠を2pxのSVG輪郭で描画する。
+
+型・整形、unit40件、build、開発版4件（5.4秒）、productionブラウザ22件（42.3秒）、文書リンク・差分検査が成功。DPR 1/2の円とトグル画像を目視した。再現・修正前後のtest hashと結果はEXEC-118に記録し、以前のproductionのみの18件成功を開発版での成功と混同しない。状態遷移とPython処理の変更はなく、Python機能テストは再実行していない。実サービス、追加インストール、commit/pushは行っていない。
+
+
+## 198. トグルの動き・角丸・履歴ボタンと危険色を調整（2026-09-11）
+
+利用者指定に基づき[EXEC-119](GOAL.md#exec-119-トグルの動き角丸履歴操作の調整)を実施した。トグルの移動・背景色を240msで補間し、動きを減らす設定では即時に切り替える。角丸半径15px/100pxを維持してsquircleを適用し、進行表示とトグルの丸は維持した。履歴一覧の「削除」「開く」だけ96×36pxとし、同じ行の左と右に離して置いた。3か所の削除は共通部品で危険variantへ固定し、追加指定により危険外枠を `#901010` へ変更した。仕様・要件・開発規則・残作業・変更履歴も同期した。
+
+専用ブラウザテストは変更前4件失敗・1件成功を記録し、同一hashのままGREENを確認した。途中で開発版の削除取消後にフォーカスが戻らない既存不具合を検出した。Dialogのcleanupでcloseしてから起動元へ戻すようにし、StrictModeでのsetup/cleanupを対称にした。
+
+型・整形、unit40件、build、開発ブラウザ9件（5.6秒）、productionブラウザ27件（42.9秒）、Markdownリンク・見出し、差分検査が成功した。開発画面5173番で入力・履歴・削除確認を目視し、例外0件とフォーカス復帰も確認した。未対応ブラウザでのsquircle fallback実表示、実サービスは未検証。Pythonの機能テストは再実行せず、追加の依存取得・commit/pushも行っていない。詳細なRED/GREENとtest hashはEXEC-119に記録した。
+
+## 199. 危険ボタンの文字色とボタン枠の仕様を統一（2026-09-11）
+
+利用者指定により、共通Buttonの危険variantで文字色にも外枠と同じ `#901010` を適用した。通常・ホバー時とも色を維持する。全実行・遷移ボタンの外枠は既存の共通 `borderWidth: 1` を維持し、通常寸法と履歴一覧の小型寸法で1pxを確認した。FRONTEND・REQUIREMENTS・DEVELOPMENT・SEARCH-FLOWとCHANGELOGを同期した。進行アイコンの2px strokeとトグルは変更していない。
+
+既存の表示テストを新仕様へ更新し、実装前の `UI_TEST_MODE=development npm run test:e2e -- motion.spec.ts -g 'every delete action'` はexit 1、1件失敗（赤い文字の期待に白文字）となった。同一test内容の実装後検証は `UI_TEST_MODE=development npm run test:e2e -- motion.spec.ts controls.spec.ts --workers=4` で9件成功（4.8秒）、`npm run test:e2e -- motion.spec.ts controls.spec.ts --workers=4` でビルド版9件成功（3.5秒）。3か所の削除の通常/ホバー色、共通ボタンと小型ボタンの1px枠、主要ボタンの文字色、トグル・円枠・角丸の既存表示を確認した。motion.spec.tsのSHA-256は `73652ad6dcade9e2ad117cfd7e57b886e0e0d23455650689f6e4472ee3807f6a`、controls.spec.tsは `9d854caba2417c3bc17e5e5a4d86edd9606356abadc7e72d8a597b672eb3536a`。
+
+TypeScript・整形、build、現行Markdownリンク・見出し、`git diff --check` が成功した。変更は共通表示1定義と仕様・既存テストの更新であり、状態遷移の単体テストとPython機能テストは再実行していない。実サービス実行、追加依存取得、commit/pushは行っていない。
+
+
+## 200. 細い外枠の掠れを描画比較して改善（2026-09-11）
+
+利用者の実ブラウザでの報告を受け、[EXEC-120](GOAL.md#exec-120-細い外枠の描画改善)でsquircle、1px線の画素補間、行高から累積する小数座標を調査した。ぼかし・半透明指定はなく、補足の行高24.5px/25.2pxによりボタンやpanelが小数位置へ配置されていた。Chromium 153・DPR1.25で同一ボタン上辺の白線画素ピークがsquircleの145から標準円弧の192へ変わる差を再現した。CSS1pxと色を維持して標準border-radiusへ切り替え、補足14pxの行高を24pxへ揃えた。代表枠の座標・寸法は整数になった。
+
+既存テストを新しい円弧・整数座標契約へ更新し、変更前の1件REDと同一test内容のGREENを確認した。型/整形、build、開発ブラウザ9件（5.3秒）、ビルド版27件（42.7秒）、Markdownリンク・見出し、差分検査が成功。DPR1/1.25/2を比較し、1と2では上辺の白255・1/2物理画素を維持した。仕様・開発規則・要件・変更履歴も更新した。
+
+利用者実機のGPU/ブラウザ固有原因は未確定であり、非整数DPRのアンチエイリアスが消えるとは扱わない。状態モデルとPythonの機能テスト、実サービス、追加依存取得、commit/pushは実行していない。詳細測定とRED/GREENのtest hashはEXEC-120に記録した。
+
+
+## 201. Chromeの100%表示で残る枠の濃淡を改善（2026-09-11）
+
+利用者からボタンとウィンドウの両方で掠れが残ると回答があり、[EXEC-121](GOAL.md#exec-121-枠線の濃淡を画素で検証して改善)で描画方法を再比較した。DPR1でもCSS borderの角の濃度が薄くなる差を再現した。SVG strokeやoutlineだけでは解消せず、ぼかし0の内側1px輪郭が濃淡の差を減らしたため、共通部品と画面の枠へ適用した。borderを0にした分だけ余白を補正し、色・寸法・内容位置を保持した。
+
+角を法線方向に積分した濃度換算値は、ボタンの最小0.569→0.909px・平均0.855→1.047px、半径15pxの枠の最小0.623→0.803px・平均0.850→0.938pxだった。これは画素濃度の比較量であり幾何学的線幅ではない。新規frame.spec.tsは実装前に1件RED（4濃度検査の失敗）となり、同じhashのまま実装後GREENとなった。直線1px・角の過度な太さも検査する。
+
+型/整形・build、開発ブラウザ10件（5.4秒）、ビルド版28件（42.6秒）が成功した。DPR1/1.25/1.5/2の開発画面を撮影し、例外0件、代表枠の配置・寸法維持も確認した。利用者の実機での解消は未確認。状態モデルとPythonの機能テスト、実サービス、追加依存取得、commit/pushは実行していない。Markdownリンク・見出しと `git diff --check` も成功した。詳細な比較とRED/GREENのhashはEXEC-121に記録した。
+
+
+## 202. 完了した段階の青背景と更新時のスクロール維持（2026-09-11）
+
+[EXEC-122](GOAL.md#exec-122-完了段階の配色とスクロール維持)で全体段階バーの完了した丸を `#3a83f7` にした。未到達の丸は黒、白外枠と現在位置アイコンを維持する。Appの画面更新時の `scrollTo(0, 0)` を削除し、見出しへのfocusにpreventScrollを指定した。画面更新で先頭へ戻さず、表示可能な範囲でスクロール位置を保つ。
+
+新規ブラウザ回帰は変更前2件RED（丸が黒、scrollY480が0へ移動）、同一hashで変更後GREENとなった。開発版12件（6.1秒）、ビルド版30件（43.1秒）、型/整形/build、Markdownリンク・見出し、差分検査が成功した。処理開始・条件整理完了・画像生成完了の位置維持と見出しフォーカス、戻った際の段階色も確認した。仕様と要件・開発コマンド・変更履歴を同期した。状態モデル/Python単体テストは未変更のため再実行せず、実サービス・追加依存取得・commit/pushは行っていない。
+
+
+## 203. 添付画像で指摘された角の薄れを補正（2026-09-11）
+
+[EXEC-123](GOAL.md#exec-123-角の輪郭濃度を補正)で、従来の1回の内側輪郭描画に残った部分画素の濃度低下を比較した。同位置の1px輪郭を2回重ね、着色範囲を広げずに角の濃度を補正した。半径15pxの角の法線上の最低ピーク濃度は0.448から0.680になった。寸法・色・内容・スクロールの処理は維持し、同じ指定色で描く基本・危険ボタンと共通の枠へ適用した。
+
+画素テストは従来のRGB積分上限を幾何学的なはみ出し検査へ置き換え、薄れを検出するピーク濃度を追加した。実装前1件RED（ボタンとウィンドウの2検査が失敗）、同じhashでGREENを確認した。開発版12件（4.5秒）、ビルド版30件（40.8秒）、型/整形/build、Markdownリンク・見出し、差分検査が成功。DPR1/1.25/1.5/2の現行画面と同位置の角の変更前後を撮影し、寸法維持と例外0件を確認した。利用者実機での解消は未確認。状態モデル/Python単体テストは未変更のため再実行せず、実サービス・追加依存取得・commit/pushは行っていない。
+
+
+## 204. 現在以外の段階マーカーを縮小（2026-09-11）
+
+利用者指定により、Stepperの現在の丸は44×44pxを維持し、完了・未到達の丸を28×28pxへ縮小した。44×44pxの配置枠は保ち、SVGを中央へ配置して接続バー・文字・各丸の中心位置を維持する。完了した丸の青背景、現在位置の人アイコン、商品調査の36pxアイコンは維持した。FRONTEND・SEARCH-FLOW・REQUIREMENTS・DEVELOPMENT・CHANGELOGを同期した。
+
+navigation.spec.tsへ初期状態・進行後・戻った後の寸法と中心位置の検査を追加した。SHA-256は `ab2371c974582b8c720bf831d91270790430aff16a91a2b9166d4f83eac83a17`。実装前 `UI_TEST_MODE=development npm run test:e2e -- navigation.spec.ts -g 'completed stage'` はexit1・1件失敗（28px期待に44px）。同一hashの実装後 `UI_TEST_MODE=development npm run test:e2e -- navigation.spec.ts controls.spec.ts --workers=4` はexit0・6件成功（3.8秒）、`npm run test:e2e -- navigation.spec.ts controls.spec.ts --workers=4` はビルド配信でexit0・6件成功（3.3秒）。DPR1/2のSVG外枠、配色・トグル・スクロール維持も確認した。
+
+型/整形・build、Markdownリンク・見出し、git diff --checkが成功し、5173番の段階バーを目視した。小規模な表示変更であり、未変更の状態モデル・Pythonの機能テストや全操作回帰は再実行していない。実サービス・追加依存取得・commit/pushは行っていない。
+
+
+## 205. トグルのOFF背景を変更（2026-09-11）
+
+利用者指定により共通ToggleのOFF背景を `#424242` に変更し、仕様・要件・開発規則・変更履歴を同期した。ON背景、白いつまみ、240msの切替を維持した。
+
+controls.spec.tsの既存OFF配色期待を更新し、実装前 `UI_TEST_MODE=development npm run test:e2e -- controls.spec.ts -g 'reference-image switch'` はexit1・1件失敗（66期待に33のRGB成分）。同一test hash `4f3abfa632bf22f2229ab62e68afbb6551943410d6f13f962f87b1f44f4bbf51` で実装後GREENを確認した。motion.spec.tsのOFF色も同期し、`UI_TEST_MODE=development npm run test:e2e -- controls.spec.ts motion.spec.ts -g 'switch|toggle|reduced motion' --workers=3` はexit0・3件成功（3.5秒）、同じ引数のビルド版はexit0・3件成功（3.8秒）。型/整形・build、Markdownリンク・見出し、差分検査も成功した。未変更のモデル/Python・全操作回帰・実サービスは再実行せず、追加依存取得・commit/pushは行っていない。
+
+
+## 206. 条件整理の説明と入力欄の表示を整理（2026-09-11）
+
+利用者指定により、条件整理の見出し下の「希望を確かめながら、ひとつずつ。」と、入力欄右の「希望から、比較へ。」および3項目の操作説明を削除した。共通のモック警告と固定デモ条件の注意書き・入力欄との関連付けを保った。入力例を `#a0a0a0` とし、入力文字は白を維持した。説明ラベルと入力欄の間に16pxを追加した。FRONTEND・SEARCH-FLOW・CHANGELOGを同期した。
+
+既存controls.spec.tsへ不要文言の非表示、注意書き保持、placeholder色、入力文字色、16px間隔を追加した。SHA-256は `66853d111c4975a4c9af82645bb74ac21cbc12bf4026ac9fc97b6719a22343fd`。実装前 `UI_TEST_MODE=development npm run test:e2e -- controls.spec.ts -g 'primary button'` はexit1・1件失敗（不要な3文言が存在、placeholder白、余白0px）。同一hashの実装後 `UI_TEST_MODE=development npm run test:e2e -- controls.spec.ts navigation.spec.ts motion.spec.ts frame.spec.ts --workers=4` はexit0・12件成功（6.0秒）、同じ引数のビルド版はexit0・12件成功（5.1秒）。型/整形・build、Markdownリンク・見出し、差分検査が成功し、5173番の入力画面も目視した。状態モデル/Python・全操作回帰・実サービスは未変更のため再実行せず、追加依存取得・commit/pushは行っていない。
+
+
+## 207. 条件整理の入力欄の背景を変更（2026-09-11）
+
+利用者指定により、自然文入力欄の背景を `#212121` に変更し、FRONTEND・SEARCH-FLOW・CHANGELOGを同期した。既存controls.spec.tsに背景色検査を追加し、実装前 `UI_TEST_MODE=development npm run test:e2e -- controls.spec.ts -g 'primary button'` はexit1・1件失敗（期待RGB33に対し0）。SHA-256 `339d6d282021ff1c145427ba1507256b9741b5d7181c47700110b8bf5ebb9214` を保った実装後検証は、同じ開発版コマンドでexit0・1件成功（2.2秒）、ビルド版の同じ引数でexit0・1件成功（1.9秒）。型/整形・build、Markdownリンク・見出し、差分検査も成功。背景以外の入力文字・入力例・枠・余白・操作を維持した。未変更のモデル/Python・全操作回帰・実サービスは再実行せず、追加依存取得・commit/pushは行っていない。
+
+
+## 208. 入力欄下の補助文を削除（2026-09-11）
+
+利用者指定により「日本語で、そのまま。」だけを削除し、文字数の右寄せ表示と2,000文字超過時のエラーを保持した。FRONTEND・SEARCH-FLOW・CHANGELOGを同期した。文言削除のため新しいテストは追加せず、型/整形・buildと既存 `npm run test:e2e -- flow.spec.ts -g 'input limits'` を実行し、ビルド配信でexit0・1件成功（1.8秒）。Markdownリンク・見出しと差分検査も成功した。実サービス・追加依存取得・commit/pushは行っていない。
+
+
+## 209. 入力欄選択時の追加枠を非表示（2026-09-11）
+
+利用者指定により条件整理のtextareaだけoutlineStyleをnoneにした。通常の1px外枠と背景 `#212121` は保持し、仕様のフォーカス枠規則へこの例外を反映した。ローカル開発画面でクリック、TabからShift+Tabでの復帰の双方についてfocus=true、outline=none、背景・通常枠の保持を確認した。小規模な表示変更として新しいテストは追加せず、型/整形・buildと既存 `npm run test:e2e -- controls.spec.ts -g 'primary button'` を実行し、ビルド配信でexit0・1件成功（1.9秒）。Markdownリンク・見出しと差分検査も成功。実サービス・追加依存取得・commit/pushは行っていない。
+
+
+## 210. Figmaで指定されたWiStars素材を追加（2026-09-11）
+
+利用者の指示で `frontend/public/icons/wi-stars.svg` を追加した。正本FigmaのIntent Reviewページに `96:467` / `react-icons/WiStars`（12×12px）が見つかったが、子レイヤー0・非表示fillのみでSVG exportは失敗した。直接書き出した成果物とは扱わず、名前に対応するWeather Iconsの `wi-stars.svg` を公開上流commit `bb80982bf1f43f2d57f9dd753e7413bf88beb9ed` から取得した。元のpathとviewBoxを維持し、白 `#ffffff` と明示寸法30×30を設定した。Figma側とReact表示コードは変更していない。
+
+出典・変更点・Figmaとの対応を同じフォルダのREADMEへ記録し、SIL OFL 1.1の本文を同梱した。SVGのSHA-256は `2a7b20cf75a66725258c5510bcd01dfebb3ae84dae81a0ca4cb2d01e42f573d8`。XML構造とpath一致、ローカル配信HTTP200、同一originでのimg decode 30×30、黒背景での白い4つの星の描画を確認した。最初の確認スクリプトはSVG文書へのsetContentとabout:blankからの読み込みで失敗し、同一originのHTML文書でやり直して成功した。素材追加のみのため機能テスト・buildは再実行せず、Markdownリンク・差分を検証した。公開素材の取得以外の実検索サービス・追加依存取得・commit/pushは行っていない。
+
+
+## 211. 参考画像の生成中ポップと操作配置を調整（2026-09-11）
+
+利用者指定により共通の生成中ポップを126×46pxから96×32pxへ縮小した。文字14px・行高20px、上下余白6px・左右12pxで中央に置き、既存の背景・枠・点のアニメーションを維持する。参考画像と比較画像の確認画面では、下部左に「条件へ戻る」「作り直す」を32px間隔で横並びにした。右側の画像なし続行・主要操作は維持する。共通actionGroupの既存12px間隔は変更せず、この2操作だけ既存の32px横並びスタイルを使う。既存の星アイコン指定も保持し、同ファイルのimgとlabelWithIconの整形のみ行った。
+
+既存flow.spec.tsにポップ寸法と両確認画面のボタン同一行・間隔検査を追加した。SHA-256は `e53c89366b7793a04624fb99ab5c666555945ed7e9a7da802925bb74b5a626d0`。実装前 `npm run test:e2e -- flow.spec.ts -g 'reference and comparison'` はexit1・1件失敗（ポップ126×46、ボタンが別行）。途中の12px間隔で2検査が失敗したため、対象の2操作に32pxを適用した。同一hashの最終検証はexit0・1件成功（17.1秒）。先行画像と比較画像の了承、作り直し確認の取消、検索・履歴までの既存操作も確認した。
+
+開発画面でも96×32pxとボタン同一行・32px間隔を確認し、生成中と確認画面を撮影・目視した。型/整形・build、Markdownリンク・見出し、差分検査が成功。FRONTEND・SEARCH-FLOW・CHANGELOGを同期した。未変更のモデル/Python・全操作回帰・実サービスは再実行せず、追加依存取得・commit/pushは行っていない。
+
+
+## 212. 共通見出し下の補助文を削除（2026-09-11）
+
+利用者指定によりApp.tsxの共通見出し下から「希望を確かめながら、ひとつずつ。」を削除し、条件整理以外の全画面でも表示しないようにした。FRONTEND・SEARCH-FLOW・CHANGELOGを同期した。文言削除のみのため新規テストは追加せず、表示ソースの残存検査と `npm --prefix frontend run check` が成功した。ブラウザ操作・build・実サービスは再実行していない。未コミットの変更である。
+
+
+## 213. 画像クリックで拡大表示（2026-09-11）
+
+利用者指定により共通ImageCardの独立した「拡大」ボタンを除去し、画像自体をライトボックスを開くボタンにした。ホバーとキーボードフォーカス時に中央の虫眼鏡アイコンを表示し、カーソルをzoom-inにする。白いSVGアイコンを黒い44px円形背景に置き、画像全体への追加ハイライトは付けない。Enter・Spaceでの開閉操作と既存の閉じる際のフォーカス復帰を保持した。FRONTEND・SEARCH-FLOW・CHANGELOGを同期した。
+
+既存flow.spec.tsへ画像が拡大操作の対象であること、通常時/ホバー/キーボードフォーカス時のアイコン、画像クリックとEnterによる拡大を追加した。SHA-256は `48990a1df498fcb52d6ae7d7ef053ac66a84d475403aef3a35b0ff844db34d54`。実装前 `npm --prefix frontend run test:e2e -- flow.spec.ts -g 'reference and comparison'` はexit1・1件失敗（拡大ボタン内に画像がない）。同一テストの実装後はexit0・1件成功（17.3秒）。画像了承・比較画像・検索・履歴までの既存フローも通過した。
+
+初回buildはdefineMarkerがnamed exportを要求して失敗したため、公開APIを増やさずdefaultMarkerへ変更した。整形修正後の型/整形とbuildは成功した。ローカル開発画面でもホバーアイコンを撮影・目視し、クリック・Escape・Spaceを確認した。Markdownリンク・差分検査を実施した。実バックエンド・外部API・追加依存取得・commit/pushは行っていない。全テストと実サービスの成功とは扱わない。
+
+
+## 214. 条件確認の入力欄の背景を統一（2026-09-11）
+
+利用者指定によりscreens.tsxの共通input背景をtheme.note（#212121）に変更した。条件確認の商品の種類・必ずほしい・できればほしい・避けたい・予算へ適用し、既存の自然文入力欄と統一した。FRONTEND・SEARCH-FLOW・CHANGELOGを同期した。小規模な色変更のため新規テストは追加せず、型/整形検査とローカル開発画面で自然文入力欄および5項目の背景色、白文字、予算編集・反映から最終確認への値の保持を検証して成功した。Markdownリンク・差分検査を実施した。build・全テスト・実サービスは再実行していない。未コミットの変更である。
+
+
+## 215. 条件確認の入力文背景を変更（2026-09-11）
+
+利用者指定により条件確認画面の「入力した文章」の本文へ背景#212121を適用した。共通の折り返し規則は変更せず、当該本文だけ専用StyleXスタイルを追加した。FRONTEND・SEARCH-FLOW・CHANGELOGを同期した。小規模な色変更のため新規テストは追加せず、型/整形検査とローカル開発画面で背景色・白文字・pre-wrapの保持を確認し成功した。Markdownリンク・差分検査を実施した。build・全テスト・実サービスは再実行していない。未コミットの変更である。
+
+
+## 216. 入力文の背景を角丸に変更（2026-09-11）
+
+利用者指定により条件確認の入力文背景へ共通の15px角丸を適用し、文字が角へ接しないよう16pxの内側余白を付けた。背景#212121と本文の折り返しを保持し、FRONTEND・SEARCH-FLOW・CHANGELOGを同期した。小規模な表示変更のため新規テストは追加せず、型/整形検査とローカル開発画面の角丸15px・余白16px・背景色を確認して成功した。Markdownリンク・差分検査を実施した。build・全テスト・実サービスは再実行していない。未コミットの変更である。
+
+
+## 217. 条件入力欄の追加フォーカス枠を非表示（2026-09-11）
+
+利用者指定により共通inputスタイルのoutlineStyleをnoneにし、条件確認の5項目にも自然文入力欄と同じ選択時の表示を適用した。通常の1px外枠と背景#212121を保持し、FRONTENDのフォーカス規則・SEARCH-FLOW・CHANGELOGを同期した。小規模な表示変更のため新規テストは追加せず、型/整形検査とローカル開発画面の5項目について、クリックおよびTab/Shift+Tab時のフォーカス・outline非表示・背景・通常枠の保持を確認して成功した。Markdownリンク・差分検査を実施した。build・全テスト・実サービスは再実行していない。未コミットの変更である。
+
+
+## 218. 最終確認の条件背景を変更（2026-09-11）
+
+利用者指定により最終確認の5条件のラベルと値へ背景#212121・角丸15px・内側余白16pxを適用した。ConditionSummaryに表示variantを追加し、最終確認でだけ既存の背景スタイルを使用する。FRONTEND・SEARCH-FLOW・CHANGELOGを同期した。小規模な表示変更のため新規テストは追加せず、型/整形検査とローカル開発画面で5条件の背景・角丸・余白・ラベルと値の表示、検索ボタンが有効であることを確認して成功した。Markdownリンク・差分検査を実施した。build・全テスト・実サービスは再実行していない。未コミットの変更である。
+
+
+## 219. 最終確認の入力文背景を統一（2026-09-11）
+
+利用者指定により最終確認の「入力した文章」を開いた本文にも、背景#212121・角丸15px・内側余白16pxを適用した。既存cards variantでのみ有効にし、折り返しを保持した。FRONTEND・SEARCH-FLOW・CHANGELOGを同期した。小規模な表示変更のため新規テストは追加せず、型/整形検査とローカル開発画面で本文の開閉操作のうち展開、背景・角丸・余白・pre-wrapを確認して成功した。Markdownリンク・差分検査を実施した。build・全テスト・実サービスは再実行していない。未コミットの変更である。
+
+
+## 220. 最終確認の条件名を背景外へ移動（2026-09-11）
+
+利用者指定により最終確認の背景スタイルを条件の親領域から値（dd）へ移し、項目名（dt）を背景外の上に配置した。値の背景#212121・角丸15px・内側余白16pxを保持し、FRONTEND・SEARCH-FLOW・CHANGELOGを同期した。小規模な表示変更のため新規テストは追加せず、型/整形検査とローカル開発画面で全5項目の親領域・項目名の透明背景、値の背景・角丸・余白、項目名が値の領域の上にあることを確認して成功した。Markdownリンク・差分検査を実施した。build・全テスト・実サービスは再実行していない。未コミットの変更である。
+
+
+## 221. 履歴画面の見出し位置を統一（2026-09-11）
+
+履歴専用の空要素と余白が検索画面のStepper領域より110px短く、1440px幅で見出しがy198、モック通知がy288となっていた（検索画面はy308/y398）。App.tsxで共通Stepper領域を維持し、履歴一覧・詳細ではopacity:0・pointer-events:none・aria-hiddenで表示と操作・読み上げから除外した。固定の余白によるhistoryIntroを除去し、本文幅1120pxと見出し・通知の開始位置を揃えた。途中のvisibility:hiddenではローカルChromiumの撮影時に他領域も描画されない現象があり、opacityへ変更後はヘッダー・内容の描画を撮影・目視で確認した。
+
+navigation.spec.tsに空履歴・保存済み履歴・詳細・一覧復帰の見出し/通知の位置と幅、段階バーが読み上げ対象にないこと、検索復帰時の段階バー表示を追加した。SHA-256は `c42a97f8835b71b01f8545e4b4eb261e133219a50c5d3e4e464fe88e548f5dec`。実装前 `UI_TEST_MODE=development npm --prefix frontend run test:e2e -- navigation.spec.ts -g 'history list and details'` はexit1・1件失敗（y座標が110px不一致）。同一テストを保った最終実装で、開発版navigation.spec.ts全3件はexit0（3.1秒）。ビルド版 `npm --prefix frontend run test:e2e -- navigation.spec.ts flow.spec.ts interaction.spec.ts -g 'history list and details|history deletion is separated|opening history during research'` はexit0・3件成功（8.9秒）。履歴削除の確認、検索中の履歴表示・検索継続・1回だけの保存も通過した。
+
+型/整形・build、Markdownリンク・差分検査が成功した。FRONTEND・SEARCH-FLOW・CHANGELOGを同期した。未変更の全モデル/Python試験・全ブラウザ試験・実サービスは再実行せず、追加依存取得・commit/pushは行っていない。
+
+
+## 222. 商品調査のチェックマークを拡大（2026-09-11）
+
+利用者指定により商品調査の完了チェックを28px・太さ700・行高28pxへ変更した。36pxの白い丸と黒いチェックの配色、現在工程・待機工程の表示は保持した。FRONTEND・SEARCH-FLOW・CHANGELOGを同期した。小規模な表示変更のため新規テストは追加せず、型/整形検査とローカル開発画面の全5工程完了時の文字サイズ・太さ・黒色を確認し、完了行を撮影・目視した。Markdownリンク・差分検査を実施した。build・全テスト・実サービスは再実行していない。未コミットの変更である。
+
+
+## 223. 完了チェックの大きさを微調整（2026-09-11）
+
+利用者指定により商品調査の完了チェックを28pxから24pxへ縮小し、行高も24pxに揃えた。太さ700と36pxの白い丸を保持し、FRONTEND・SEARCH-FLOW・CHANGELOGを同期した。小規模な文字サイズ変更のため新規テストは追加せず、型/整形検査が成功した。Markdownリンク・差分検査を実施した。ブラウザ操作・build・全テスト・実サービスは再実行していない。未コミットの変更である。
+
+
+## 224. 結果カードの画像拡大と表示整理（2026-09-11）
+
+利用者指定により参考画像の画像クリック部を共通ImageZoomへ抽出し、結果と履歴内の商品画像でもホバー時の虫眼鏡・クリック/キーボードによる拡大を使えるようにした。拡大は共通Dialogで対象画像だけを表示し、閉じた後は起動元へフォーカスを戻す。商品詳細の説明はカード内に保持する。
+
+条件状態を「一致」「未確認」「不一致」に揃え、固定データの未確認文言2種類と不一致の表現2種類を表示層で条件名へ変換した。保存済み履歴とmodelのデータは変更しない。詳細/閉じるを中央配置し、順位は「n位」、青背景#3a83f7・白い1px外枠・角丸15pxにした。カード余白25pxと同じ値の負の左余白で順位ラベルを左外枠に重ねる。FRONTEND・SEARCH-FLOW・CHANGELOGを同期した。
+
+実装前 `UI_TEST_MODE=development npm --prefix frontend run test:e2e -- results.spec.ts` はexit1・1件失敗（旧状態文言と説明文が残存、新順位ラベルなし）。RED時のtest SHA-256は `2b1beb2cbeda7a7cc57123192fe09ca2e4c7c5763ff8f95183d6e2dc52ebcb90`。後続の型検査でsrc属性のstring/null型エラーが見つかり、期待画像srcの非null assertionだけを追加した。検査内容は変更していない。最終hashは `85de6c9fa11a275f6e532a2c6f1dd3848a2f54798caad3c1e15fd81ff673ea33`。開発版同コマンドはexit0・1件成功（3.1秒）。順位1/12のラベル色・角丸・左枠一致、詳細ボタン中心、全条件文言、画像クリック・Enter・閉じる/Esc・フォーカス復帰、詳細展開と履歴内拡大を確認した。結果カードを撮影・目視した。
+
+既存interaction.spec.tsの状態名を新仕様へ同期した。型/整形・build成功。ビルド版 `npm --prefix frontend run test:e2e -- results.spec.ts flow.spec.ts interaction.spec.ts -g 'result cards show|result details expand|reference and comparison|history deletion is separated'` はexit0・4件成功（17.6秒）。参考/比較画像の既存確認フローと履歴削除も通過した。Markdownリンク・差分検査が成功した。未変更のモデル/Python・全ブラウザ試験・実サービスは再実行せず、追加依存取得・commit/pushは行っていない。
+
+
+## 225. 順位ラベルを#形式に変更（2026-09-11）
+
+利用者指定により結果・履歴内の順位表記を「n位」から「#n」へ変更した。既存results.spec.tsの期待ラベルとFRONTEND・SEARCH-FLOW・CHANGELOGを同期した。新規テストは追加せず、型/整形検査と `UI_TEST_MODE=development npm --prefix frontend run test:e2e -- results.spec.ts` が成功（exit0・1件、3.0秒）。順位ラベル配置・画像拡大・条件表示・詳細と履歴操作を確認した。Markdownリンク・差分検査を実施した。build・全テスト・実サービスは再実行していない。未コミットの変更である。
+
+
+## 226. 順位ラベルの上端をカード枠に統一（2026-09-11）
+
+利用者指定により順位ラベルを相対位置で上へ25px移し、左端に加えて上端もカードの外枠へ揃えた。画像や本文の配置は保持し、FRONTEND・SEARCH-FLOW・CHANGELOGを同期した。既存results.spec.tsに上端一致の検査を加え、型/整形検査と `UI_TEST_MODE=development npm --prefix frontend run test:e2e -- results.spec.ts` が成功（exit0・1件、3.0秒）。順位1/12の左右・上端配置と既存操作を確認し、結果カードを撮影・目視した。Markdownリンク・差分検査を実施した。build・全テスト・実サービスは再実行していない。未コミットの変更である。
+
+
+## 227. 順位枠の角と一致情報の開閉を変更（2026-09-11）
+
+利用者指定により順位ラベルの左上・右上・左下を直角、右下のみ15px角丸にした。既存の左/上端のカード枠への位置合わせを保持した。一致・未確認・不一致は既定で閉じたdetails/summary「一致情報」にまとめ、クリック・Enter・Spaceでカードごとに独立して開閉する。詳細ボタンによる説明と画像拡大は保持した。FRONTEND・SEARCH-FLOW・CHANGELOGを同期した。
+
+results.spec.tsへ開閉前後の内容表示、クリック/Enter/Space操作、別カードの閉状態保持と4隅の半径を追加した。同一SHA-256 `5c9dca72da372956c5fa38db57517bac5d577b613c604f3f0ca9d7e684c4512d` で、実装前 `UI_TEST_MODE=development npm --prefix frontend run test:e2e -- results.spec.ts` はexit1・1件失敗（一致情報の開閉要素なし）、実装後はexit0・1件成功（2.9秒）。型/整形・buildが成功し、ビルド版 `npm --prefix frontend run test:e2e -- results.spec.ts interaction.spec.ts -g 'result cards show|result details expand'` はexit0・2件成功（9.2秒）。結果カードを撮影・目視し、Markdownリンク・差分検査が成功した。未変更の全モデル/Python試験・全ブラウザ試験・実サービスは再実行せず、追加依存取得・commit/pushは行っていない。
+
+
+## 228. 順位ラベルの左上を角丸へ変更（2026-09-11）
+
+利用者指定により順位ラベルの左上を15px角丸に戻した。右下15px・右上/左下直角を保持し、既存results.spec.tsの期待値とFRONTEND・SEARCH-FLOW・CHANGELOGを同期した。型/整形検査と `UI_TEST_MODE=development npm --prefix frontend run test:e2e -- results.spec.ts` が成功（exit0・1件、3.1秒）。4隅・位置合わせ・一致情報開閉・画像拡大を確認した。Markdownリンク・差分検査を実施した。build・全テスト・実サービスは再実行していない。未コミットの変更である。
+
+
+## 229. 結果カードの開閉見出しを変更（2026-09-11）
+
+利用者指定により結果カードの「一致情報」を「検索条件」に変更し、既存results.spec.tsとFRONTEND・SEARCH-FLOW・CHANGELOGを同期した。型/整形検査と `UI_TEST_MODE=development npm --prefix frontend run test:e2e -- results.spec.ts` が成功（exit0・1件、3.2秒）。開閉と既存結果操作を確認した。Markdownリンク・差分検査を実施した。build・全テスト・実サービスは再実行していない。未コミットの変更である。
+
+
+## 230. 新規検索の共通配置と商品名リンク（2026-09-11）
+
+利用者指定により「新しく検索」を全画面のヘッダー右側操作の左へ移し、結果下部の重複ボタンを除去した。履歴表示時は既存の「検索へ戻る」の左に同じ位置で表示する。未保存結果の破棄確認は保持した。処理中のRESETを許可し、旧revisionの完了を無視して空の入力画面へ戻る。結果カードの詳細ボタン・展開説明・専用状態/スタイルを除去し、検索条件の折りたたみと画像拡大を保持した。
+
+商品名表示をProductNameへ分離した。ResultsのproductUrl callbackで実商品のHTTPS URLを明示的に渡す場合だけ、noopener/noreferrer付き新規タブリンクを作る。現行モックAppではcallbackを渡さず、商品名は通常テキストとなる。保存形式や実providerは変更せず、実URLの供給は未接続。空・不正・非HTTPS・ユーザー情報付きURLはリンクにしない。リンクHTMLの生成は通信しないSSRテストで検証し、外部ページのクリックや実商品サービス成功は主張しない。FRONTEND・SEARCH-FLOW・REQUIREMENTS・CHANGELOGを同期し、現行Streamlitの旧リンク仕様は保持した。
+
+実装前 `UI_TEST_MODE=development npm --prefix frontend run test:e2e -- navigation.spec.ts results.spec.ts -g 'new search stays|result cards show'` はexit1・2件失敗（ヘッダーに新規検索なし、詳細ボタン残存）。部分実装で処理中RESET拒否を検出した。追加の `npm --prefix frontend test -- -t 'new search resets'` はexit1・4件失敗後、RESET許可によって同じテストが成功した。新規検索・旧処理の非適用を検証するmodel.test.ts SHA-256は `1143ffe3f7d0d50b8f51a9d98f1ce6432320e5a05559543c299b88b5cad764c4`。navigation.spec.tsは `68dff631ec07c5f03bf5f37ad127dcccf59d553128e9288f84a3f785e27b3181`、results.spec.tsは `9e81dc7f1182b1e0f9f24c78458f4a42e5453575edd5fb69fb3f570d7bb2b342` を保ってGREENにした。
+
+最終の型/整形・build・Vitest全51件が成功。開発版navigation/resultsは5件成功（4.1秒）、ビルド版 `npm --prefix frontend run test:e2e -- navigation.spec.ts results.spec.ts interaction.spec.ts` はexit0・9件成功（10.3秒）。常時配置・処理中リセット・履歴復帰・未保存結果の破棄キャンセル/保存再試行・モック非リンク・詳細ボタン不在・検索条件開閉・画像拡大を確認し、結果カードを撮影・目視した。Markdownリンク・差分検査が成功。未変更のPython・全ブラウザ試験・実サービスは再実行せず、追加依存取得・commit/pushは行っていない。
+
+
+## 231. 結果画面に先頭へ戻るボタンを追加（2026-09-11）
+
+利用者指定により結果と履歴内の結果の右下へ「トップに戻る」を固定表示した。右24px・下32px、56pxの円形、白い1px枠・白背景・黒い上矢印とし、影はオフセット0・ぼかし20px・広がり4px・白35%で全方向へ広げた。クリック/キーボードの明示操作で先頭へ滑らかに移動し、prefers-reduced-motionでは即時移動する。検索状態・件数は変更しない。FRONTEND・SEARCH-FLOW・CHANGELOGを同期した。
+
+back-to-top.spec.tsの同一SHA-256 `1e8a85892ff82cebe0318462858b6792665d375f5a305f6b6442e0ad45e4651a` で、実装前 `UI_TEST_MODE=development npm --prefix frontend run test:e2e -- back-to-top.spec.ts` はexit1・2件失敗（ボタンなし）。実装後はexit0・2件成功（4.4秒）。通常/動きを減らす設定の双方で、検索前の非表示、結果での配色・影・固定位置、クリック/Enter後のscrollY=0と件数保持を確認した。型/整形・build成功。ビルド版 `npm --prefix frontend run test:e2e -- back-to-top.spec.ts results.spec.ts navigation.spec.ts` はexit0・7件成功（4.7秒）。開発画面のボタンと影を撮影・目視し、Markdownリンク・差分検査が成功した。未変更のモデル/Python・全ブラウザ試験・実サービスは再実行せず、追加依存取得・commit/pushは行っていない。
+
+
+## 232. 表示件数の追加フォーカス枠を非表示（2026-09-11）
+
+利用者指定により表示件数selectのoutlineStyleをnoneにし、通常の1px外枠を保持した。FRONTEND・SEARCH-FLOW・CHANGELOGを同期した。小規模な表示変更のため新規テストは追加せず、型/整形検査とローカル開発画面のクリック/キーボード選択で追加枠がないこと、3件への表示件数変更が成功することを確認した。Markdownリンク・差分検査を実施した。build・全テスト・実サービスは再実行していない。未コミットの変更である。
+
+
+## 233. 履歴詳細の条件と操作配置を統一（2026-09-11）
+
+利用者指定により履歴詳細のConditionSummaryを等幅2列・列間32pxにし、最終確認と同じcards表示を適用した。項目名は背景外、値と入力した文章は背景#212121・角丸15px・内側余白16pxとする。「削除」「履歴へ戻る」を条件枠の最下部へ移し、左に危険操作、右に戻る操作を置いた。結果カードとの間隔も共通stackで確保した。FRONTEND・SEARCH-FLOW・CHANGELOGを同期した。
+
+navigation.spec.tsへ2列の位置、全5条件の背景・角丸・項目名の背景、同じ枠の最終行に両操作があること、削除確認キャンセルとフォーカス復帰を追加した。実装前 `UI_TEST_MODE=development npm --prefix frontend run test:e2e -- navigation.spec.ts -g 'history list and details'` はexit1・1件失敗（先頭2項目が異なる行）。期待条件を維持して整形後、同じコマンドはexit0・1件成功（2.9秒）。最終SHA-256は `e96d8dc7233ebe002c29a733a76886f040c4497074608ecc644ff80c1a30c0bc`。型/整形・buildが成功し、ビルド版 `npm --prefix frontend run test:e2e -- navigation.spec.ts results.spec.ts flow.spec.ts -g 'history list and details|result cards show|history deletion is separated'` はexit0・3件成功（9.5秒）。履歴の条件枠を撮影・目視し、Markdownリンク・差分検査が成功した。未変更のモデル/Python・全ブラウザ試験・実サービスは再実行せず、追加依存取得・commit/pushは行っていない。
+
+
+## 234. 履歴の段階バー用空白を削除（2026-09-11）
+
+利用者指定により、履歴一覧・詳細では段階バー自体とその予約領域を描画せず、ヘッダー下の通常余白36pxから見出しを表示するようにした。一覧と詳細の本文幅・見出し位置は揃えた。履歴一覧の商品名は白文字を保ち、背景#212121・角丸15px・内側余白16pxを付けた。FRONTEND・SEARCH-FLOW・CHANGELOGを同期した。
+
+navigation.spec.tsを更新し、実装前の対象テストは段階バー用空白が残るため1件失敗した。実装後の開発版navigationは4件成功（3.0秒）。履歴の見出しが検索画面より上に移ること、非表示の段階バーも存在しないこと、一覧・詳細・戻る操作での位置統一、商品名の背景・文字色を確認した。最終SHA-256は `ef0591309887b8667401a72ee93140a538ef75aa918eae0c38e5be721b0cad6c`。型/整形・buildが成功し、ビルド版 `npm --prefix frontend run test:e2e -- navigation.spec.ts flow.spec.ts -g 'history list and details|history deletion is separated'` の最終結果ファイルもpassed・失敗なしを確認した。未変更のモデル/Python・全ブラウザ試験・実サービスは再実行せず、追加依存取得・commit/pushは行っていない。
+
+
+## 235. 履歴一覧カードを小型化（2026-09-11）
+
+利用者指定により、履歴一覧を3列・カード幅352pxから4列・268pxへ変更した。カード間隔は32pxから16px、内側余白は25pxから17px、項目間隔は16pxから8pxに縮小した。履歴専用StyleX規則を重ね、商品結果カードと履歴詳細の寸法、商品名背景、文字サイズ、96×36pxの操作ボタンを保持した。FRONTEND・SEARCH-FLOW・CHANGELOGを同期した。
+
+小規模な表示変更のため新規テストは追加していない。型/整形・buildが成功し、開発版の既存navigation履歴テストは1件成功（1.9秒）。外部/API要求を遮断したローカルChromiumで合成検索を4件保存し、カード幅268px・高さ304px、同じ行の4列配置、横方向のはみ出しなしを確認した。撮影画像で文字とボタンの配置を目視した。Markdownリンク・差分検査を実施した。全テスト・実サービスは再実行せず、追加依存取得・commit/pushは行っていない。
+
+
+## 236. フロントエンドのコミット前検証（2026-09-11）
+
+利用者のcommit・push指示に基づき、React + StyleXのオフライン画面、ローカル資材、テストと関連文書をまとめて確認した。node_modules・dist・ブラウザ試験結果はgitignoreにより対象外。型/整形チェック、build、Vitest全51件、ビルド版Playwright全35件（20.7秒）、Markdownリンク検査、git diff --checkが成功した。ブラウザ検証は固定合成データを用いるローカル画面のみで、実バックエンド・実サービスは実行していない。fetch後のmainはorigin/mainと一致しており、公開対象にバックエンド実装の変更はない。
