@@ -702,9 +702,31 @@ def test_external_deployment_entry_rehashes_runtime_after_smoke(
         _run_deployment_check(_launcher_args(), evidence)
 
 
-def _private_directory(path: Path, *, uid: int) -> None:
+@pytest.fixture
+def file_owners(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> dict[Path, int]:
+    """Simulate ownership only; keep real modes, ACLs, links, contents and timestamps."""
+    owners: dict[Path, int] = {}
+    original_lstat = os.lstat
+
+    def lstat(path, *args, **kwargs):
+        metadata = original_lstat(path, *args, **kwargs)
+        target = Path(path)
+        if target != tmp_path and tmp_path not in target.parents:
+            return metadata
+        fields = {name: getattr(metadata, name) for name in dir(metadata) if name.startswith("st_")}
+        # Unassigned fixture ancestors represent protected root-owned directories.
+        fields["st_uid"] = owners.get(target, 0)
+        return SimpleNamespace(**fields)
+
+    simulated_os = SimpleNamespace(**vars(os))
+    simulated_os.lstat = lstat
+    monkeypatch.setattr(deployment_check, "os", simulated_os)
+    return owners
+
+
+def _private_directory(file_owners, path: Path, *, uid: int) -> None:
     path.mkdir(parents=True, exist_ok=True)
-    os.chown(path, uid, -1)
+    file_owners[path] = uid
     path.chmod(0o700)
 
 
@@ -719,6 +741,7 @@ def _anchor_tmp_trust(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
 
 
 def test_graph_root_evidence_tolerates_only_runtime_managed_leaf_ctime_drift(
+    file_owners,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -726,7 +749,7 @@ def test_graph_root_evidence_tolerates_only_runtime_managed_leaf_ctime_drift(
     launcher_uid = 1000
     candidate_uid = 2000
     graph_root = tmp_path / "home" / ".local" / "share" / "containers" / "storage"
-    _private_directory(graph_root, uid=launcher_uid)
+    _private_directory(file_owners, graph_root, uid=launcher_uid)
 
     before_metadata = graph_root.stat()
     before = deployment_check._measure_private_directory(
@@ -783,6 +806,7 @@ def test_graph_root_evidence_tolerates_only_runtime_managed_leaf_ctime_drift(
 
 @pytest.mark.parametrize("drift", ["mode", "owner", "inode", "path"])
 def test_graph_root_evidence_rejects_or_binds_real_identity_drift(
+    file_owners,
     drift: str,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -792,8 +816,8 @@ def test_graph_root_evidence_rejects_or_binds_real_identity_drift(
     candidate_uid = 2000
     graph_root = tmp_path / "home" / ".local" / "share" / "containers" / "storage"
     alternate_root = graph_root.parent / "alternate-storage"
-    _private_directory(graph_root, uid=launcher_uid)
-    _private_directory(alternate_root, uid=launcher_uid)
+    _private_directory(file_owners, graph_root, uid=launcher_uid)
+    _private_directory(file_owners, alternate_root, uid=launcher_uid)
     before_inode = graph_root.stat().st_ino
     before = deployment_check._measure_private_directory(
         graph_root,
@@ -806,7 +830,7 @@ def test_graph_root_evidence_rejects_or_binds_real_identity_drift(
     if drift == "mode":
         graph_root.chmod(0o500)
     elif drift == "owner":
-        os.chown(graph_root, candidate_uid, -1)
+        file_owners[graph_root] = candidate_uid
         with pytest.raises(DeploymentCheckError, match="untrusted owner"):
             deployment_check._measure_private_directory(
                 graph_root,
@@ -817,7 +841,7 @@ def test_graph_root_evidence_rejects_or_binds_real_identity_drift(
         return
     elif drift == "inode":
         graph_root.rename(graph_root.parent / "held-original-storage")
-        _private_directory(graph_root, uid=launcher_uid)
+        _private_directory(file_owners, graph_root, uid=launcher_uid)
         assert graph_root.stat().st_ino != before_inode
     else:
         measured_path = alternate_root
@@ -834,6 +858,7 @@ def test_graph_root_evidence_rejects_or_binds_real_identity_drift(
 
 
 def test_launcher_environment_comes_only_from_passwd_and_canonical_xdg_paths(
+    file_owners,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -849,7 +874,7 @@ def test_launcher_environment_comes_only_from_passwd_and_canonical_xdg_paths(
         home / ".local" / "share",
         runtime_base / str(launcher_uid),
     ):
-        _private_directory(path, uid=launcher_uid)
+        _private_directory(file_owners, path, uid=launcher_uid)
     host = deployment_check.validate_launcher_environment(
         launcher_uid=launcher_uid,
         candidate_uid=candidate_uid,
@@ -876,6 +901,7 @@ def test_launcher_environment_comes_only_from_passwd_and_canonical_xdg_paths(
 
 
 def test_launcher_environment_rejects_candidate_accessible_or_symlinked_path(
+    file_owners,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -890,7 +916,7 @@ def test_launcher_environment_rejects_candidate_accessible_or_symlinked_path(
         home / ".local" / "share",
         runtime_base / str(launcher_uid),
     ):
-        _private_directory(path, uid=launcher_uid)
+        _private_directory(file_owners, path, uid=launcher_uid)
     home.chmod(0o755)
     with pytest.raises(DeploymentCheckError, match="candidate-inaccessible"):
         deployment_check.validate_launcher_environment(
@@ -913,6 +939,7 @@ def test_launcher_environment_rejects_candidate_accessible_or_symlinked_path(
 
 
 def test_launcher_environment_rejects_posix_acl(
+    file_owners,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -927,7 +954,7 @@ def test_launcher_environment_rejects_posix_acl(
         home / ".local" / "share",
         runtime_base / str(launcher_uid),
     ):
-        _private_directory(path, uid=launcher_uid)
+        _private_directory(file_owners, path, uid=launcher_uid)
     original = deployment_check.os.listxattr
 
     def listxattr(path: object, **kwargs: object) -> list[str]:
@@ -946,6 +973,7 @@ def test_launcher_environment_rejects_posix_acl(
 
 
 def test_launcher_environment_rejects_writable_or_candidate_owned_ancestor(
+    file_owners,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -962,7 +990,7 @@ def test_launcher_environment_rejects_writable_or_candidate_owned_ancestor(
         home / ".local" / "share",
         runtime_base / str(launcher_uid),
     ):
-        _private_directory(path, uid=launcher_uid)
+        _private_directory(file_owners, path, uid=launcher_uid)
     boundary.chmod(0o777)
     with pytest.raises(DeploymentCheckError, match="writable ancestor"):
         deployment_check.validate_launcher_environment(
@@ -973,7 +1001,7 @@ def test_launcher_environment_rejects_writable_or_candidate_owned_ancestor(
         )
 
     boundary.chmod(0o700)
-    os.chown(boundary, candidate_uid, -1)
+    file_owners[boundary] = candidate_uid
     with pytest.raises(DeploymentCheckError, match="untrusted owner"):
         deployment_check.validate_launcher_environment(
             launcher_uid=launcher_uid,
@@ -991,6 +1019,7 @@ def test_backend_evidence_binds_podman_storage_runtime_and_seccomp_paths() -> No
 
 
 def test_backend_probe_and_info_use_only_validated_home_xdg_environment(
+    file_owners,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1011,13 +1040,13 @@ def test_backend_probe_and_info_use_only_validated_home_xdg_environment(
     run_root = Path(environment["XDG_RUNTIME_DIR"]) / "containers"
     config = Path(environment["XDG_CONFIG_HOME"]) / "containers" / "storage.conf"
     for path in (graph_root, run_root):
-        _private_directory(path, uid=launcher_uid)
+        _private_directory(file_owners, path, uid=launcher_uid)
     config.parent.mkdir(parents=True, exist_ok=True)
     config.write_text(
         '[storage]\n[storage.options.overlay]\nmount_program = "/usr/bin/fuse-overlayfs"\n',
         encoding="utf-8",
     )
-    os.chown(config, launcher_uid, -1)
+    file_owners[config] = launcher_uid
     config.chmod(0o600)
     seccomp_root = tmp_path / "protected" / "containers"
     seccomp_root.mkdir(parents=True)
@@ -1195,7 +1224,7 @@ def test_backend_probe_and_info_use_only_validated_home_xdg_environment(
         "# imagestore = '/comment-is-allowed'\n[storage]\nimagestore = '/candidate-store'\n",
         encoding="utf-8",
     )
-    os.chown(config, launcher_uid, -1)
+    file_owners[config] = launcher_uid
     config.chmod(0o600)
     raw_info = json.dumps(info).encode("utf-8")
     with pytest.raises(DeploymentCheckError, match="external image store"):
@@ -1214,7 +1243,7 @@ def test_backend_probe_and_info_use_only_validated_home_xdg_environment(
         '[storage]\n[storage.options.overlay]\nmount_program = "/usr/bin/other-overlay"\n',
         encoding="utf-8",
     )
-    os.chown(config, launcher_uid, -1)
+    file_owners[config] = launcher_uid
     config.chmod(0o600)
     info["store"]["graphOptions"] = _PODMAN_6_GRAPH_OPTIONS
     raw_info = json.dumps(info).encode("utf-8")
@@ -1231,7 +1260,7 @@ def test_backend_probe_and_info_use_only_validated_home_xdg_environment(
         )
 
     config.write_text("[storage]\n", encoding="utf-8")
-    os.chown(config, launcher_uid, -1)
+    file_owners[config] = launcher_uid
     config.chmod(0o600)
     info["store"]["graphOptions"] = ["overlay.imagestore=/candidate-store"]
     raw_info = json.dumps(info).encode("utf-8")

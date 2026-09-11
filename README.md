@@ -45,7 +45,7 @@ npm run dev
 
 ## 必要なもの
 
-- Python 3.10以上
+- Python 3.11以上
 - [uv](https://docs.astral.sh/uv/)
 - OpenAI互換APIとして起動した Bonsai 8B
 - Outscraper APIキー
@@ -247,7 +247,7 @@ query planの固定判定がすべて成功した。これは単一の固定合�
 
 amazon-explorer を実検索まで動かすには、次が必要である。
 
-- Python 3.10以上
+- Python 3.11以上
 - `uv`
 - OpenAI互換APIとして起動したBonsai 8B
 - 有効なOutscraper APIキー

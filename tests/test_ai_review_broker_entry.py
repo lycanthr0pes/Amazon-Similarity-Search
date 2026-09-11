@@ -191,12 +191,13 @@ def test_broker_tls_targets_openai_while_tcp_connects_only_to_the_internal_gatew
         def close(self) -> None:
             observed["raw_closed"] = True
 
-    class FakeContext:
-        def wrap_socket(self, raw_socket, *, server_hostname):
-            observed.update(raw_socket=raw_socket, server_hostname=server_hostname)
-            return object()
+    def fake_wrap_socket(raw_socket, *, server_hostname):
+        observed.update(raw_socket=raw_socket, server_hostname=server_hostname)
+        return object()
 
     raw_socket = FakeSocket()
+    context = broker_entry.ssl.create_default_context()
+    monkeypatch.setattr(context, "wrap_socket", fake_wrap_socket)
 
     def fake_create_connection(address, *, timeout):
         observed.update(address=address, timeout=timeout)
@@ -207,7 +208,7 @@ def test_broker_tls_targets_openai_while_tcp_connects_only_to_the_internal_gatew
         broker_entry.API_HOST,
         broker_entry.API_PORT,
         timeout=broker_entry.REQUEST_TIMEOUT_SECONDS,
-        context=FakeContext(),
+        context=context,
     )
 
     connection.connect()
@@ -217,6 +218,9 @@ def test_broker_tls_targets_openai_while_tcp_connects_only_to_the_internal_gatew
         broker_entry.EGRESS_GATEWAY_PORT,
     )
     assert observed["server_hostname"] == broker_entry.API_HOST
+    assert observed["raw_socket"] is raw_socket
+    assert context.verify_mode == broker_entry.ssl.CERT_REQUIRED
+    assert context.check_hostname is True
     assert observed.get("raw_closed") is None
 
 

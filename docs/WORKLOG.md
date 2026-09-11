@@ -5199,3 +5199,61 @@ navigation.spec.tsを更新し、実装前の対象テストは段階バー用�
 ## 236. フロントエンドのコミット前検証（2026-09-11）
 
 利用者のcommit・push指示に基づき、React + StyleXのオフライン画面、ローカル資材、テストと関連文書をまとめて確認した。node_modules・dist・ブラウザ試験結果はgitignoreにより対象外。型/整形チェック、build、Vitest全51件、ビルド版Playwright全35件（20.7秒）、Markdownリンク検査、git diff --checkが成功した。ブラウザ検証は固定合成データを用いるローカル画面のみで、実バックエンド・実サービスは実行していない。fetch後のmainはorigin/mainと一致しており、公開対象にバックエンド実装の変更はない。
+
+
+## 237. 最低対応Pythonを3.11へ更新（2026-09-11）
+
+利用者のバージョン更新指示により、pyproject.tomlのrequires-pythonを>=3.11、Ruffをpy311、GitHub Actionsのマトリクスを3.11 / 3.13へ変更した。README・REQUIREMENTS・DEVELOPMENTの現行要件とCHANGELOGを同期し、過去の3.10検証記録は保存した。アプリケーションとテストのロジック、安全性チェックは変更していない。
+
+uv lock --offlineはキャッシュ不足で失敗したため、環境準備として公開パッケージ情報を取得してuv lockを再生成した。107 packagesとなり、3.10専用の依存分岐・wheelを除去した。追加されたパッケージ名/バージョンの組は0で、残るバージョンは維持した。uv python install 3.11で3.11.15を準備し、UV_PROJECT_ENVIRONMENT=/tmp/amazon-explorer-python311-20260911-01 uv sync --locked --python 3.11で独立した検証環境を作った。既存.venvの3.13.13と別モデル環境は変更していない。
+
+両環境で `uv run --frozen --offline --no-sync pytest -m 'not live_api' tests/test_lexical_assets.py tests/test_lexical_context_dictionary.py tests/test_lexical_dictionary.py tests/test_product_phrase.py tests/test_candidate_search_retry.py -q` を実行し、各31件成功（3.11は3.54秒、3.13は2.90秒）。3.11側は上記UV_PROJECT_ENVIRONMENTを指定した。file_digestとZ末尾日時解析を含む既存テストを使い、今回の設定変更に新規テストは追加していない。
+
+3.11の全体 `uv run --frozen --offline --no-sync pytest -m 'not live_api'` はexit1・3044 passed / 1 failed / 20 skipped / 30 deselected（88.33秒）。残る失敗はtest_broker_tls_targets_openai_while_tcp_connects_only_to_the_internal_gatewayで、FakeContext.verify_mode不足によるAttributeError。既存CIで確認済みの別不具合として保持した。ローカルroot環境の結果であり、GitHub runnerでの権限・ACL・環境変数の失敗解消を証明しない。
+
+uv lock --check --offline、Ruff check、Ruff format --check（372 files）、Python対応範囲/lock/Ruff/CI設定の照合、Markdownリンク、git diff --checkが成功した。Python 3.10が対応範囲外、3.11と3.13が範囲内であることも確認した。変更後のGitHub CI・実サービス・UI検証は未実行。commit/pushは行っていない。
+
+
+## 238. SSLモックとoffline環境の期待値を修正（2026-09-11）
+
+利用者指定によりCIで失敗していたSSLモックと環境変数の期待値を現行仕様へ合わせた。test_ai_review_broker_entryの独自FakeContextを標準SSLContextへ替え、wrap_socketとTCP接続だけをモックした。固定gatewayへのTCP接続、API_HOSTへのSNI、同じsocketの引渡し、CERT_REQUIREDとcheck_hostnameを確認する。TLSや外部通信そのものは実行しない。
+
+test_ai_review_trust_boundaryはgate/red/greenそれぞれでruntime directoryの有無を模擬する。offline_runner内だけのos参照へ固定UIDを与え、対象/run/user/65532だけのPath判定を模擬し、実ホストのUID・directory・権限は変更しない。固定PATH/LC_ALLと条件付きXDG_RUNTIME_DIRを値まで厳密照合し、親環境の任意XDG_RUNTIME_DIR/DOCKER_HOSTが混入しないことを検証する。src・tools・specsの実装や安全性チェックは変更していない。DEVELOPMENT・REQUIREMENTS・CHANGELOGを同期した。
+
+RED: 3.11環境で `uv run --frozen --offline --no-sync pytest -m 'not live_api' tests/test_ai_review_broker_entry.py -k test_broker_tls_targets_openai --tb=short -q` はexit1・1 failed（FakeContext.verify_mode不足）。変更前ファイルSHA-256は `0a9a84d8461ed5d9a55746100ab5a6a325e09995cb95654c3b7ff88621fe0865`。環境の有無を模擬して旧期待値を残した段階の `uv run --frozen --offline --no-sync pytest -q tests/test_ai_review_trust_boundary.py -k test_execute_offline_returns_bounded_digest_bound_evidence -m 'not live_api' --tb=short` はexit1・3 failed / 3 passed。XDG_RUNTIME_DIRが加わる3 phaseだけが失敗し、GitHubと同じ期待値不整合を再現した。今回はテスト自体の修正であり、同一テストhashのproduction RED/GREENやattestationとは扱わない。
+
+GREEN: `uv run --frozen --offline --no-sync pytest -q tests/test_ai_review_broker_entry.py tests/test_ai_review_trust_boundary.py -m 'not live_api'` は3.11.15で99 passed（2.54秒）、既存3.13.13で99 passed（2.67秒）。最終SHA-256はbroker_entryのtestが `177142580e30417c9ece0d15b2257da8bc8cb8340fc23f68a8456b400a340b82`、trust_boundaryのtestが `0fd211299d8a2798b15c82eb3c583f204db6a383e4ebaecbb9fcf95d02b3f280`。
+
+3.11側は事前準備済みのUV_PROJECT_ENVIRONMENT=/tmp/amazon-explorer-python311-20260911-01を指定し、全体 `uv run --frozen --offline --no-sync pytest -m 'not live_api'` がexit0・3048 passed / 20 skipped / 30 deselected（82.17秒）。lock・Ruff check/format（372 files）・Markdownリンク・git diff --checkも成功。ローカルroot環境でのoffline検証であり、GitHub runner固有の所有者変更・実行権限・ACLの既知失敗は別途対応が必要。実サービス、host配備、GitHub CI、commit/pushは実行していない。
+
+
+## 239. フロントエンドCIを追加（2026-09-11）
+
+利用者指定により.github/workflows/ci.ymlへPythonから独立したfrontendジョブを追加した。push/pull_request、ubuntu-latest、Node.js 22、20分上限、frontend作業ディレクトリで実行する。checkoutは既存のv7.0.1 SHAを再利用し、setup-node v7.0.0は公式tagから確認した820762786026740c76f36085b0efc47a31fe5020へ固定した。npm cacheはfrontend/package-lock.jsonをキーにする。既存のcontents: readとpersist-credentials: falseを維持する。
+
+手順はnpm ci --no-audit --no-fund、npm run check、npm test、npm run build、npx --no-install playwright install --with-deps chromium、ビルド版全Playwright、開発版controls/motion/frame/navigation。ブラウザは--workers=1 --forbid-only、再試行なし。サービスcredentialや実バックエンドを使わず、画面は固定合成データとloopback配信だけを検証する。依存取得は公開配布先への通信を伴うため、既存のCI全体がegressなしというコメントも修正した。frontend README・FRONTEND・DEVELOPMENT・REQUIREMENTS・CHANGELOG・REFERENCESを同期した。
+
+新規テストコードは追加せず、workflow構文と実行対象を検証した。actionlint v1.7.12の公式配布archiveを公開checksumと照合して/tmpへ展開し、ci.ymlの検査がexit0。起動中の開発環境を維持するためfrontendを/tmp/amazon-frontend-ci-20260911-01へコピーし、node_modules・dist・テスト出力を除外してnpm ciを実行した（105 packages、2秒）。Node.js 22.23.2/npm 12.0.2で型/整形・Vitest 51件・buildが成功した。
+
+同じコピー内でCI=trueを指定した `npm run test:e2e -- --workers=1 --forbid-only` はexit0・35 passed（2.5分）。続くCI=true UI_TEST_MODE=developmentで `npm run test:e2e -- controls.spec.ts motion.spec.ts frame.spec.ts navigation.spec.ts --workers=1 --forbid-only` はexit0・14 passed（15.2秒）。Chromium資材はnpx --no-install playwright install chromiumで準備し、ローカルOSはPlaywrightの公式対応外なので既存のUbuntu向けfallback資材と準備済みsystem librariesを利用した。GitHub Ubuntu上の--with-depsによるOS依存導入、setup-node/cacheの実行、追加後のGitHub CIは未検証。ローカル成功をGitHub成功や実サービス成功とは扱わない。
+
+Markdownリンクとgit diff --checkが成功。Python 3.11対応とSSL/環境モックの既存未コミット変更を維持し、無関係なPython/実サービス検証、commit/pushは実行していない。
+
+
+## 240. 権限境界テストのroot依存を除去（2026-09-11）
+
+利用者指定により、通常の権限境界テストから別UIDへのchown、read-only資材作成後の無許可書込み、実行ホストがrootという暗黙の前提を除去した。brokerの仮実行ファイルを上書きするときは所有者として書込可能にしてから再固定し、candidate/snapshotは内容を作成した後にread-onlyにする。coordinatorのUID模擬は対象モジュールだけに限定し、root拒否のテストではroot条件を明示する。
+
+deployment_checkの所有者判定は、一時領域のlstat結果のUIDだけを合成値へ置き換えるfixtureへ変更した。mode・ACL・symlink・inode・内容・時刻のチェックは残し、所有者だけを変更した不正ケースも維持した。実OSの所有者変更を検証する既存のtest_ai_review_attestationのroot専用テストとskip条件は変更していない。src・tools・specsへの変更は0で、本体のACL拒否や権限検査を緩めていない。
+
+ホストのPython配置を保護資材として直接参照する代わりに、session単位のtrusted_python fixtureへ実行ファイル・標準ライブラリ・必要なlibpythonをコピーする。実行ファイルには元のACLをコピーせず、read-onlyに固定する。/proc/self/fdからの実execは維持し、sys.executableの標準ライブラリへの依存だけを残すpyvenv.cfg方式ではexec時にencodingsを見つけられなかったため、最終実装では通常のbin/lib配置を用いる。これはテスト資材でありproduction releaseの検証済みruntimeではない。
+
+通常ユーザーでの再現用に、/tmp/amazon-permission-check-20260911-01へ独立checkout、準備済みPython 3.13.13のコピー、uv、依存環境を用意した。元PythonコピーのruntimeディレクトリにACLを付け、GitHubの配置に依存する失敗も再現した。所有者変更とACL追加はこの新規一時領域の準備だけに限定し、既存host/runtime/repositoryの権限は変更していない。テストprocessはsetprivでUID/GID 65534、補助groupなし、capability bounding setなし、no-new-privsへ落とし、env -iからPATH・作業用HOME/cache/environmentだけを与えた。通常のCIでこの準備用の管理者操作を必要とする設計にはしていない。
+
+REDはこの通常ユーザー環境の `uv run --frozen --offline --no-sync pytest -q -m 'not live_api'` にbroker_executor・deployment_check・coordinator_launcher・runtime_release・workflow_init・trust_boundaryの6ファイルを指定し、38 failed / 157 passed（6.27秒）。修正中は20 failed / 175 passed、次に3 failed / 192 passedとなり、read-only directoryやUID模擬の追加依存も解消した。テスト自体の修正であり、同一テストhashでのproduction RED/GREENやattestationではない。
+
+最終の同じ6ファイルは通常ユーザー3.13で195 passed（7.92秒）、既存の独立3.11.15環境で195 passed（7.76秒）。通常ユーザー3.13の全体 `uv run --frozen --offline --no-sync pytest -m 'not live_api'` はexit0・3047 passed / 21 skipped / 30 deselected（82.84秒）。root固有の1件は既存条件によりskipされており、新たな一括除外はない。uv lock --check --offline、Ruff check/format（372 files）、Markdownリンク、git diff --checkも成功した。
+
+最終SHA-256: conftest.pyはda6614d9e7b52d1cb3ed719d3a0680ee3f91ba363bc199a460da1878fc974690、broker_executorのtestは4204eeee652141ca55a950392ce9d1827ffb9c028ceb290ba55b7d8dfbf535a2、deployment_checkのtestは52845e4b19790c14eaefb78af7996d051c3c0f4aeb29c00a5fbef7d1112455bb、coordinator_launcherのtestは3e9d6338be281b42688eba94aa1e344ac3748ca94fa230dedd1ebc46e0928f8d、runtime_releaseのtestは60804588076c92561966bd5572425c842b0560fc2c538518d12e2da60fc9d703、workflow_initのtestはdde0a616313d7d7ebadf29d00b4a64d3a091dc201d50996b198773db11048839、trust_boundaryのtestは9ee54864dfdd3b5029bf0760cf8616394e923d41e848f3a586221cedb6f8d62e。
+
+DEVELOPMENT・REQUIREMENTS・HARNESS-RUNBOOK・CHANGELOGを同期した。既存のPython 3.11対応、SSL/環境モック、frontend CIの未コミット変更を維持した。変更後のGitHub CI、実サービス、実host配備、commit/pushは未実行であり、ローカル非root回帰の成功をこれらの成功へ読み替えない。

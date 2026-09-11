@@ -419,3 +419,8 @@ uv run --frozen --offline --no-sync pytest -m 'not live_api'
 ## 滑らかな角丸と操作部品（2026-09-11、EXEC-119）
 
 - [Chrome for Developers: The corner cases of implementing CSS corner-shape in Blink](https://developer.chrome.com/blog/implementing-corner-shape): 2026-09-11に確認。`corner-shape` が `border-radius` で定めた角の曲線を変更することと、`squircle` の境界線描画を説明したChromeの一次資料。ウィンドウ・カード・ボタンの滑らかな曲線の根拠とし、仕様値と未対応ブラウザの扱いは [FRONTEND.md](FRONTEND.md#133-幅高さ余白角丸) に記載する。
+
+## フロントエンドCI（2026-09-11）
+
+- [actions/setup-node](https://github.com/actions/setup-node): Node.js指定、npmキャッシュ、cache-dependency-pathの公式定義。v7.0.0をcommit SHAへ固定した。
+- [PlaywrightのCI手順](https://playwright.dev/docs/ci-intro): npm ciとChromium/system dependenciesの準備、GitHub Actions上のブラウザ試験を確認した。

@@ -51,6 +51,8 @@ def sha256(value: bytes) -> str:
 
 
 def protected_file(path: Path, content: bytes, mode: int = 0o555) -> Path:
+    if path.exists():
+        path.chmod(0o600)
     path.write_bytes(content)
     path.chmod(mode)
     return path

@@ -8,8 +8,11 @@ import subprocess
 import sys
 import zipfile
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
+
+from tools.ai_review import coordinator_launcher
 
 from tools.ai_review.coordinator_launcher import CoordinatorLauncherError
 from tools.ai_review.coordinator_launcher import build_coordinator_invocation
@@ -35,7 +38,7 @@ def _protected_file(path: Path, raw: bytes, mode: int = 0o444) -> Path:
     return path
 
 
-def _runtime_evidence(tmp_path: Path):
+def _runtime_evidence(trusted_python, tmp_path: Path):
     runtime = tmp_path / "runtime"
     runtime.mkdir(mode=0o700)
     harness = runtime / "harness.pyz"
@@ -98,7 +101,7 @@ def _runtime_evidence(tmp_path: Path):
     manifest = runtime / "runtime-manifest.json"
     digest = build_runtime_manifest(
         output=manifest,
-        python=Path(sys.executable).resolve(strict=True),
+        python=trusted_python,
         harness=harness,
         task=task,
         dependency_lock=lock,
@@ -143,17 +146,19 @@ def _inputs(tmp_path: Path) -> tuple[Path, Path]:
     artifact_root = tmp_path / "artifacts"
     artifact_root.mkdir(mode=0o700)
     candidate = tmp_path / "candidate"
-    candidate.mkdir(mode=0o555)
+    candidate.mkdir(mode=0o700)
     source = candidate / "source.py"
     source.write_text("VALUE = 1\n", encoding="utf-8")
     source.chmod(0o444)
+    candidate.chmod(0o555)
     return artifact_root, candidate
 
 
 def test_coordinator_descriptor_is_pinned_read_only_networkless_and_socketless(
+    trusted_python,
     tmp_path: Path,
 ) -> None:
-    evidence = _runtime_evidence(tmp_path)
+    evidence = _runtime_evidence(trusted_python, tmp_path)
     artifact_root, candidate = _inputs(tmp_path)
     try:
         invocation = build_coordinator_invocation(
@@ -193,9 +198,10 @@ def test_coordinator_descriptor_is_pinned_read_only_networkless_and_socketless(
 
 
 def test_post_snapshot_coordinator_descriptor_does_not_mount_candidate(
+    trusted_python,
     tmp_path: Path,
 ) -> None:
-    evidence = _runtime_evidence(tmp_path)
+    evidence = _runtime_evidence(trusted_python, tmp_path)
     artifact_root, _candidate = _inputs(tmp_path)
     try:
         invocation = build_coordinator_invocation(
@@ -217,15 +223,17 @@ def test_post_snapshot_coordinator_descriptor_does_not_mount_candidate(
 
 
 def test_snapshot_code_uses_a_separate_readonly_mount_while_general_agents_stays_forbidden(
+    trusted_python,
     tmp_path: Path,
 ) -> None:
-    evidence = _runtime_evidence(tmp_path)
+    evidence = _runtime_evidence(trusted_python, tmp_path)
     artifact_root, _candidate = _inputs(tmp_path)
     snapshots = tmp_path / "snapshots"
     snapshots.mkdir(mode=0o700)
     tree = snapshots / "snapshots" / ("a" * 64) / "tree"
-    tree.mkdir(mode=0o555, parents=True)
+    tree.mkdir(mode=0o700, parents=True)
     _protected_file(tree / "AGENTS.md", b"untrusted repository instructions\n")
+    tree.chmod(0o555)
     general_copy = tmp_path / "general-copy"
     dedicated_copy = tmp_path / "dedicated-copy"
     try:
@@ -262,8 +270,10 @@ def test_snapshot_code_uses_a_separate_readonly_mount_while_general_agents_stays
     assert all("/candidate" not in value for value in invocation.argv)
 
 
-def test_candidate_mount_cannot_be_requested_without_a_candidate_tree(tmp_path: Path) -> None:
-    evidence = _runtime_evidence(tmp_path)
+def test_candidate_mount_cannot_be_requested_without_a_candidate_tree(
+    trusted_python, tmp_path: Path
+) -> None:
+    evidence = _runtime_evidence(trusted_python, tmp_path)
     artifact_root, _candidate = _inputs(tmp_path)
     try:
         with pytest.raises(CoordinatorLauncherError, match="candidate"):
@@ -283,9 +293,10 @@ def test_candidate_mount_cannot_be_requested_without_a_candidate_tree(tmp_path: 
 
 
 def test_phase_output_is_new_exclusive_rw_mount_and_signing_key_is_sign_only(
+    trusted_python,
     tmp_path: Path,
 ) -> None:
-    evidence = _runtime_evidence(tmp_path)
+    evidence = _runtime_evidence(trusted_python, tmp_path)
     artifact_root, _candidate = _inputs(tmp_path)
     phase_output = tmp_path / "phase-output"
     phase_output.mkdir(mode=0o700)
@@ -315,9 +326,10 @@ def test_phase_output_is_new_exclusive_rw_mount_and_signing_key_is_sign_only(
 
 
 def test_nonce_ledger_is_private_rw_and_mounted_only_for_judge_prepare(
+    trusted_python,
     tmp_path: Path,
 ) -> None:
-    evidence = _runtime_evidence(tmp_path)
+    evidence = _runtime_evidence(trusted_python, tmp_path)
     artifact_root, _candidate = _inputs(tmp_path)
     nonce_root = tmp_path / "nonce-ledger"
     nonce_root.mkdir(mode=0o700)
@@ -376,9 +388,10 @@ def test_nonce_ledger_is_private_rw_and_mounted_only_for_judge_prepare(
 
 
 def test_nonce_ledger_mount_rejects_an_existing_database_with_unsafe_schema(
+    trusted_python,
     tmp_path: Path,
 ) -> None:
-    evidence = _runtime_evidence(tmp_path)
+    evidence = _runtime_evidence(trusted_python, tmp_path)
     artifact_root, _candidate = _inputs(tmp_path)
     nonce_root = tmp_path / "nonce-ledger"
     nonce_root.mkdir(mode=0o700)
@@ -416,9 +429,10 @@ def test_nonce_ledger_mount_rejects_an_existing_database_with_unsafe_schema(
 
 
 def test_signing_key_and_output_mount_are_rejected_outside_their_exact_contract(
+    trusted_python,
     tmp_path: Path,
 ) -> None:
-    evidence = _runtime_evidence(tmp_path)
+    evidence = _runtime_evidence(trusted_python, tmp_path)
     artifact_root, _candidate = _inputs(tmp_path)
     signing_key = _protected_file(tmp_path / "coordinator-private.pem", b"private-key\n", 0o400)
     nonempty_output = tmp_path / "nonempty-output"
@@ -481,15 +495,20 @@ def test_signing_key_and_output_mount_are_rejected_outside_their_exact_contract(
 
 
 def test_keep_id_output_owner_must_match_the_nonroot_launcher_user(
+    trusted_python,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    evidence = _runtime_evidence(tmp_path)
+    evidence = _runtime_evidence(trusted_python, tmp_path)
     artifact_root, _candidate = _inputs(tmp_path)
     phase_output = tmp_path / "phase-output-owner"
     phase_output.mkdir(mode=0o700)
     mismatched_uid = phase_output.stat().st_uid + 1
-    monkeypatch.setattr("tools.ai_review.coordinator_launcher.os.geteuid", lambda: mismatched_uid)
+    monkeypatch.setattr(
+        coordinator_launcher,
+        "os",
+        SimpleNamespace(**{**vars(os), "geteuid": lambda: mismatched_uid}),
+    )
     try:
         with pytest.raises(CoordinatorLauncherError, match="keep-id user"):
             build_coordinator_invocation(
@@ -517,10 +536,11 @@ def test_keep_id_output_owner_must_match_the_nonroot_launcher_user(
     ],
 )
 def test_coordinator_rejects_runtime_without_rootless_podman_keep_id(
+    trusted_python,
     tmp_path: Path,
     backend: ContainerBackend,
 ) -> None:
-    evidence = _runtime_evidence(tmp_path)
+    evidence = _runtime_evidence(trusted_python, tmp_path)
     artifact_root, candidate = _inputs(tmp_path)
     try:
         with pytest.raises(CoordinatorLauncherError, match="rootless Podman"):
@@ -539,14 +559,19 @@ def test_coordinator_rejects_runtime_without_rootless_podman_keep_id(
 
 
 def test_coordinator_execution_reprobes_runtime_and_requires_cleanup(
+    trusted_python,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    evidence = _runtime_evidence(tmp_path)
+    evidence = _runtime_evidence(trusted_python, tmp_path)
     artifact_root, candidate = _inputs(tmp_path)
     backend = _backend()
     detections: list[int] = []
-    monkeypatch.setattr("tools.ai_review.coordinator_launcher.os.geteuid", lambda: 1000)
+    monkeypatch.setattr(
+        coordinator_launcher,
+        "os",
+        SimpleNamespace(**{**vars(os), "geteuid": lambda: 1000}),
+    )
 
     def detector(**_kwargs):
         detections.append(1)
@@ -583,10 +608,17 @@ def test_coordinator_execution_reprobes_runtime_and_requires_cleanup(
 
 
 def test_coordinator_production_execution_rejects_root_even_with_rootless_probe(
+    trusted_python,
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    evidence = _runtime_evidence(tmp_path)
+    evidence = _runtime_evidence(trusted_python, tmp_path)
     artifact_root, candidate = _inputs(tmp_path)
+    monkeypatch.setattr(
+        coordinator_launcher,
+        "os",
+        SimpleNamespace(**{**vars(os), "geteuid": lambda: 0}),
+    )
     try:
         with pytest.raises(CoordinatorLauncherError, match="must not run as root"):
             execute_coordinator(
@@ -602,8 +634,10 @@ def test_coordinator_production_execution_rejects_root_even_with_rootless_probe(
         evidence.close()
 
 
-def test_coordinator_image_rehashes_every_staged_asset_before_cli_import(tmp_path: Path) -> None:
-    evidence = _runtime_evidence(tmp_path)
+def test_coordinator_image_rehashes_every_staged_asset_before_cli_import(
+    trusted_python, tmp_path: Path
+) -> None:
+    evidence = _runtime_evidence(trusted_python, tmp_path)
     staging_parent = tmp_path / "staging"
     staging_parent.mkdir(mode=0o700)
     try:
@@ -634,8 +668,10 @@ def test_coordinator_image_rehashes_every_staged_asset_before_cli_import(tmp_pat
         evidence.close()
 
 
-def test_coordinator_cli_consumes_the_externally_bound_runtime_contract(tmp_path: Path) -> None:
-    evidence = _runtime_evidence(tmp_path)
+def test_coordinator_cli_consumes_the_externally_bound_runtime_contract(
+    trusted_python, tmp_path: Path
+) -> None:
+    evidence = _runtime_evidence(trusted_python, tmp_path)
     staging_parent = tmp_path / "staging"
     staging_parent.mkdir(mode=0o700)
     try:

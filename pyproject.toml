@@ -3,7 +3,7 @@ name = "amazon-explorer"
 version = "0.1.0"
 description = "自然言語からAmazon商品候補を検索・正規化・ランキングするStreamlitアプリ"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = [
     "cryptography>=46.0.0",
     "numpy>=2.0",
@@ -39,7 +39,7 @@ package = false
 
 [tool.ruff]
 line-length = 100
-target-version = "py310"
+target-version = "py311"
 
 [tool.pytest.ini_options]
 addopts = ["--strict-config", "--strict-markers"]

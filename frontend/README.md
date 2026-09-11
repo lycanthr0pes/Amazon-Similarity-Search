@@ -28,6 +28,8 @@ npx playwright install chromium
 npm run test:e2e
 ```
 
+GitHub Actionsの [CI](../.github/workflows/ci.yml) はpush・pull requestごとに独立したfrontendジョブを実行します。Node.js 22でnpm ci、型/整形、単体テスト、build、Chromiumのビルド版全テストと開発版のcontrols・motion・frame・navigationを確認します。ブラウザは1ワーカー・再試行なしで実行し、test.onlyを拒否します。依存とChromiumの準備は公開配布先へ通信しますが、画面テストは固定合成データとローカル配信のみを使います。
+
 `src/model.ts` が状態遷移と固定データ、`src/history.ts` がタブ内のsessionStorage、`src/components.tsx` と `src/screens.tsx` が共通表示部品、`src/App.tsx` がモックの応答時間と画面操作を担当します。StyleXは公式unpluginでCSSへ事前コンパイルし、`src/global.css` はフォント以外の共通resetだけを持ちます。表示部品は将来の通常検索でも利用する構成ですが、実サービスadapterとAPI接続は未実装です。
 
 履歴はこのタブで最大30件・30日間保持します。再読込すると検索フローは入力画面へ戻り、履歴は残ります。タブを閉じると履歴は消去されます。保存エラーでは結果を残して保存だけ再試行できます。検索文はブラウザ内に保存するため、UI確認には合成入力を使ってください。

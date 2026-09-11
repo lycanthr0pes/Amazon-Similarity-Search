@@ -3,7 +3,6 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-import sys
 import zipfile
 from pathlib import Path
 
@@ -92,9 +91,11 @@ def test_schema_bundle_is_canonical_content_addressed_and_exclusive(tmp_path: Pa
         build_schema_bundle(schemas, output)
 
 
-def test_runtime_manifest_binds_every_asset_and_preflight_accepts_it(tmp_path: Path) -> None:
+def test_runtime_manifest_binds_every_asset_and_preflight_accepts_it(
+    trusted_python, tmp_path: Path
+) -> None:
     tmp_path.chmod(0o700)
-    python = Path(sys.executable).resolve(strict=True)
+    python = trusted_python
     harness = make_zipapp(tmp_path / "harness.pyz")
     task = write_file(tmp_path / "task.json", task_v2_bytes(harness))
     lock = write_file(tmp_path / "uv.lock", b"version = 1\n")
@@ -155,7 +156,7 @@ def test_runtime_manifest_binds_every_asset_and_preflight_accepts_it(tmp_path: P
         )
 
 
-def test_runtime_manifest_rejects_mutable_contract_shapes(tmp_path: Path) -> None:
+def test_runtime_manifest_rejects_mutable_contract_shapes(trusted_python, tmp_path: Path) -> None:
     tmp_path.chmod(0o700)
     asset = write_file(tmp_path / "asset", b"x")
     harness = make_zipapp(tmp_path / "harness.pyz")
@@ -163,7 +164,7 @@ def test_runtime_manifest_rejects_mutable_contract_shapes(tmp_path: Path) -> Non
     with pytest.raises(RuntimeReleaseError, match="distinct"):
         build_runtime_manifest(
             output=tmp_path / "runtime.json",
-            python=Path(sys.executable).resolve(strict=True),
+            python=trusted_python,
             harness=harness,
             task=asset,
             dependency_lock=asset,
@@ -183,7 +184,7 @@ def test_runtime_manifest_rejects_mutable_contract_shapes(tmp_path: Path) -> Non
     with pytest.raises(RuntimeReleaseError, match="egress policy"):
         build_runtime_manifest(
             output=tmp_path / "forged-policy-runtime.json",
-            python=Path(sys.executable).resolve(strict=True),
+            python=trusted_python,
             harness=harness,
             task=asset,
             dependency_lock=asset,
@@ -208,6 +209,7 @@ def test_runtime_manifest_rejects_mutable_contract_shapes(tmp_path: Path) -> Non
     ],
 )
 def test_runtime_manifest_requires_v2_task_bound_to_exact_harness(
+    trusted_python,
     tmp_path: Path,
     schema_version: str,
     harness_digest: str | None,
@@ -242,7 +244,7 @@ def test_runtime_manifest_requires_v2_task_bound_to_exact_harness(
     with pytest.raises(RuntimeReleaseError, match=message):
         build_runtime_manifest(
             output=tmp_path / "runtime-manifest.json",
-            python=Path(sys.executable).resolve(strict=True),
+            python=trusted_python,
             harness=harness,
             task=task,
             dependency_lock=lock,

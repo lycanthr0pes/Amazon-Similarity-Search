@@ -195,7 +195,7 @@ EXEC-055では、使用済みCSVの先頭1件を明示承認された合計1 cal
 
 - 本番環境はiGPUを使用する。4面画像生成のためのローカル3Dモデル生成は採用しない。開発機の専用GPUを本番の実行資源として扱わず、画像生成・視点変換は本番で実行可能な外部API方式で検討する。
 
-- Python 3.10以上
+- Python 3.11以上
 - `uv` による依存関係管理
 - 次期画像処理の対象運用環境はWindows 11 / WSL、Intel Core Ultra 9 288V。DNS process境界はGPU・NPUを使わず、`spawn` で共通化する。WSL2の固定失敗smokeは確認済みだが、Windows nativeでの実process・実DNSは未確認
 - OpenAI互換APIとして起動したBonsai 8B
@@ -307,7 +307,7 @@ git diff --check
 - アカウント、認証、認可、課金
 - RDB、検索エンジン、オブジェクトストレージ
 - 公開・複数利用者・複数process向けの分散ジョブ実行
-- Docker、systemd、クラウド配布、CI/CD
+- Docker、systemd、クラウド配布、自動デプロイ（CD）
 
 Cloudflareによる参考画像・偽画像生成と画像特徴を含む次期検索フローは明示要求済みであり、現行スコープ外候補ではない。既存のCloudflare向けmock HTTPとJPEG・PNG・WebPからRGB PNGへの合成画像正規化境界は本番providerのoffline実装だが、修正後のCloudflare実生成、画像品質合格、現行機能への接続を意味しない。gpt-imageは画像評価テスト専用である。利用者向けの操作は [SEARCH-FLOW.md](../SEARCH-FLOW.md) を参照し、全体実装完了までは現行機能として表示しない。
 
@@ -323,7 +323,7 @@ Cloudflareによる参考画像・偽画像生成と画像特徴を含む次期�
 4. キャッシュの容量上限、保持・削除方針、破損時の運用
 5. シークレット、ログ、キャッシュの保存・アクセス方針
 6. 構造化ログ、相関ID、メトリクス、アラート
-7. サポートPython版でのCI
+7. サポートPython版のCI成功と必須チェックの設定（ジョブ定義は追加済み）
 8. 代表検索と期待順位を固定したランキング評価
 9. 障害復旧、バックアップ、配布、ロールバック手順
 
@@ -343,13 +343,13 @@ Cloudflareによる参考画像・偽画像生成と画像特徴を含む次期�
 
 ### 2. 実行環境
 
-- Python 3.10以上を対象とする。
+- Python 3.11以上を対象とする。
 - 依存関係は `uv` と `uv.lock` で管理する。
 - `pyproject.toml` は `package = false` であり、現行用途はリポジトリからの直接実行である。
 - 次期画像処理の対象運用環境としてWindows 11 / WSL、Intel Core Ultra 9 288Vを確認した。DNS境界はCPUだけで動く明示的な `spawn` を使い、親processのapplication deadlineを5秒とする。現在のWSL2では外部DNSを呼ばない固定失敗smokeまで確認した。Pythonの `Process.start()` 自体をpreemptできないためWindows nativeの起動時間・終了動作は未確認であり、実運用前に別途確認する。
 - StreamlitまたはCLIを動かすホストから、BonsaiとOutscraperへ接続できなければならない。
 - キャッシュを使うかどうかにかかわらず、新しい結果を保存するため `CACHE_DIR` への書込権限が必要である。
-- 現行作業ツリーにはPython 3.10 / 3.13の決定論的GitHub Actions CIがあるが、ホスト上での実行結果は未確認である。コンテナ、systemd、クラウド配布の定義はない。
+- 現行作業ツリーの決定論的GitHub Actions CIはPython 3.11 / 3.13を対象とする。変更後のGitHub実行は未確認であり、変更前のCIで検出した権限・ACLへのテスト依存は修正し、通常ユーザーとACL付き元Pythonのローカル環境で対象195件が成功した。SSLモックと環境変数の期待値はローカルで修正・検証済みである。コンテナ、systemd、クラウド配布の定義はない。
 
 ### 3. 外部サービス
 
@@ -553,7 +553,8 @@ case3では「収納口2つ・小型（卓上）・縦・収納」の20候補に
 - 単体・パイプラインテストは外部APIをモックする。
 - 実Bonsaiモデルの品質、実Outscraperレスポンスとの継続互換性、現行・次期ランキング精度は通常のpytestでは確認しない。ranking v3・typed-ranking-v4、holdout評価、acceptance policyのofflineテストは、合成fixtureに対する計算・判定契約、集計、改ざん拒否、決定性だけを確認する。
 - StreamlitのブラウザE2E、アクセシビリティ自動検査、複数セッション競合テストはない。
-- 現行作業ツリーのCIはPython 3.10 / 3.13のマトリクスを定義するが、GitHub上での実行結果と必須チェック設定は未確認である。
+- 現行作業ツリーのCIはPython 3.11 / 3.13のマトリクスを定義する。変更前のGitHub実行ではPython 3.10で54件失敗・8件エラー、3.13で41件失敗を確認した。最低バージョン更新に加え、SSLモックと環境変数の期待値を修正し、3.11 / 3.13で関連99件が成功した。権限・ACLへのテスト依存も修正し、通常ユーザーで対象195件が成功した。本体の保護チェックは維持している。変更後のGitHub実行と必須チェック設定は未確認である。
+- フロントエンドCIは独立したNode.js 22ジョブで、ロック済み依存、型/整形、Vitest、build、Chromiumによるビルド版全テストと開発版の操作部品テストを実行する。1ワーカー・再試行なし・test.only禁止。追加後のGitHub実行は未確認で、実サービスのE2Eを含めない。
 - 実API結合試験は料金と外部状態へ影響するため、自動受入条件に含めない。
 - 通常pytestのnetwork guardはPythonのsocket、DNS、Requests経路を遮断するが、subprocess、native code、候補差分によるfixture改変をOSレベルで止めない。
 - repository-localの606 MB CLIP modelを読むtestは `clip_runtime` markerと `--run-clip-runtime` の二重opt-inにし、通常pytestではskipする。このopt-inは外部通信を許可せず、画像品質やWindows native動作の確認も代替しない。

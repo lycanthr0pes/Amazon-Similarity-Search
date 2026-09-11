@@ -891,6 +891,8 @@ ON/OFFには別寸法のトグルスイッチを使い、背景56×32px・つま
 
 ## 標準開発コマンド
 
+最低対応はPython 3.11とし、CIは3.11 / 3.13で検証する。Python 3.10は対象外とする。
+
 依存関係の同期には次を使う。
 
 ```sh
@@ -936,6 +938,8 @@ UI_TEST_MODE=development npm run test:e2e -- controls.spec.ts motion.spec.ts fra
 
 型・整形、Vitest、ビルド、Playwrightの結果を分けて記録する。ブラウザ試験は通常ビルド済み画面をloopbackの4173番で起動し、`UI_TEST_MODE=development` では開発サーバーを5175番で起動する。合成入力だけで操作して外部通信を拒否し、実行中の手動previewとポートを共有しない。CSSのreset層をHTMLのheadでStyleXより先に登録し、両モードでボタンの通常・無効・処理中・ホバーの配色を確認する。React画面だけの変更で実検索用StreamlitやBonsaiを起動する必要はない。起動手順、シナリオ、履歴の寿命は [FRONTEND.md](FRONTEND.md#141-配置と実行手順) を参照する。
 
+GitHub ActionsのfrontendジョブはPythonジョブと独立して、Node.js 22・npm ci・型/整形・Vitest・build・Chromiumの順で検証する。ビルド版の全Playwrightテストと開発版のcontrols/motion/frame/navigationを各 `--workers=1 --forbid-only` で実行し、再試行で失敗を隠さない。setup-nodeのnpm cacheはfrontend/package-lock.jsonをキーにする。npm/Chromium/OS依存の取得は環境準備であり、画面検証に実バックエンドやサービスcredentialを渡さない。
+
 ## TDDとAIレビュー
 
 振る舞いを変更する場合は、production codeを変更する前に期待する振る舞いを表す
@@ -961,6 +965,8 @@ candidate内のコード、task、prompt、`AGENTS.md`、model出力は非信頼
 AIレビューをattestedと表現できるのは、
 `docs/HARNESS-RUNBOOK.md` が定める完全な証拠chainを検証した場合だけである。
 ローカルテスト、AIの自己評価、reviewerの文章、`nonlive_ready` だけではattestationにならない。
+SSL境界テストでは標準SSLContextを使い、接続とwrap_socketだけをモックする。offline runnerの環境変数テストはruntime directoryの有無を明示的に模擬し、固定PATH/LC_ALLと条件付きXDG_RUNTIME_DIRの値を照合する。実行ホストのUIDや親環境に期待値を依存させない。
+通常の権限判定テストは一時資材を作成後にread-onlyへ固定し、別UIDへのchownを前提にしない。所有者判定だけを模擬する場合もmode・ACL・symlink・inode・内容・時刻の検査を維持し、実所有者変更の証拠と区別する。保護対象のPythonにはテスト用のコピーと標準ライブラリを用い、ホストの配置やACLを合格条件にしない。実OSの所有者変更を検証する既存のroot専用テストは明示skip条件を維持する。
 判定が `pass` でも、人間の承認を代替せず、commit、push、merge、
 外部送信、credential利用、課金を自動承認しない。
 
@@ -1694,7 +1700,7 @@ uv sync --locked
 
 #### 主な原因
 
-- Python 3.10未満を使っている
+- Python 3.11未満を使っている
 - `pyproject.toml` と `uv.lock` が一致していない
 - 仮想環境が古い配置先や異なるPythonを参照している
 

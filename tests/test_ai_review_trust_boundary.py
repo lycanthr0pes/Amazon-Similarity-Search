@@ -341,9 +341,11 @@ def test_verified_fd_reader_requires_exact_binding_and_preserves_offset(tmp_path
     evidence.close()
 
 
-def test_real_python_exec_reads_verified_zipapp_and_task_fd_from_offset_zero(tmp_path):
+def test_real_python_exec_reads_verified_zipapp_and_task_fd_from_offset_zero(
+    trusted_python, tmp_path
+):
     manifest, _manifest_sha, assets = make_runtime_manifest(tmp_path)
-    real_python = Path(sys.executable).resolve(strict=True)
+    real_python = trusted_python
     assets["harness"].chmod(0o644)
     with zipfile.ZipFile(assets["harness"], "w") as archive:
         archive.writestr(
@@ -1359,7 +1361,28 @@ def test_offline_runner_rejects_green_candidate_substitution_and_gate_tdd_claims
 
 
 @pytest.mark.parametrize("phase", ["gate", "red", "green"])
-def test_execute_offline_returns_bounded_digest_bound_evidence(tmp_path, phase):
+@pytest.mark.parametrize("runtime_available", [False, True])
+def test_execute_offline_returns_bounded_digest_bound_evidence(
+    tmp_path, monkeypatch, phase, runtime_available
+):
+    runtime_directory = Path("/run/user/65532")
+    simulated_os = SimpleNamespace(**vars(os))
+    simulated_os.geteuid = lambda: 65_532
+    monkeypatch.setattr(offline_runner_module, "os", simulated_os)
+    original_is_dir = Path.is_dir
+    original_is_symlink = Path.is_symlink
+    monkeypatch.setattr(
+        Path,
+        "is_dir",
+        lambda path: runtime_available if path == runtime_directory else original_is_dir(path),
+    )
+    monkeypatch.setattr(
+        Path,
+        "is_symlink",
+        lambda path: False if path == runtime_directory else original_is_symlink(path),
+    )
+    monkeypatch.setenv("XDG_RUNTIME_DIR", "/untrusted/runtime")
+    monkeypatch.setenv("DOCKER_HOST", "unix:///untrusted/docker.sock")
     bare, commit = make_bare_repository(tmp_path)
     destination = tmp_path / "snapshots"
     destination.mkdir(mode=0o700)
@@ -1452,7 +1475,10 @@ def test_execute_offline_returns_bounded_digest_bound_evidence(tmp_path, phase):
     assert evidence.log_sha256 == sha256_bytes(expected_log_binding)
     assert evidence.request_sha256 == evidence.request.sha256()
     assert evidence.argv_sha256 == sha256_bytes(canonical_json(list(observed["argv"])))
-    assert set(observed["kwargs"]["environment"]) == {"PATH", "LC_ALL"}
+    expected_environment = {"PATH": os.defpath, "LC_ALL": "C"}
+    if runtime_available:
+        expected_environment["XDG_RUNTIME_DIR"] = "/run/user/65532"
+    assert observed["kwargs"]["environment"] == expected_environment
     assert (
         validate_offline_run_evidence(
             evidence,

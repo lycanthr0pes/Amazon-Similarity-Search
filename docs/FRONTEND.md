@@ -684,6 +684,8 @@ UI_TEST_MODE=development npm run test:e2e -- controls.spec.ts
 
 `npm run check` はTypeScriptとPrettier、`npm test` は状態遷移と履歴のVitest、`npm run test:e2e` はPlaywrightによるローカルブラウザ確認である。通常はビルド済み画面を4173番で起動し、`UI_TEST_MODE=development` では開発サーバーを5175番で起動して同じ操作部品を検証する。ブラウザ試験では合成入力だけを用い、外部通信を拒否する。ビルド済み画面だけを確認する場合は `npm run preview` で `http://127.0.0.1:4173` を開く。
 
+GitHub Actionsの [frontendジョブ](../.github/workflows/ci.yml) はNode.js 22で型/整形・単体・build・ビルド版全画面テストと開発版の操作部品テストを実行する。Pythonジョブから独立し、各ブラウザ試験は1ワーカー・再試行なし・test.only禁止とする。追加後のGitHub上での実行結果は未確認であり、ローカル検証と区別する。
+
 #### 14.2 モックのデータと保存範囲
 
 - 任意の1〜2,000文字の入力を保持し、商品・必須・希望・除外・予算の5項目には固定のキーボード条件を表示する。編集内容を確認と履歴へ反映するが、商品12件・画像・順位は固定する。日本語/英語検索語の編集、明示価格と推定価格の分類、実条件抽出は未接続である。

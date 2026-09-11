@@ -5,7 +5,6 @@ import json
 import os
 import stat
 import subprocess
-import sys
 import zipfile
 from pathlib import Path
 
@@ -130,7 +129,7 @@ def _write(path: Path, raw: bytes) -> Path:
     return path
 
 
-def _release_fixture(tmp_path: Path) -> dict[str, object]:
+def _release_fixture(trusted_python, tmp_path: Path) -> dict[str, object]:
     tmp_path.mkdir(parents=True, exist_ok=True)
     tmp_path.chmod(0o700)
     candidate, base_sha = _make_candidate(tmp_path)
@@ -165,7 +164,7 @@ def _release_fixture(tmp_path: Path) -> dict[str, object]:
     manifest = runtime / "runtime-manifest.json"
     manifest_sha256 = build_runtime_manifest(
         output=manifest,
-        python=Path(sys.executable).resolve(strict=True),
+        python=trusted_python,
         harness=harness,
         task=task,
         dependency_lock=dependency_lock,
@@ -218,9 +217,10 @@ def test_empty_initial_artifact_digest_is_canonical_empty_set() -> None:
 
 
 def test_initialize_workflow_revalidates_and_freezes_canonical_first_request(
+    trusted_python,
     tmp_path: Path,
 ) -> None:
-    fixture = _release_fixture(tmp_path)
+    fixture = _release_fixture(trusted_python, tmp_path)
 
     initialized = _initialize(fixture)
     request_path = fixture["output_parent"] / "initial" / "phase-request.json"
@@ -239,9 +239,10 @@ def test_initialize_workflow_revalidates_and_freezes_canonical_first_request(
 
 
 def test_initialize_workflow_rejects_dirty_candidate_without_creating_output(
+    trusted_python,
     tmp_path: Path,
 ) -> None:
-    fixture = _release_fixture(tmp_path)
+    fixture = _release_fixture(trusted_python, tmp_path)
     (fixture["candidate"] / "untracked.txt").write_text("dirty\n", encoding="utf-8")
     output = fixture["output_parent"] / "initial"
 
@@ -251,24 +252,28 @@ def test_initialize_workflow_rejects_dirty_candidate_without_creating_output(
     assert not output.exists()
 
 
-def test_initialize_workflow_rejects_wrong_patch_binding(tmp_path: Path) -> None:
-    fixture = _release_fixture(tmp_path)
+def test_initialize_workflow_rejects_wrong_patch_binding(trusted_python, tmp_path: Path) -> None:
+    fixture = _release_fixture(trusted_python, tmp_path)
     fixture["patch_sha256"] = "f" * 64
 
     with pytest.raises(WorkflowInitializationError, match="patch SHA-256"):
         _initialize(fixture)
 
 
-def test_initialize_workflow_requires_external_manifest_digest_anchor(tmp_path: Path) -> None:
-    fixture = _release_fixture(tmp_path)
+def test_initialize_workflow_requires_external_manifest_digest_anchor(
+    trusted_python, tmp_path: Path
+) -> None:
+    fixture = _release_fixture(trusted_python, tmp_path)
     fixture["manifest_sha256"] = "f" * 64
 
     with pytest.raises(WorkflowInitializationError, match="manifest.*SHA-256"):
         _initialize(fixture)
 
 
-def test_initialize_workflow_rejects_v1_task_even_with_rehashed_manifest(tmp_path: Path) -> None:
-    fixture = _release_fixture(tmp_path)
+def test_initialize_workflow_rejects_v1_task_even_with_rehashed_manifest(
+    trusted_python, tmp_path: Path
+) -> None:
+    fixture = _release_fixture(trusted_python, tmp_path)
     task_payload = json.loads(fixture["task"].read_bytes())
     task_payload["schema_version"] = "1.0"
     task_raw = (json.dumps(task_payload, sort_keys=True) + "\n").encode()
@@ -285,29 +290,33 @@ def test_initialize_workflow_rejects_v1_task_even_with_rehashed_manifest(tmp_pat
         _initialize(fixture)
 
 
-def test_initialize_workflow_rejects_task_or_public_key_outside_manifest(tmp_path: Path) -> None:
-    fixture = _release_fixture(tmp_path)
+def test_initialize_workflow_rejects_task_or_public_key_outside_manifest(
+    trusted_python, tmp_path: Path
+) -> None:
+    fixture = _release_fixture(trusted_python, tmp_path)
     wrong_task = _write(tmp_path / "wrong-task.json", fixture["task"].read_bytes())
     fixture["task"] = wrong_task
     with pytest.raises(WorkflowInitializationError, match="task.*manifest"):
         _initialize(fixture, "wrong-task")
 
-    fixture = _release_fixture(tmp_path / "second-fixture")
+    fixture = _release_fixture(trusted_python, tmp_path / "second-fixture")
     wrong_key = _write(tmp_path / "wrong-key.pem", fixture["public_key"].read_bytes())
     fixture["public_key"] = wrong_key
     with pytest.raises(WorkflowInitializationError, match="public key.*manifest"):
         _initialize(fixture, "wrong-key")
 
 
-def test_initialize_workflow_rejects_symlink_self_owned_and_overwrite(tmp_path: Path) -> None:
-    fixture = _release_fixture(tmp_path)
+def test_initialize_workflow_rejects_symlink_self_owned_and_overwrite(
+    trusted_python, tmp_path: Path
+) -> None:
+    fixture = _release_fixture(trusted_python, tmp_path)
     linked_candidate = tmp_path / "linked-candidate"
     linked_candidate.symlink_to(fixture["candidate"], target_is_directory=True)
     fixture["candidate"] = linked_candidate
     with pytest.raises(WorkflowInitializationError, match="symlink"):
         _initialize(fixture, "linked")
 
-    fixture = _release_fixture(tmp_path / "self-owned-fixture")
+    fixture = _release_fixture(trusted_python, tmp_path / "self-owned-fixture")
     with pytest.raises(WorkflowInitializationError, match="different OS UID|root"):
         initialize_workflow(
             task=fixture["task"],
@@ -320,15 +329,15 @@ def test_initialize_workflow_rejects_symlink_self_owned_and_overwrite(tmp_path: 
             output_dir=fixture["output_parent"] / "self-owned",
         )
 
-    fixture = _release_fixture(tmp_path / "overwrite-fixture")
+    fixture = _release_fixture(trusted_python, tmp_path / "overwrite-fixture")
     output = fixture["output_parent"] / "initial"
     output.mkdir(mode=0o700)
     with pytest.raises(WorkflowInitializationError, match="overwrite|already exists"):
         _initialize(fixture)
 
 
-def test_workflow_init_cli_prints_only_safe_digests(tmp_path: Path, capsys) -> None:
-    fixture = _release_fixture(tmp_path)
+def test_workflow_init_cli_prints_only_safe_digests(trusted_python, tmp_path: Path, capsys) -> None:
+    fixture = _release_fixture(trusted_python, tmp_path)
     output = fixture["output_parent"] / "cli-initial"
 
     exit_code = release_main(

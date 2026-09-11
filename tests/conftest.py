@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 import _socket
+import shutil
+import sys
+import sysconfig
+from pathlib import Path
 import socket
 from collections.abc import Generator
 from typing import Any
@@ -450,3 +454,25 @@ def block_network_access(
         yield
     finally:
         _install_network_guard()
+
+
+@pytest.fixture(scope="session")
+def trusted_python(tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Stage a real test interpreter without inheriting host executable ACLs."""
+    directory = tmp_path_factory.mktemp("trusted-python")
+    source = Path(sys.executable).resolve(strict=True)
+    (directory / "bin").mkdir()
+    executable = directory / "bin" / "python"
+    shutil.copyfile(source, executable)
+    executable.chmod(0o555)
+    # execve via /proc/self/fd cannot rely on a nearby pyvenv.cfg.
+    stdlib = Path(sysconfig.get_path("stdlib"))
+    shutil.copytree(
+        stdlib,
+        directory / "lib" / stdlib.name,
+        copy_function=shutil.copyfile,
+        ignore=shutil.ignore_patterns("site-packages", "__pycache__"),
+    )
+    for library in (Path(sys.base_prefix) / "lib").glob("libpython*so*"):
+        shutil.copyfile(library, directory / "lib" / library.name)
+    return executable

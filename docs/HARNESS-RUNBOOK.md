@@ -155,6 +155,8 @@ uv run --frozen --offline --no-sync pytest -q \
   -m 'not live_api'
 ```
 
+権限関連の通常テストは、テスト用Pythonコピーと合成所有者情報を用い、rootを必要としない。実所有者変更を検証するroot専用テストは通常ユーザーでは明示的にskipする。通常テストのためにCI全体をsudoで実行したり、本体のACL拒否を無効化したりしない。
+
 固定のテスト件数を成功条件にしない。pytestのnetwork guardはPython processの補助防御であり、subprocessやnative codeをOSレベルで遮断した証拠ではない。
 
 ## 6. production hostの情報診断
