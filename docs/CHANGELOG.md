@@ -16,7 +16,13 @@
 
 ### Added
 
+- フロントエンドの第三者ライセンス全文・著作権表示を配布物へ同梱し、READMEへ使用資材のライセンスを明記し、著作権表示・本文へリンクした。
+
 - push・pull requestで独立実行するフロントエンドCIを追加。Node.js 22で型/整形・単体・build・Chromium画面テストを実行する。
+
+### Removed
+
+- Streamlitの起動口・画面・専用テスト・SHOW_DEBUG_INFOと依存を削除した。画面はReactオフラインモック、実検索はCLIを使う。既存のschemaテストが必要とするjsonschemaは開発依存として明示した。
 
 ### Changed
 

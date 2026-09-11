@@ -48,6 +48,6 @@ GitHub Actionsの [CI](../.github/workflows/ci.yml) はpush・pull requestごと
 
 視覚仕様は [FRONTEND.md](../docs/FRONTEND.md#13-次期uiの視覚統一契約)、操作仕様は [SEARCH-FLOW.md](../SEARCH-FLOW.md)、実装・検証記録は [EXEC-117](../docs/GOAL.md#exec-117-react-stylexのオフライン画面) を参照してください。
 
-Noto Sans JPは `@fontsource-variable/noto-sans-jp` に含まれるSIL Open Font License 1.1の資材を使います。依存パッケージのライセンスは各package内にあります。`public/images/` のSVGは本モック用に作成した合成キーボード画像です。Figmaの旧配色・装飾・画像をコピーしたものではありません。
+Noto Sans JPは `@fontsource-variable/noto-sans-jp` に含まれるSIL Open Font License 1.1の資材を使います。配布用の著作権表示とライセンス全文は [THIRD-PARTY-NOTICES.txt](public/THIRD-PARTY-NOTICES.txt) にまとめ、ビルド時もdistへ同梱します。起動後は `/THIRD-PARTY-NOTICES.txt` で確認できます。依存更新時は通知も更新してください。`public/images/` のSVGは本モック用に作成した合成キーボード画像です。Figmaの旧配色・装飾・画像をコピーしたものではありません。
 
 `public/icons/wi-stars.svg` はFigma内の名前に対応するWeather Iconsの星素材です。取得元・変更内容・同梱ライセンスは [アイコン素材](public/icons/README.md) を参照してください。

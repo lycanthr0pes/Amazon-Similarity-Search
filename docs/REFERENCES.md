@@ -56,7 +56,7 @@ amazon-explorer の仕様確認、実装変更、障害調査で参照する一�
 | 次期検索後半pipeline・完了state | [`src/search_v2/product_pipeline.py`](../src/search_v2/product_pipeline.py)、[`src/search_v2/state_machine.py`](../src/search_v2/state_machine.py)、[`tests/test_search_v2_product_pipeline.py`](../tests/test_search_v2_product_pipeline.py)、[EXEC-015](GOAL.md#exec-015-検索後半pipelineと完了state)、[EXEC-039](GOAL.md#exec-039-型付きranking-v4のoffline検索経路移行) |
 | 次期検索のtyped表示履歴・SQLite v2 | [`src/search_v2/history_snapshot.py`](../src/search_v2/history_snapshot.py)、[`src/search_v2/history_repository.py`](../src/search_v2/history_repository.py)、[`tests/test_search_v2_history_snapshot.py`](../tests/test_search_v2_history_snapshot.py)、[`tests/test_search_v2_history_repository.py`](../tests/test_search_v2_history_repository.py)、[EXEC-039](GOAL.md#exec-039-型付きranking-v4のoffline検索経路移行) |
 | JSONキャッシュ | [`src/repositories/cache_repository.py`](../src/repositories/cache_repository.py)、[`src/utilities/json_editor.py`](../src/utilities/json_editor.py) |
-| Streamlit画面 | [`src/ui/streamlit_ui.py`](../src/ui/streamlit_ui.py)、[`app.py`](../app.py) |
+| React画面 | [frontend/](../frontend/)、[FRONTEND.md](FRONTEND.md) |
 | 回帰仕様 | [`tests/`](../tests/) |
 | AIレビューの基本契約・policy・judge・CLI | [`tools/ai_review/models.py`](../tools/ai_review/models.py)、[`tools/ai_review/policy.py`](../tools/ai_review/policy.py)、[`tools/ai_review/judge.py`](../tools/ai_review/judge.py)、[`tools/ai_review/cli.py`](../tools/ai_review/cli.py) |
 | trusted release・workflow初期化・import前preflight・deployment check | [`tools/ai_review/runtime_release.py`](../tools/ai_review/runtime_release.py)、[`tools/ai_review/workflow_init.py`](../tools/ai_review/workflow_init.py)、[`tools/ai_review/external_launcher.py`](../tools/ai_review/external_launcher.py)、[`tools/ai_review/preflight.py`](../tools/ai_review/preflight.py)、[`tools/ai_review/deployment_check.py`](../tools/ai_review/deployment_check.py) |
@@ -145,7 +145,7 @@ SHA-256 `b8cd685aae7251792700ce312c7ddc410c55e0bda5416abef68de83ce55429ea` の20
 
 | 統合元 | 統合先または現行正本 | アーカイブまたは扱い |
 |---|---|---|
-| `docs/QUICKSTART.md` | [README.md](../README.md#統合済みクイックスタート) | `docs/old/QUICKSTART.md` |
+| `docs/QUICKSTART.md` | [README.md](../README.md#起動方法) | `docs/old/QUICKSTART.md` |
 | `docs/CONSTRAINTS.md` | [REQUIREMENTS.md](REQUIREMENTS.md#統合済み制約) | `docs/old/CONSTRAINTS.md` |
 | `docs/DESIGN.md` | [BACKEND.md](BACKEND.md#統合済み全体設計) | `docs/old/DESIGN.md` |
 | `docs/UI.md` | [FRONTEND.md](FRONTEND.md#統合済みui設計) | `docs/old/UI.md` |
@@ -228,7 +228,7 @@ SHA-256 `b8cd685aae7251792700ce312c7ddc410c55e0bda5416abef68de83ce55429ea` の20
 | 目的 | 文書 |
 |---|---|
 | 開発・レビュー・文書更新のルールを確認する | [DEVELOPMENT.md](DEVELOPMENT.md) |
-| 最短でセットアップして起動する | [QUICKSTART.md](../README.md#統合済みクイックスタート) |
+| 最短でセットアップして起動する | [QUICKSTART.md](../README.md#起動方法) |
 | 症状から解決方法を探す | [TROUBLESHOOTING.md](DEVELOPMENT.md#統合済みトラブルシューティング) |
 | アプリが満たす要件を確認する | [REQUIREMENTS.md](REQUIREMENTS.md) |
 | 現在できないこと・前提条件を確認する | [CONSTRAINTS.md](REQUIREMENTS.md#統合済み制約) |
@@ -296,10 +296,10 @@ SHA-256 `b8cd685aae7251792700ce312c7ddc410c55e0bda5416abef68de83ce55429ea` の20
 |---|---|
 | [CACHE_DESIGN.md](old/CACHE_DESIGN.md) | [DESIGN.md](BACKEND.md#統合済み全体設計)、[DB-SCHEMA.md](DB-SCHEMA.md)、[SECURITY.md](SECURITY.md)、[TECH-DEBT-TRACKER.md](ISSUES.md#統合済み技術的負債トラッカー) |
 | [DATA_MODEL_SPEC.md](old/DATA_MODEL_SPEC.md) | [BACKEND.md](BACKEND.md)、[DB-SCHEMA.md](DB-SCHEMA.md)、[REQUIREMENTS.md](REQUIREMENTS.md) |
-| [ENVIRONMENT_VARIABLES.md](old/ENVIRONMENT_VARIABLES.md) | [BACKEND.md](BACKEND.md)、[QUICKSTART.md](../README.md#統合済みクイックスタート)、[CONSTRAINTS.md](REQUIREMENTS.md#統合済み制約)、[SECURITY.md](SECURITY.md) |
+| [ENVIRONMENT_VARIABLES.md](old/ENVIRONMENT_VARIABLES.md) | [BACKEND.md](BACKEND.md)、[QUICKSTART.md](../README.md#起動方法)、[CONSTRAINTS.md](REQUIREMENTS.md#統合済み制約)、[SECURITY.md](SECURITY.md) |
 | [EXTERNAL_API_SPEC.md](old/EXTERNAL_API_SPEC.md) | [BACKEND.md](BACKEND.md)、[SECURITY.md](SECURITY.md)、[TROUBLESHOOTING.md](DEVELOPMENT.md#統合済みトラブルシューティング)、[REFERENCES.md](REFERENCES.md) |
 | [PRODUCTION_DESIGN_GUIDE.md](old/PRODUCTION_DESIGN_GUIDE.md) | [DESIGN.md](BACKEND.md#統合済み全体設計)、[SECURITY.md](SECURITY.md)、[TECH-DEBT-TRACKER.md](ISSUES.md#統合済み技術的負債トラッカー)、[TASKS.md](GOAL.md#統合済み大規模タスク一覧) |
-| [README_dev.md](old/README_dev.md) | [DESIGN.md](BACKEND.md#統合済み全体設計)、[BACKEND.md](BACKEND.md)、[FRONTEND.md](FRONTEND.md)、[QUICKSTART.md](../README.md#統合済みクイックスタート) |
+| [README_dev.md](old/README_dev.md) | [DESIGN.md](BACKEND.md#統合済み全体設計)、[BACKEND.md](BACKEND.md)、[FRONTEND.md](FRONTEND.md)、[QUICKSTART.md](../README.md#起動方法) |
 
 完了済みPlanも、現行の進行状態と混同しないよう `docs/old/plans/` に保存する。
 
@@ -424,3 +424,12 @@ uv run --frozen --offline --no-sync pytest -m 'not live_api'
 
 - [actions/setup-node](https://github.com/actions/setup-node): Node.js指定、npmキャッシュ、cache-dependency-pathの公式定義。v7.0.0をcommit SHAへ固定した。
 - [PlaywrightのCI手順](https://playwright.dev/docs/ci-intro): npm ciとChromium/system dependenciesの準備、GitHub Actions上のブラウザ試験を確認した。
+
+
+## ライセンス通知の確認（2026-09-11）
+
+- [MIT公式本文](https://opensource.org/license/mit)と[SIL OFL公式本文](https://openfontlicense.org/open-font-license-official-text/): 複製・配布時の著作権表示と許諾文の保持条件を確認した。
+- [StyleX 0.19.0のLICENSE](https://github.com/facebook/stylex/blob/0.19.0/LICENSE): npm配布物に本文がないため、同版の上流本文を通知へ使用した。
+- [Weather Icons採用revisionの宣言](https://github.com/erikflowers/weather-icons/blob/bb80982bf1f43f2d57f9dd753e7413bf88beb9ed/README.md#licensing): アイコンのOFL、コードのMIT、文書のCC BY 3.0を区別した。
+- React等の通常依存・推移依存とNoto Sans JPは、インストール済み固定版のLICENSEとpackage.jsonを照合した。著作権表示とライセンス全文は [THIRD-PARTY-NOTICES.txt](../frontend/public/THIRD-PARTY-NOTICES.txt) に記載する。
+- case1〜case3のPNGは現在Git追跡対象であり、上記の過去記録にある「Git未追跡」は現在の状態を表さない。個別の利用・再配布許諾が確認された記録は見つからず、今回の第三者通知では許諾済みとしない。

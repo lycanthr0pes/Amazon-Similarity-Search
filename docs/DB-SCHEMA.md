@@ -144,7 +144,7 @@ provenanceはrequest・query plan digest、provider request ID、query index・l
 
 `TypedRankedProduct` は正規化商品、再生成可能な `ProductEvidenceSet`、`TypedProductEvaluation`、v4 breakdownを結ぶ。`TypedRankedProductBatch` はv4 profile、v3 source ranking batch、intent、query plan、normalized product batch、typed proposal、registry、requirement set、product evidence profileの各SHA-256と最大48件の商品を持つ。schema、profile、batch hash domainをv3から分け、旧batchをv4として検証できない。順位は必須状態、required一致率、preferred一致率、v4総合score、response indexの順である。
 
-これらは内部domain modelであり、現行 `outscraper/scored` cache、`ProductScore`、Streamlit、CLIへ直接保存しない。schema 3.0の `product_pipeline.py`、orchestration、stateはready proposalと `typed-ranking-v4` だけを扱い、typed batch digestを完了stateへ記録する。schema 2.0の `history_snapshot.py` はprovider metadata、digest、raw score、effective weight、内部証拠を除き、必須状態とdecisionを一致・未確認・情報矛盾・不一致等の利用者向けallowlistへ変換する。旧v3 batch、旧検索schema、SQLite version 1を暗黙変換しない。browserへ返すAPIは未実装である。
+これらは内部domain modelであり、現行 `outscraper/scored` cache、`ProductScore`、CLIへ直接保存しない。schema 3.0の `product_pipeline.py`、orchestration、stateはready proposalと `typed-ranking-v4` だけを扱い、typed batch digestを完了stateへ記録する。schema 2.0の `history_snapshot.py` はprovider metadata、digest、raw score、effective weight、内部証拠を除き、必須状態とdecisionを一致・未確認・情報矛盾・不一致等の利用者向けallowlistへ変換する。旧v3 batch、旧検索schema、SQLite version 1を暗黙変換しない。browserへ返すAPIは未実装である。
 
 ### 4.9 次期検索後半pipeline result（履歴変換を一部実装）
 
@@ -346,9 +346,7 @@ preferred_term_weight, related_term_weight
 
 ## 9. scopeによる分離
 
-- Streamlitはセッション開始時に `secrets.token_hex(16)` でscopeを作る
-- 同じ画面セッション内では同じscopeを再利用する
-- 別セッションは同じ入力でも異なるキーになる
+- Python呼出元が異なるscopeを指定した場合、同じ入力でも異なるキーになる
 - CLIとscope未指定のPython呼出は `local-cli` を継続利用する
 - scopeは1文字以上128文字以下である
 
@@ -509,7 +507,7 @@ queued jobは作成から24時間以内にworker開始できない場合だけ `
 
 process再起動後はcallbackを復元できないため、残ったqueued・running jobを `worker_restarted` の固定失敗、`cancel_requested` jobを `cancelled` へ原子的に移す。外部処理を推測して再実行しない。終了jobは `finished_at` から30日後に明示的な `purge_expired()` で削除でき、期限後はcleanup前でも個別取得へ返さない。
 
-新規POSIX fileは0600で作り、symlink・非regular file、groupまたはother権限を持つ既存file、未知schema、既存objectを持つversion 0 DB、必須column欠落、row modelまたはdigest不一致を固定storage errorで拒否する。全取得・取消・件数照会はownerを必須とする。ただしownerは認証結果ではなく固定local値である。local ASGI APIはこの固定ownerで既存repositoryを呼ぶが、DB schemaを変更しない。複数executorを同じDBへ接続する運用、共有DB、backup、暗号化、定期purge、公開HTTP server、現行Streamlit・次期フロントエンド接続は提供しない。
+新規POSIX fileは0600で作り、symlink・非regular file、groupまたはother権限を持つ既存file、未知schema、既存objectを持つversion 0 DB、必須column欠落、row modelまたはdigest不一致を固定storage errorで拒否する。全取得・取消・件数照会はownerを必須とする。ただしownerは認証結果ではなく固定local値である。local ASGI APIはこの固定ownerで既存repositoryを呼ぶが、DB schemaを変更しない。複数executorを同じDBへ接続する運用、共有DB、backup、暗号化、定期purge、公開HTTP server、現行CLI・次期フロントエンド接続は提供しない。
 
 ## 18. Counterfactual development較正artifact（テスト専用JSON）
 

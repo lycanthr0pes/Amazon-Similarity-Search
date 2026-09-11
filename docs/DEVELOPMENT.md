@@ -842,7 +842,7 @@ Ruffの規則に従う。文書標準化だけを理由に既存コードを書�
 | Bonsai通信 | `src/clients/bonsai_client.py`、`src/clients/bonsai_prompt.txt` |
 | Outscraper通信とURL検証 | `src/clients/outscraper_client.py` |
 | キャッシュの保存、読込、TTL | `src/repositories/cache_repository.py` |
-| Streamlitの状態と表示 | `src/ui/streamlit_ui.py` |
+| React画面の状態と表示 | `frontend/src/` |
 | 観察可能な現行動作 | `tests/` |
 
 文書と実装が異なる場合は、コードとテストで現状を確認し、同じ変更で文書を更新する。
@@ -881,7 +881,7 @@ ON/OFFには別寸法のトグルスイッチを使い、背景56×32px・つま
 | 設定、環境変数、既定値 | `src/config.py`、`.env.example`、`docs/BACKEND.md`、`docs/SECURITY.md`、テスト |
 | データモデル、保存形式 | model実装、`docs/DB-SCHEMA.md`、`docs/BACKEND.md`、互換性、移行、テスト |
 | 外部API、provider、再試行 | client実装、`docs/BACKEND.md`、`docs/SECURITY.md`、`docs/REFERENCES.md`、mockテスト |
-| UIの入力、表示、状態 | 対象となる `frontend/` または `src/ui/streamlit_ui.py`、`docs/FRONTEND.md`、`docs/REQUIREMENTS.md`、テスト |
+| UIの入力、表示、状態 | 対象となる `frontend/`、`docs/FRONTEND.md`、`docs/REQUIREMENTS.md`、テスト |
 | 現在の目的、未解決問題 | `docs/GOAL.md`、`docs/ISSUES.md` |
 | 実施済み作業、利用者向け変更 | `docs/WORKLOG.md`、`docs/CHANGELOG.md` |
 | AIレビューハーネスの契約 | `docs/SECURITY.md`、`docs/HARNESS-RUNBOOK.md`、関連テスト |
@@ -936,7 +936,7 @@ npm run test:e2e
 UI_TEST_MODE=development npm run test:e2e -- controls.spec.ts motion.spec.ts frame.spec.ts navigation.spec.ts
 ```
 
-型・整形、Vitest、ビルド、Playwrightの結果を分けて記録する。ブラウザ試験は通常ビルド済み画面をloopbackの4173番で起動し、`UI_TEST_MODE=development` では開発サーバーを5175番で起動する。合成入力だけで操作して外部通信を拒否し、実行中の手動previewとポートを共有しない。CSSのreset層をHTMLのheadでStyleXより先に登録し、両モードでボタンの通常・無効・処理中・ホバーの配色を確認する。React画面だけの変更で実検索用StreamlitやBonsaiを起動する必要はない。起動手順、シナリオ、履歴の寿命は [FRONTEND.md](FRONTEND.md#141-配置と実行手順) を参照する。
+型・整形、Vitest、ビルド、Playwrightの結果を分けて記録する。ブラウザ試験は通常ビルド済み画面をloopbackの4173番で起動し、`UI_TEST_MODE=development` では開発サーバーを5175番で起動する。合成入力だけで操作して外部通信を拒否し、実行中の手動previewとポートを共有しない。CSSのreset層をHTMLのheadでStyleXより先に登録し、両モードでボタンの通常・無効・処理中・ホバーの配色を確認する。React画面だけの変更で実検索用CLIやBonsaiを起動する必要はない。起動手順、シナリオ、履歴の寿命は [FRONTEND.md](FRONTEND.md#141-配置と実行手順) を参照する。
 
 GitHub ActionsのfrontendジョブはPythonジョブと独立して、Node.js 22・npm ci・型/整形・Vitest・build・Chromiumの順で検証する。ビルド版の全Playwrightテストと開発版のcontrols/motion/frame/navigationを各 `--workers=1 --forbid-only` で実行し、再試行で失敗を隠さない。setup-nodeのnpm cacheはfrontend/package-lock.jsonをキーにする。npm/Chromium/OS依存の取得は環境準備であり、画面検証に実バックエンドやサービスcredentialを渡さない。
 
@@ -1453,7 +1453,7 @@ uv run --frozen --offline --no-sync pytest -m 'not live_api'
 git diff --check
 ```
 
-変更に応じて対象テスト、CLI起動、Streamlit起動を追加する。BonsaiやOutscraperを使う実サービス結合確認は、単体テストと分け、APIキー、課金、取得件数、待ち時間を確認してから実施する。
+変更に応じて対象テスト、CLI起動、Reactモック起動を追加する。BonsaiやOutscraperを使う実サービス結合確認は、単体テストと分け、APIキー、課金、取得件数、待ち時間を確認してから実施する。
 
 検証結果には次を残す。
 
@@ -1648,7 +1648,7 @@ output. Do not modify the candidate or coordinator directories.
 > 統合元: `docs/TROUBLESHOOTING.md`。統合前の文書は `docs/old/` に保存する。
 
 
-> **標準文書との関係:** セットアップと通常利用の入口は [README.md](../README.md) と [QUICKSTART.md](../README.md#統合済みクイックスタート) とする。この文書は症状別の診断・復旧手順を保持する。
+> **標準文書との関係:** セットアップと通常利用の入口は [README.md](../README.md) と [QUICKSTART.md](../README.md#起動方法) とする。この文書は症状別の診断・復旧手順を保持する。
 
 ### 1. 調査の基本順序
 
@@ -1658,11 +1658,11 @@ output. Do not modify the candidate or coordinator directories.
 2. `.env` を読み込めるか
 3. Bonsaiの `/models` に到達できるか
 4. Outscraper APIキーが設定されているか
-5. StreamlitではなくCLIでも再現するか
+5. Reactモックの画面問題か、CLIの実検索問題か
 6. ターミナルに表示された段階と例外種別を確認する
 7. キャッシュ読込時だけ起きるかを確認する
 
-Streamlitは利用者画面に固定エラーだけを表示する。詳しい原因は、`uv run streamlit run app.py` を実行したターミナルのログで確認する。APIキーやキャッシュ内容を問い合わせ、issue、チャットへ貼らない。
+Reactモックは固定の合成エラーを表示する。実検索の原因はCLIを実行したターミナルのログで確認する。APIキーやキャッシュ内容を問い合わせ、issue、チャットへ貼らない。
 
 ### 2. `uv` が見つからない
 
@@ -1696,7 +1696,7 @@ uv sync --locked
 #### 症状
 
 - `uv sync --locked` がPython版やロック不一致を報告する
-- `streamlit`、`pydantic`、`sudachipy` などをimportできない
+- `pydantic`、`sudachipy` などをimportできない
 
 #### 主な原因
 
@@ -1710,7 +1710,7 @@ uv sync --locked
 uv lock --check --offline
 uv run --frozen --offline --no-sync python --version
 uv run --frozen --offline --no-sync python -c \
-  "import streamlit, pydantic, sklearn, sudachipy"
+  "import pydantic, sklearn, sudachipy"
 ```
 
 #### 解決
@@ -1754,13 +1754,13 @@ rg -n '^[A-Z][A-Z0-9_]*=$' .env
 
 #### 解決
 
-使わない任意項目は行頭に `#` を付ける。使用する項目には正しい型の値を設定し、総合係数を合計1.0に戻す。`.env` はアプリ起動時に読み込まれるため、修正後はStreamlitまたはCLIを再起動する。
+使わない任意項目は行頭に `#` を付ける。使用する項目には正しい型の値を設定し、総合係数を合計1.0に戻す。`.env` はアプリ起動時に読み込まれるため、修正後はCLIを再実行する。
 
 ### 5. `Bonsai Server: not running` と表示される
 
 #### 症状
 
-StreamlitのサイドバーにBonsai停止の警告が出る。検索すると固定の失敗メッセージになる場合がある。
+CLIの検索でBonsaiへの接続に失敗する。
 
 #### 主な原因
 
@@ -1781,7 +1781,7 @@ curl --fail --show-error http://127.0.0.1:8080/v1/models
 
 Bonsai GGUFモデルを指定して `llama-server` を起動する。別ホスト・ポートなら `.env` の `BONSAI_BASE_URL` を実際のOpenAI互換base URLへ合わせ、アプリを再起動する。
 
-疎通表示は5秒キャッシュされるため、サーバー起動直後は少し待ってから画面を再実行する。
+旧画面の疎通表示と5秒キャッシュは削除済みである。サーバーの準備完了後にCLIを再実行する。
 
 ### 6. Bonsaiはrunningだが検索に失敗する
 
@@ -1820,7 +1820,7 @@ uv run python -m src.main.run "ワイヤレスキーボード" --display-limit 1
 
 #### 症状
 
-サイドバーがAPIキー未設定を警告し、検索時に次のエラーが発生する。
+CLIで検索すると次のエラーが発生する。
 
 ```text
 OUTSCRAPER_API_KEY is not set
@@ -2003,7 +2003,7 @@ Scored products loaded from cache.
 uv run python -m src.main.run "検索条件" --no-cache
 ```
 
-この指定でも新しいキャッシュは保存され、外部API利用が発生する。Streamlitには `--no-cache` 相当の画面操作がない。`ENABLE_CACHE=false` を使う場合は `.env` 変更後にアプリを再起動する。
+この指定でも新しいキャッシュは保存され、外部API利用が発生する。`ENABLE_CACHE=false` を使う場合は `.env` 変更後にアプリを再起動する。
 
 ### 15. キャッシュの読込・書込に失敗する
 
@@ -2062,7 +2062,7 @@ find cache -type f -name '*.json' -printf '%s %p\n' | sort -n | tail
 - 重み変更は代表クエリの期待順位を用意してから行う
 - 厳密除外が必要なら仕様変更として [REQUIREMENTS.md](REQUIREMENTS.md) とテストを更新する
 
-### 17. Streamlitのポートを使用できない
+### 17. フロントエンドのポートを使用できない
 
 #### 症状
 
@@ -2071,7 +2071,7 @@ find cache -type f -name '*.json' -printf '%s %p\n' | sort -n | tail
 #### 確認
 
 ```sh
-ss -ltn | rg ':8501\b'
+ss -ltn | rg ':(5173|4173)\b'
 ```
 
 #### 解決
@@ -2079,7 +2079,8 @@ ss -ltn | rg ':8501\b'
 既存プロセスを確認するか、別ポートで起動する。
 
 ```sh
-uv run streamlit run app.py --server.port 8502
+cd frontend
+npm run dev -- --port 5174
 ```
 
 外部公開用の `0.0.0.0` bindを安易に指定しない。現行アプリには認証とレート制限がない。
@@ -2133,7 +2134,7 @@ APIキーをGit、ログ、issue、チャット、スクリーンショットへ
 秘密情報を除き、次を記録する。
 
 - 発生日時とタイムゾーン
-- 実行方法（StreamlitまたはCLI）
+- 実行方法（ReactモックまたはCLI）
 - Python、uv、OSの版
 - 失敗した段階（Step 1から4）
 - 例外クラスと、秘密情報を除いた最小メッセージ
@@ -2210,7 +2211,7 @@ server・model pathをすべて指定したときだけ、test所有のlocalhost
 
 #### 4.1 現行検索の回帰
 
-現行の `run_product_search()` とStreamlit・CLIは、主に次のテストで確認する。
+現行の `run_product_search()` とCLIは、主に次のテストで確認する。
 
 | 対象 | 主なテスト |
 |---|---|
@@ -2218,7 +2219,7 @@ server・model pathをすべて指定したときだけ、test所有のlocalhost
 | Outscraper要求・状態・再試行・URL検証 | `tests/test_outscraper_client.py`、`tests/test_outscraper_search_select.py` |
 | 商品正規化と採点 | `tests/test_amazon_product_normalization.py`、`tests/test_product_scoring.py`、`tests/test_src_product_scoring.py` |
 | キャッシュと全体パイプライン | `tests/test_cache_repository.py`、`tests/test_run_pipeline.py` |
-| StreamlitとCLI | `tests/test_streamlit_ui.py`、`tests/test_cli.py` |
+| CLI | `tests/test_cli.py` |
 | 既存互換境界 | `tests/test_backend_characterization.py` |
 
 これらは外部応答をmockまたはfixtureで置き換える。成功しても、実Bonsaiの意味品質、Outscraper認証、Amazonの商品取得、利用料金、ブラウザ操作を確認したことにはならない。

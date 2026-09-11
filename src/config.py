@@ -54,9 +54,8 @@ class Settings(BaseSettings):
     # 関連語の繰り返し回数
     related_term_weight: int = Field(default=1, ge=0)
 
-    # UI関連
+    # CLI表示
     search_result_display_limit: int = Field(default=10, gt=0)
-    show_debug_info: bool = False
 
     cache_dir: Path = PROJECT_ROOT / "cache"
     enable_cache: bool = True

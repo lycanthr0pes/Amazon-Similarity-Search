@@ -4,7 +4,7 @@
 
 ## 1. 目的と範囲
 
-この文書は、amazon-explorer の検索パイプライン、外部API境界、正規化、ランキング、設定、キャッシュ制御を説明する。現行バックエンドは独立したWeb APIサーバーではなく、Streamlit UIとCLIから直接呼ばれるPythonモジュール群である。
+この文書は、amazon-explorer の検索パイプライン、外部API境界、正規化、ランキング、設定、キャッシュ制御を説明する。現行バックエンドは独立したWeb APIサーバーではなく、CLIから直接呼ばれるPythonモジュール群である。
 
 全体方針は [統合済み全体設計](#統合済み全体設計)、利用者向けの次期操作は [SEARCH-FLOW.md](../SEARCH-FLOW.md)、内部モデルと保存形式は [DB-SCHEMA.md](DB-SCHEMA.md)、利用条件と制約は [REQUIREMENTS.md](REQUIREMENTS.md)、検証方法は [DEVELOPMENT.mdの統合済みテスト方針](DEVELOPMENT.md#統合済みテスト方針) を参照する。
 
@@ -12,7 +12,7 @@
 
 ### 2.1 共通パイプライン
 
-`src/main/run.py` の次の関数がUIとCLIの共通入口である。
+`src/main/run.py` の次の関数がCLIとPython呼出の共通入口である。
 
 ```python
 run_product_search(
@@ -27,16 +27,11 @@ run_product_search(
 
 - `user_input` は前後空白を除いた後に非空でなければならない
 - `cache_scope` は前後空白を除いた後に1文字以上128文字以下でなければならない
-- Streamlitはセッションごとにランダムな32桁16進文字列をscopeへ渡す
 - CLIとscope未指定のPython呼出は `local-cli` を使う
 
-### 2.2 Streamlit
+### 2.2 フロントエンド
 
-```sh
-uv run streamlit run app.py
-```
-
-`app.py` は `src.ui.streamlit_ui.main()` を呼ぶだけの薄いエントリーポイントである。画面設計は [FRONTEND.md](FRONTEND.md#統合済みui設計) を参照する。
+Streamlitは2026-09-11の利用者指示で削除した。React + StyleXの画面はオフラインモックとして動作し、この検索パイプラインへの接続は未実装である。起動方法は [README](../README.md#起動方法) を参照する。
 
 ### 2.3 CLI
 
@@ -83,7 +78,7 @@ uv run python -m src.main.run "静かで軽い日本語配列のワイヤレス�
 1. `ProductAttributes` 全体、正規化キー、すべての採点設定、採点版からキーを作る。
 2. キャッシュを `ProductScore` のリストとして再検証する。
 3. ミスの場合は全商品を採点し、総合スコア降順へ並べて保存する。
-4. UIまたはCLIへリストを返す。
+4. CLIまたはPython呼出元へリストを返す。
 
 ## 4. 設定
 
@@ -100,7 +95,7 @@ uv run python -m src.main.run "静かで軽い日本語配列のワイヤレス�
 | `BONSAI_MAX_TOKENS` | `1000` | 正数 |
 | `BONSAI_PROMPT_PATH` | `src/clients/bonsai_prompt.txt` | systemプロンプト。相対値はプロジェクト基準 |
 
-`/models` の疎通確認は設定値ではなく3秒のタイムアウトを使用し、Streamlit側で結果を5秒間キャッシュする。
+`/models` の疎通確認は設定値ではなく3秒のタイムアウトを使用する。Streamlit専用だった画面側の5秒キャッシュは削除した。
 
 ### 4.2 Outscraper
 
@@ -155,7 +150,7 @@ uv run python -m src.main.run "静かで軽い日本語配列のワイヤレス�
 
 総合係数3つの合計は1.0でなければならない。条件語重み5つは、少なくとも1つを正にする。
 
-### 4.5 キャッシュとUI
+### 4.5 キャッシュとCLI表示
 
 | 環境変数 | 既定値 | 制約・用途 |
 |---|---|---|
@@ -163,8 +158,7 @@ uv run python -m src.main.run "静かで軽い日本語配列のワイヤレス�
 | `ENABLE_CACHE` | `true` | 既存キャッシュの読込可否 |
 | `LLM_CACHE_TTL_SECONDS` | `86400` | 正数。属性キャッシュTTL |
 | `OUTSCRAPER_CACHE_TTL_SECONDS` | `3600` | 正数。生レスポンスTTL |
-| `SEARCH_RESULT_DISPLAY_LIMIT` | `10` | 正数。UI初期表示数、画面上限30 |
-| `SHOW_DEBUG_INFO` | `false` | サイドバーへ採点の総合係数3項目と条件語重み5項目を表示 |
+| `SEARCH_RESULT_DISPLAY_LIMIT` | `10` | 正数。CLIの既定表示件数 |
 
 空文字を数値、bool、Pathの項目として有効化すると型変換に失敗し得る。`.env.example` をコピーした後、利用する行だけコメントを外す。
 
@@ -519,7 +513,7 @@ EXEC-073では `provisional_search_pipeline.py` を追加し、成功済みOutsc
 
 ### 13.4 local job・履歴HTTP API
 
-`production_api.py` は、既存の `ProvisionalProductionSearchService` と `SqliteProvisionalHistoryRepository` を注入して使うStarlette ASGI application factoryである。serverを自動起動せず、legacy Streamlit、次期フロントエンド、最終承認controllerへは接続しない。APIが受け取るownerはなく、全操作でserver-side固定の `local-user` を使う。ASGI client addressがIPv4またはIPv6 loopbackでない場合は処理前に403を返す。
+`production_api.py` は、既存の `ProvisionalProductionSearchService` と `SqliteProvisionalHistoryRepository` を注入して使うStarlette ASGI application factoryである。serverを自動起動せず、legacy CLI、次期フロントエンド、最終承認controllerへは接続しない。APIが受け取るownerはなく、全操作でserver-side固定の `local-user` を使う。ASGI client addressがIPv4またはIPv6 loopbackでない場合は処理前に403を返す。
 
 | method・path | 入力 | 成功応答 |
 |---|---|---|
@@ -559,7 +553,7 @@ CLIP比較・ranking式は変更しない。暫定schema 5.0履歴には従来�
 
 ## 14. 型付き条件と証拠別ランキング（最小domainを一部実装）
 
-この節は、自然文から得た条件、生成した参考画像と偽画像、実商品の文字・構造化属性・画像を、商品分野が変わっても同じ流れで比較する次期設計を定義する。`typed_requirements.py` と `requirement_evaluation.py` には、型付き条件、repository内registry、証拠binding・裁定、必須状態と安定順位keyの外部通信を持たない最小domainを実装した。`product_evidence.py` には、正規化済み商品の専用color field、固定feature全体、限定した商品名表現を `structured`・`title_exact` 証拠へ変換するadapterを実装した。既存1回のBonsai strict intent応答にはJSON-nativeな `typed_conditions` 候補を追加し、`typed_intent_adapter.py` がtrusted registryで `TypedRequirement` または固定blocking issueへ変換する。これらはschema 3.0のoffline orchestration、承認、state、検索後半pipelineとschema 2.0の表示用履歴へ接続済みである。legacy `run_product_search()`、JSON cache、API、現行Streamlit、次期画面へは接続せず、画像componentも無効である。この節を現行検索の動作またはcase3の順位改善実績として扱わない。
+この節は、自然文から得た条件、生成した参考画像と偽画像、実商品の文字・構造化属性・画像を、商品分野が変わっても同じ流れで比較する次期設計を定義する。`typed_requirements.py` と `requirement_evaluation.py` には、型付き条件、repository内registry、証拠binding・裁定、必須状態と安定順位keyの外部通信を持たない最小domainを実装した。`product_evidence.py` には、正規化済み商品の専用color field、固定feature全体、限定した商品名表現を `structured`・`title_exact` 証拠へ変換するadapterを実装した。既存1回のBonsai strict intent応答にはJSON-nativeな `typed_conditions` 候補を追加し、`typed_intent_adapter.py` がtrusted registryで `TypedRequirement` または固定blocking issueへ変換する。これらはschema 3.0のoffline orchestration、承認、state、検索後半pipelineとschema 2.0の表示用履歴へ接続済みである。legacy `run_product_search()`、JSON cache、API、React画面へは接続せず、画像componentも無効である。この節を現行検索の動作またはcase3の順位改善実績として扱わない。
 
 ### 14.1 設計原則
 
@@ -1097,15 +1091,15 @@ amazon-explorer は、日本語の自然文から Amazon.co.jp の商品候補�
 - 外部レスポンスのPydanticモデルへの正規化
 - SudachiPyとTF-IDFによる日本語・英語テキスト比較
 - 条件一致、価格、否定条件を組み合わせたランキング
-- Streamlit UIとCLI
+- CLIとReact + StyleXの独立したオフラインモック
 - 処理段階ごとのローカルJSONキャッシュ
 
-現行のlegacy Streamlit実行経路に含まれないもの:
+現行のlegacy CLI実行経路に含まれないもの:
 
-- `src/search_v2/production_api.py` のlocal ASGI API factoryを起動するcomposition rootと、legacy Streamlitからの利用
+- `src/search_v2/production_api.py` のlocal ASGI API factoryを起動するcomposition rootと、legacy CLIからの利用
 - RDB、検索エンジン、オブジェクトストレージ
 - 認証、認可、テナント管理
-- 現行Streamlitからlocal job境界への接続、利用者向け状態表示・取消操作、詳細進捗API
+- React画面からlocal job境界への接続、利用者向け状態表示・取消操作、詳細進捗API
 - [次期検索フロー v2](../SEARCH-FLOW.md) を提供するBonsai・Cloudflare・Outscraper実サービス結合、確認画面、実画像類似度。strict intent、network非依存response adapter、Bonsai・Cloudflare・Outscraper Requests HTTP transport、Cloudflareのmock応答・512px PNG正規化・4枚完了・途中失敗回復state、Outscraper task・polling、正規化、Sudachi/英数字tokenizer、最大2件query plan、承認から完了・固定失敗までのstate、single-use token、同一process内の利用量予約、Cloudflare multipart request descriptor、Outscraper複数query descriptor・明示承認permit、観測値だけの商品normalizer、画像proxy・fixture score、画像無効でレビュー補助評価を持つ決定的ranking v3、利用者操作ごとに停止するBonsaiから完了までのoffline orchestrationは隔離基盤として実装済み
 - コンテナ、クラウド配布設定。決定論的CI定義は現行作業ツリーに追加済みだが、GitHub上の実行結果は未確認
 
@@ -1132,7 +1126,7 @@ BonsaiとOutscraperの可変なレスポンスを後段へ直接流さず、次�
 
 #### 3.3 結果に影響する値をキャッシュキーへ含める
 
-各キャッシュキーは、入力、設定、前段の内容、処理版を正規化したJSONからSHA-256を計算し、先頭24桁を使う。APIキーは含めない。Streamlitではランダムなセッションscope、CLIでは `local-cli` scopeを使用する。
+各キャッシュキーは、入力、設定、前段の内容、処理版を正規化したJSONからSHA-256を計算し、先頭24桁を使う。APIキーは含めない。CLIでは `local-cli` scopeを使用する。Python呼出ではscopeを明示指定できる。
 
 #### 3.4 外部APIを信頼境界として扱う
 
@@ -1146,16 +1140,14 @@ Outscraperの結果URLは、APIキーを送信する前にHTTPSかつ設定endpo
 
 ```mermaid
 flowchart LR
-    User[利用者] --> UI[Streamlit UI]
+    User[利用者] --> UI[React オフラインモック]
     User --> CLI[CLI]
-    UI --> Pipeline[run_product_search]
-    CLI --> Pipeline
+    CLI --> Pipeline[run_product_search]
     Pipeline --> Bonsai[Bonsai OpenAI互換API]
     Pipeline --> Outscraper[Outscraper API]
     Pipeline --> Normalize[正規化]
     Normalize --> Score[採点]
     Pipeline <--> Cache[ローカルJSONキャッシュ]
-    Score --> UI
     Score --> CLI
 ```
 
@@ -1163,8 +1155,7 @@ flowchart LR
 
 | 場所 | 責務 |
 |---|---|
-| `app.py` | Streamlitエントリーポイント |
-| `src/ui/streamlit_ui.py` | 入力、状態表示、検索実行、結果描画 |
+| `frontend/` | React + StyleXのオフライン画面、固定合成データ、タブ内履歴 |
 | `src/main/run.py` | 4段階パイプライン、キャッシュ制御、CLI |
 | `src/clients/` | Bonsai・OutscraperとのHTTP通信 |
 | `src/services/` | 属性補正、検索語選択、商品正規化、テキスト処理、採点 |
@@ -1266,7 +1257,7 @@ cache/
 | 入力 | 空入力、空または長すぎるscope、日本語・英語検索語の空文字またはURL形式を `ValueError` |
 | キャッシュ | 不在、期限切れ、JSON破損、モデル不一致をミスとして再計算 |
 
-Streamlitは詳細例外をサーバーログへ記録し、画面には固定の失敗メッセージを表示する。CLIでは例外が呼出元へ伝播する。
+CLIでは例外が呼出元へ伝播する。Reactモックは固定の失敗状態を表示し、実バックエンドの例外を受け取らない。
 
 ### 11. 設定とパス
 
@@ -1328,7 +1319,7 @@ Streamlitは詳細例外をサーバーログへ記録し、画面には固定�
 - 欠損componentのweightを除外して再正規化する
 - Outscraperは第2確認のsingle-use承認なしでは呼ばない
 - Outscraper後の商品候補はBonsai、OpenAIその他のLLMへ送らず、未観測属性を未知のまま保持する
-- UIは状態機械とtyped APIだけに依存し、現行Streamlitや次期React + StyleXを検索ロジックの所有者にしない
+- UIは状態機械とtyped APIだけに依存し、React + StyleXを検索ロジックの所有者にしない
 - 完了結果は0件も含めて検索履歴へ冪等に保存し、履歴一覧・詳細・削除から外部処理を呼ばない
 - 検索履歴はcache TTLと分離して完了日時から30日間保持し、ownerを検証した表示用スナップショットだけを通常画面へ返す。個別削除と期限削除は結果と専有生成画像を物理削除する
 - 一時確認はLightboxとAlertDialogへ分離し、待機中の承認済み条件は読み取り専用の右側要約として常時表示する。検索語と商品詳細はページ内折り畳みを維持する
@@ -1767,7 +1758,7 @@ start<end、重複引用、全商品の一意な網羅、引用の意味的妥�
 
 旧辞書profileの語義候補は最大16件。単一の完全一致語義は辞書だけで候補化する。複数なら `intfloat/multilingual-e5-small` の量子化ONNXで `query: 原文` と `passage: 定義` を比較する。CPU・2 threads、入力2000字、512 tokensを超えたら保留、切捨てなし。cosine 0.75以上かつ次点差0.04以上を暫定採用条件とし、確率とは扱わない。実developmentではマウス/ドライバー4文脈を解決できず保留したため、一般的な語義解決の品質合格は未達。モデル/辞書の更新ごとに品質を再確認する。
 
-資材は `lexical_assets.py` がruntime-manifestのhash一致を確認してからロードする。manifestは運用者が事前に公開配布の出典/hashを確認して作るローカル信頼点であり、署名による配布元証明ではない。`uv sync --extra lexical --frozen` は別工程の通信を伴う環境準備。再現手順は [README](../README.md#ローカル辞書による検索語候補) を参照する。旧Bonsai profileは新辞書profileへ変換せず、旧表示履歴DBは変更しない。新fieldで中間計画digestは変わるため、更新前の承認は引き継がず再確認する。
+資材は `lexical_assets.py` がruntime-manifestのhash一致を確認してからロードする。manifestは運用者が事前に公開配布の出典/hashを確認して作るローカル信頼点であり、署名による配布元証明ではない。`uv sync --extra lexical --frozen` は別工程の通信を伴う環境準備。再現手順は [資材の準備手順](#ローカル辞書資材の準備手順) を参照する。旧Bonsai profileは新辞書profileへ変換せず、旧表示履歴DBは変更しない。新fieldで中間計画digestは変わるため、更新前の承認は引き継がず再確認する。
 
 
 ### 日本語定義と曖昧時のBonsai語義選択
@@ -1892,3 +1883,43 @@ CandidateSearchFlow、complete_candidate_ranking、candidate実runnerの既定�
 単条件では正画像とのcosineから偽画像とのcosineを引き、1−正/偽cosineで割って[-1,1]へclamp後[0,1]へ変換する。複数条件は既存minimum-positiveと同じく、当該偽画像以外の参照を正例として最小cosineと平均参照距離を使い、計算可能な条件の最小点を採用する。参照距離1e-6未満と画像欠測は当該条件を保留する。全体外観のscopeで、色/背景等の影響を除去した部位測定ではない。
 
 画像batchはsiglip2-appearance-image-v1、最終順位はcandidate-siglip2-appearance-v1、履歴はcounterfactual-siglip2-appearance-v1。旧CLIPとの混在を拒否し、旧履歴は旧profileで保持する。資格条件優先・タイトル80%/画像20%・画像欠測時のタイトル点、参考/最終画像の承認は変更しない。CLI既定は--image-model siglip2で、--asset-rootと--image-pythonに準備済み資材とPythonを指定する。明示--image-model clipでは旧CLIPのappearanceを使用し--image-pythonは指定しない。保存済み旧承認の再実行専用tools/candidate_search_retryは旧CLIPを明示して互換性を保持する。
+
+
+## ローカル辞書資材の準備手順
+
+candidate専用backendでは、CLIP用Bonsaiを維持し、任意の辞書経路で言い換え語・英訳候補を用意できる。語義選択の精度は開発段階で、候補を確認して検索語を1本選ぶ。用途・取り付け先などの関係が未解決なら検索を保留する。
+
+依存取得は通常のoffline検証と分けて行う。
+
+```bash
+uv sync --extra lexical --frozen
+```
+
+新しい資材directoryへ、公式 `intfloat/multilingual-e5-small` revision `614241f622f53c4eeff9890bdc4f31cfecc418b3` の `onnx/model_qint8_avx512_vnni.onnx` を `encoder.onnx` として置き、同revisionの `tokenizer.json` を用意する。JMdict_e XMLと日本語WordNet 1.1 SQLiteを別途展開し、配布元の出典・hash・ライセンス通知も保存する。JMdictはCC BY-SA 4.0、WordNetは日本語版とPrinceton版の両通知を保持する。資材はrepositoryへcommitしない。公式リンクは [REFERENCES](REFERENCES.md#検索語のローカル辞書と文脈モデル) に記載する。
+
+```bash
+uv run --frozen --offline --no-sync python -m tools.prepare_lexical_assets --asset-root /path/to/lexical --jmdict-xml /path/to/JMdict_e --wordnet-db /path/to/wnjpn.db
+uv run --frozen --offline --no-sync pytest -q -m 'not live_api' tests/test_lexical_local_integration.py --lexical-assets /path/to/lexical
+```
+
+prepareは既存の資材を上書きせず、辞書とruntime-manifestを作る。runtimeはmanifestのSHA-256を検証し、通信せずCPUでロードする。上記テストの構文解析・辞書・encoderは実物、Bonsai・商品検索・画像・CLIPはfixture、履歴は一時SQLiteであり、本番E2Eではない。
+
+専用 `tools.candidate_search_live_e2e` へ `--lexical-assets /path/to/lexical` を付けるとこの経路を接続する。未指定時は元queryのみで、検索語生成のBonsai呼び出しは行わない。実API実行には従来の実行条件提示・人間承認が必要。
+
+
+日本語定義と曖昧時のBonsai語義選択を使う場合は、新しいdirectoryに `hotchpotch/japanese-reranker-xsmall-v2` revision `de99fd2f16c7b5df1df1bcc1d9ad2c16d88ce93a` の `onnx/model_qint8_avx2.onnx` を `encoder.onnx` として置き、同revisionのtokenizer.json/config.json・出典・ライセンスを用意する。既存のE5資材を上書きしない。
+
+```bash
+uv run --frozen --offline --no-sync python -m tools.prepare_lexical_assets --contextual --asset-root /path/to/contextual-lexical --jmdict-xml /path/to/JMdict_e --wordnet-db /path/to/wnjpn.db
+uv run --frozen --offline --no-sync pytest -q -m 'not live_api' tests/test_lexical_context_local.py --lexical-assets /path/to/contextual-lexical
+```
+
+この新directoryを専用CLIの `--lexical-assets` へ渡すと、CLIP用Bonsaiに加え、商品名候補の選択・必要時の未収録名提案を最大1回使う。辞書訳を優先し、未収録の名前・英訳は人間確認前の提案として区別する。上記pytestは実小型モデルの観測済み4例の順位確認で、実Bonsaiや本番E2Eを実行しない。
+
+
+構文付きの候補準備は、商品名の原文範囲と検索用候補を分けて保持します。既存contextual資材を指定すると、条件検査より先に複合語辞書検索と必要時の商品名補完を行います。候補があっても未解釈条件が残る場合は停止し、例外のproduct_reviewから候補と原文を確認できます。固定合成診断runnerはこのreviewをprivateなproduct-review.jsonへ保存します。商品名補完は検索語の未確認提案で、ランキングや商品属性の推論には使いません。 辞書候補が0件なら、Bonsaiが原文と対象だけから名称・英訳を直接推論します。この経路は生成後に辞書へ再照会せず、商品名だけの入力も対象です。候補は人間確認後に使用し、辞書の障害は候補なしとして扱いません。
+
+```sh
+uv run --frozen --offline --no-sync pytest tests/test_product_phrase.py tests/test_product_phrase_bonsai.py tests/test_product_phrase_flow.py -q
+uv run --frozen --offline --no-sync pytest tests/test_product_phrase_local.py --lexical-assets /home/products/models/search-lexical-context-v2 -q
+```

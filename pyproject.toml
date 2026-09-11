@@ -1,7 +1,7 @@
 [project]
 name = "amazon-explorer"
 version = "0.1.0"
-description = "自然言語からAmazon商品候補を検索・正規化・ランキングするStreamlitアプリ"
+description = "自然言語からAmazon商品候補を検索・正規化・ランキングするアプリケーション"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
@@ -16,7 +16,6 @@ dependencies = [
     "scikit-learn>=1.7.2",
     "scipy>=1.15",
     "starlette>=1.1.0",
-    "streamlit>=1.57.0",
     "sudachidict-core>=20260428",
     "sudachipy>=0.6.11",
 ]
@@ -30,6 +29,7 @@ lexical = [
 
 [dependency-groups]
 dev = [
+    "jsonschema>=4.26.0",
     "pytest>=8.0",
     "ruff>=0.4",
 ]

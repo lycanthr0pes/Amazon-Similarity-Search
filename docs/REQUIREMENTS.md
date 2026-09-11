@@ -25,7 +25,7 @@
 | PRD-002 | 実装済み | 入力から商品名、カテゴリ、色、特徴、除外条件、検索語、価格条件を抽出できること |
 | PRD-003 | 実装済み | Amazon.co.jpの商品候補を取得できること |
 | PRD-004 | 実装済み | 商品名、属性、価格、否定条件を組み合わせて候補を順位付けできること |
-| PRD-005 | 実装済み | Streamlit画面で上位商品、スコア、価格、評価、条件一致を確認できること |
+| PRD-005 | 廃止（2026-09-11） | 旧Streamlitの実検索画面。現行ReactモックはUI-010以降で定義する |
 | PRD-006 | 実装済み | CLIから同じ検索パイプラインを実行できること |
 | PRD-007 | 実装済み | 同じscope・入力・設定に対する外部処理と計算をローカルキャッシュから再利用できること |
 | PRD-008 | 一部実装 | 現行と同じBonsaiで検索意図をJSON textへ構造化し、fail-closed parseとstrict Pydantic検証・正規化を通したうえで、利用者が属性・推定価格・検索クエリを確認・修正できること |
@@ -121,15 +121,17 @@ EXEC-055では、使用済みCSVの先頭1件を明示承認された合計1 cal
 
 ## 4. UI・CLI要件
 
+2026-09-11にStreamlitを削除した。UI-001〜UI-007は旧画面の廃止済み要件で、Reactの要件へ流用しない。Reactはオフラインモック、実検索はCLIを入口とする。
+
 | ID | 状態 | 要件 |
 |---|---|---|
-| UI-001 | 実装済み | Streamlitで検索条件を複数行入力できること |
-| UI-002 | 実装済み | 1件から30件の範囲で表示件数を選べること |
-| UI-003 | 実装済み | Bonsai疎通とOutscraper APIキー有無をサイドバーで確認できること |
-| UI-004 | 実装済み | 総合、商品名、属性、価格の各スコアを表示すること |
-| UI-005 | 実装済み | 価格、評価、画像、Amazonリンク、一致・不足・除外条件を表示すること |
-| UI-006 | 実装済み | 詳細例外を画面へ出さず、固定の失敗メッセージを表示すること |
-| UI-007 | 実装済み | 検索結果を現在のStreamlitセッションに保持すること |
+| UI-001 | 廃止（旧Streamlit） | Streamlitで検索条件を複数行入力できること |
+| UI-002 | 廃止（旧Streamlit） | 1件から30件の範囲で表示件数を選べること |
+| UI-003 | 廃止（旧Streamlit） | Bonsai疎通とOutscraper APIキー有無をサイドバーで確認できること |
+| UI-004 | 廃止（旧Streamlit） | 総合、商品名、属性、価格の各スコアを表示すること |
+| UI-005 | 廃止（旧Streamlit） | 価格、評価、画像、Amazonリンク、一致・不足・除外条件を表示すること |
+| UI-006 | 廃止（旧Streamlit） | 詳細例外を画面へ出さず、固定の失敗メッセージを表示すること |
+| UI-007 | 廃止（旧Streamlit） | 検索結果を現在のStreamlitセッションに保持すること |
 | UI-008 | 一部実装（固定5項目の編集、日本語/英語検索語は未実装） | 意図、明示・推定価格、日本語・英語クエリを編集可能な第1確認画面を提供すること |
 | UI-009 | 一部実装（固定画像モック、実画像生成は未接続） | 画像生成ON/OFFを既定OFFのトグルスイッチで切り替えること。背景はON `#3a83f7`・OFF `#424242`、つまみは `#ffffff` とし、共通の背景56×32px・つまみ直径24pxを使うこと。背景色とつまみの移動を240msの `cubic-bezier(0.22, 1, 0.36, 1)` で補間し、途中の再操作にも滑らかに追従すること。`prefers-reduced-motion: reduce` では即時に切り替えること。ラベル付きのネイティブcheckboxとswitchの役割、Space操作、無効状態を保つこと。先行1枚の確認・了承・作り直しと、了承後の条件別偽画像の生成・全体確認を区別すること。参考画像は了承済み表示、偽画像は変更条件を別枠に表示し、全画像にAI生成表示を付けること |
 | UI-010 | 一部実装（モック最終確認、実検索は未接続） | 検索先、最大候補数、比較項目、この承認で商品検索を1回実行することを示す第2確認画面を提供し、送信parameterと外部APIの料金情報は通常画面へ表示しないこと |
@@ -158,7 +160,7 @@ EXEC-055では、使用済みCSVの先頭1件を明示承認された合計1 cal
 | DATA-005 | 実装済み | JSONを同一ディレクトリの一時ファイルから原子的に置換すること |
 | DATA-006 | 実装済み | 属性と生レスポンスのTTLを設定できること |
 | DATA-007 | 実装済み | 期限切れ、破損、モデル不一致をキャッシュミスとして再計算すること |
-| DATA-008 | 実装済み | Streamlitの異なるセッションでキャッシュキーを分けること |
+| DATA-008 | 廃止（旧Streamlit） | Streamlitのセッションごとのキャッシュキー分離。Python呼出元指定のscopeは維持する |
 | DATA-009 | 一部実装 | 利用者間の保存データを分離すること。セッションscopeによるキー分離だけで、保存ルートとOSアクセス権は共通 |
 | DATA-010 | 一部実装（strict domain・後半pipeline） | 次期フローのintent、query plan、image set、approval、raw product、normalized product、scoreを版付きstrict modelで分離すること |
 | DATA-011 | 一部実装（未永続化） | 承認済み計画をcanonical SHA-256、利用者、session、15分期限、single-use tokenへ結び付けること |
@@ -210,10 +212,9 @@ EXEC-055では、使用済みCSVの先頭1件を明示承認された合計1 cal
 - Pillow
 - requests
 - scikit-learn / SciPy（領域maskの連結成分・距離変換）
-- Streamlit
 - SudachiPy / sudachidict-core
 
-開発確認にはpytestとRuffを使う。
+開発確認にはpytest、Ruff、JSON Schema検証用のjsonschemaを使う。
 
 属性別形状比較の任意CLIPSeg/MobileSAM抽出器は、後述のONNX CLIPとは別の実験環境を使用する。この抽出器に限り、repository外の固定PyTorch/Transformersと検証済みcheckpointを使用する。iGPUでの実行可否・速度は未確認。通常環境へモデル依存を追加せず、明示設定なしに起動しない。
 
@@ -288,7 +289,7 @@ git diff --check
 
 手動確認:
 
-- Streamlitが起動し、入力フォームと状態表示が描画される
+- Reactオフラインモックが起動し、入力から固定結果・履歴まで操作できる
 - CLIの `--help` がリポジトリ外のカレントディレクトリからも動く
 - 実Bonsaiを使う場合は `/models` と属性抽出が成功する
 - request v8とprompt cacheを確認する場合は、別承認のlocalhost結合testで異なる合成入力2件を各1回だけ送り、両方のbounded compact応答から完全strict intentへの復元成功と2件目の正の `cached_tokens` を確認する
@@ -347,7 +348,7 @@ Cloudflareによる参考画像・偽画像生成と画像特徴を含む次期�
 - 依存関係は `uv` と `uv.lock` で管理する。
 - `pyproject.toml` は `package = false` であり、現行用途はリポジトリからの直接実行である。
 - 次期画像処理の対象運用環境としてWindows 11 / WSL、Intel Core Ultra 9 288Vを確認した。DNS境界はCPUだけで動く明示的な `spawn` を使い、親processのapplication deadlineを5秒とする。現在のWSL2では外部DNSを呼ばない固定失敗smokeまで確認した。Pythonの `Process.start()` 自体をpreemptできないためWindows nativeの起動時間・終了動作は未確認であり、実運用前に別途確認する。
-- StreamlitまたはCLIを動かすホストから、BonsaiとOutscraperへ接続できなければならない。
+- CLIを動かすホストから、BonsaiとOutscraperへ接続できなければならない。
 - キャッシュを使うかどうかにかかわらず、新しい結果を保存するため `CACHE_DIR` への書込権限が必要である。
 - 現行作業ツリーの決定論的GitHub Actions CIはPython 3.11 / 3.13を対象とする。変更後のGitHub実行は未確認であり、変更前のCIで検出した権限・ACLへのテスト依存は修正し、通常ユーザーとACL付き元Pythonのローカル環境で対象195件が成功した。SSLモックと環境変数の期待値はローカルで修正・検証済みである。コンテナ、systemd、クラウド配布の定義はない。
 
@@ -439,11 +440,11 @@ EXEC-055ではその経路をlocal Bonsaiの実応答1件へ結合し、HTTP 200
 ### 4. 同期実行と可用性
 
 - `run_product_search()` は同期関数である。
-- StreamlitはOutscraperのポーリング完了まで同じ画面実行内で待つ。
-- `src/search_v2/search_job.py` には、固定local owner、SQLite状態、同時実行1件、重複投入防止、状態照会、協調的取消を持つ単一process用job境界がある。`production_search.py` は承認済み暫定検索をOutscraper、商品画像、固定CLIP、ranking v5、schema 5.0履歴へ接続し、成功履歴locatorだけをjobへ保存する。これはoffline fixtureで確認したbackend接続であり、現行Streamlit、API、次期フロントエンドへは未接続である。
+- CLIはOutscraperのポーリング完了まで同じprocess内で待つ。
+- `src/search_v2/search_job.py` には、固定local owner、SQLite状態、同時実行1件、重複投入防止、状態照会、協調的取消を持つ単一process用job境界がある。`production_search.py` は承認済み暫定検索をOutscraper、商品画像、固定CLIP、ranking v5、schema 5.0履歴へ接続し、成功履歴locatorだけをjobへ保存する。これはoffline fixtureで確認したbackend接続であり、現行CLI、API、Reactフロントエンドへは未接続である。
 - process再起動後は復元できないactive jobを固定終端へ移し、暗黙に再実行しない。実行中callbackの強制停止、詳細進捗API、自動再開は提供しない。
 - ローカルjobのworker数と同時実行上限は1件である。複数利用者、複数process・host、サービスレベル目標は定義していない。
-- Streamlitプロセスの停止や再起動により、画面の `session_state` は失われ得る。
+- Reactモックの進行中状態は再読込で初期化され、タブ内履歴はタブを閉じると失われる。
 
 ### 5. キャッシュと永続化
 
@@ -462,7 +463,7 @@ EXEC-055ではその経路をlocal Bonsaiの実応答1件へ結合し、HTTP 200
 ### 6. 利用者分離とプライバシー
 
 - 認証と認可はない。
-- Streamlitのランダムscopeはキャッシュキーをセッションごとに変えるだけであり、アクセス制御ではない。
+- Python呼出元指定のcache scopeはキー分離であり、アクセス制御ではない。
 - すべてのlegacy cache scopeが同じ `CACHE_DIR` とOSユーザー権限を共有する。検索履歴repositoryは論理ownerで全操作を絞るが、認証主体の解決やownerごとのOS領域を提供せず、同じ実行userのDB fileを共有する。
 - CLIは常に既定scope `local-cli` を使うため、同じ入力・設定を別実行でも再利用する。
 - キャッシュには利用者条件、商品情報、URL、条件一致が平文JSONで保存される。
@@ -504,7 +505,7 @@ EXEC-055ではその経路をlocal Bonsaiの実応答1件へ結合し、HTTP 200
 - 総合重みと否定ペナルティは手動設定値であり、代表検索データによる評価・最適化は未実施である。
 - `required_terms` は名前に反して候補を除外するハード条件ではなく、ランキング上の高い重みである。
 - 価格が不明なら価格スコアは0、価格指定がなければ既定0.5であるため、価格欠損の影響が残る。
-- 評価とレビュー件数は現行Streamlitに表示するが、Prime、配送、元検索順位は通常画面に表示しない。これらはlegacy現行経路の総合スコアには使わない。
+- 評価・レビュー件数・Prime・配送・元検索順位はCLIには表示しない。これらはlegacy現行経路の総合スコアには使わない。
 
 次期ranking v3は現行rankingと分離されている。候補集合に依存するTF-IDFを使わず、日英token coverage、providerが構造化fieldとして返した観測属性、strict price modeを固定profileで採点する。さらに平均4.0以上のratingだけを高評価として `rating / 5.0` へ正規化し、総review countを `min(1, log1p(count) / log1p(1000))` へ写像して積をreview quality scoreとする。base weightはtitle 0.35、attributes 0.30、price 0.20、disabled image 0.10、review quality 0.05であり、review qualityを唯一の最小値にする。ratingまたはreview countが未観測なら0点とせずcomponentをweightから除外し、同点をOutscraper response indexで固定する。画像componentは無効である。画像scoreは色、外観形状、商品種別など画像で確認できる特徴だけの補助評価とし、商品仕様を表す構造化属性を推定、補完、上書きしない。有線・無線は商品名と構造化された観測属性で判定する。全体保持profileによる単一条件31枚のcharacterizationはpairwise AUC 0.759259259で事前基準0.80へ未達だった。接続方式だけが異なるf2・f4・f7・f10を画像上の正例へ再分類した視覚的特徴限定の評価は、正例13枚・負例14枚の全182組中169組が正順で、AUC 0.928571429、正例中央値0.941192911、負例中央値0.874694884となった。これは固定scoreの責務別characterizationであり、未達baselineを置換せず、画像rankingの有効化を意味しない。near 13枚の目視では全て黒いマウスと判断し、11枚はゲーミング用途、n5・n6は用途未知として固定した。静止画像だけでは接続方式を確定できないため、near 13枚の接続方式は全て未知とする。全体保持profileで用途未知候補の平均scoreは0.940557105であるため、scoreから属性を補完しない。複数queryの代表dataset、near属性の商品仕様による独立検証、検索文から得た4方向参照、現行pipeline・UIへの接続は未実施である。
 
@@ -522,20 +523,17 @@ case3では「収納口2つ・小型（卓上）・縦・収納」の20候補に
 
 ### 11. UIとCLI
 
-- Streamlit UIの表示上限は30件である。
-- UIにはページング、ソート切替、絞り込み、履歴、エクスポートがない。
-- UIの検索中断や検索進捗の詳細表示はない。
-- 画像は外部URLをStreamlitへ渡すため、画像ホストの可用性と内容に依存する。
-- UIはすべての例外を同じ固定メッセージとして表示する。利用者だけでは原因を特定できない。
+- React画面は固定合成データのオフラインモックで、実検索・APIとの接続は未実装である。
+- CLIは上位商品のスコア、価格、タイトル、URLを表示する。表示件数は `--display-limit` で指定する。
 - CLIは例外を捕捉して整形せず、失敗時はトレースバックを出し得る。
-- UIとCLIの表示内容は同一ではない。CLIは上位商品のスコア、価格、タイトル、URLだけを表示する。
+- 旧Streamlitのサイドバー、実商品画像の表示、セッション状態は削除した。
 
 ### 12. 設定
 
 - `Settings` はモジュールimport時に1回生成される。プロセス実行中の環境変数変更は自動反映されない。
 - `.env` はリポジトリルート固定で読み込む。
 - 未参照だった `APP_ENV` と `LOG_LEVEL` は設定契約から削除済みである。旧 `.env` やprocess環境に残る同名値は未知項目として無視され、環境切替やログ制御を行わない。
-- `SHOW_DEBUG_INFO` は採点に使う総合係数3項目と条件語重み5項目を表示するが、全設定の診断画面ではない。
+- Streamlit専用の `SHOW_DEBUG_INFO` は削除した。旧環境に残る値は未知項目として無視する。
 - `.env.example` の数値・bool・Path項目を空代入として有効にすると、Pydanticの型変換に失敗し得る。
 - スコア総合係数は浮動小数点誤差 `1e-9` の範囲で合計1.0を要求する。
 
@@ -545,14 +543,13 @@ case3では「収納口2つ・小型（卓上）・縦・収納」の20候補に
 - 標準出力は処理段階、request ID、ポーリング状態、キャッシュヒット、保存先パスを出す。
 - 検索語、要求URL、結果URL、APIキーは現行コードで標準出力しない。
 - 保存先の絶対パスは環境構成を開示し得る。
-- Streamlitは例外とスタックトレースをサーバーログへ記録する。
 - 構造化ログ、相関ID、メトリクス、分散トレース、監査ログ、アラートはない。
 
 ### 14. テストと品質保証
 
 - 単体・パイプラインテストは外部APIをモックする。
 - 実Bonsaiモデルの品質、実Outscraperレスポンスとの継続互換性、現行・次期ランキング精度は通常のpytestでは確認しない。ranking v3・typed-ranking-v4、holdout評価、acceptance policyのofflineテストは、合成fixtureに対する計算・判定契約、集計、改ざん拒否、決定性だけを確認する。
-- StreamlitのブラウザE2E、アクセシビリティ自動検査、複数セッション競合テストはない。
+- ReactモックにはPlaywrightの画面テストがある。実検索UIのE2Eを示すものではない。
 - 現行作業ツリーのCIはPython 3.11 / 3.13のマトリクスを定義する。変更前のGitHub実行ではPython 3.10で54件失敗・8件エラー、3.13で41件失敗を確認した。最低バージョン更新に加え、SSLモックと環境変数の期待値を修正し、3.11 / 3.13で関連99件が成功した。権限・ACLへのテスト依存も修正し、通常ユーザーで対象195件が成功した。本体の保護チェックは維持している。変更後のGitHub実行と必須チェック設定は未確認である。
 - フロントエンドCIは独立したNode.js 22ジョブで、ロック済み依存、型/整形、Vitest、build、Chromiumによるビルド版全テストと開発版の操作部品テストを実行する。1ワーカー・再試行なし・test.only禁止。追加後のGitHub実行は未確認で、実サービスのE2Eを含めない。
 - 実API結合試験は料金と外部状態へ影響するため、自動受入条件に含めない。

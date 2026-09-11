@@ -5257,3 +5257,40 @@ REDはこの通常ユーザー環境の `uv run --frozen --offline --no-sync pyt
 最終SHA-256: conftest.pyはda6614d9e7b52d1cb3ed719d3a0680ee3f91ba363bc199a460da1878fc974690、broker_executorのtestは4204eeee652141ca55a950392ce9d1827ffb9c028ceb290ba55b7d8dfbf535a2、deployment_checkのtestは52845e4b19790c14eaefb78af7996d051c3c0f4aeb29c00a5fbef7d1112455bb、coordinator_launcherのtestは3e9d6338be281b42688eba94aa1e344ac3748ca94fa230dedd1ebc46e0928f8d、runtime_releaseのtestは60804588076c92561966bd5572425c842b0560fc2c538518d12e2da60fc9d703、workflow_initのtestはdde0a616313d7d7ebadf29d00b4a64d3a091dc201d50996b198773db11048839、trust_boundaryのtestは9ee54864dfdd3b5029bf0760cf8616394e923d41e848f3a586221cedb6f8d62e。
 
 DEVELOPMENT・REQUIREMENTS・HARNESS-RUNBOOK・CHANGELOGを同期した。既存のPython 3.11対応、SSL/環境モック、frontend CIの未コミット変更を維持した。変更後のGitHub CI、実サービス、実host配備、commit/pushは未実行であり、ローカル非root回帰の成功をこれらの成功へ読み替えない。
+
+
+## 241. READMEを概要・技術スタック・起動方法へ整理（2026-09-11）
+
+利用者指定によりREADMEの主見出しを3項目へ整理した。オフラインモックのdev/previewと実検索のBonsai・Streamlit・CLIの起動手順を残し、開発経緯・検証記録・詳細仕様を除いた。参照されていたローカル辞書の資材準備手順はBACKENDへ移し、NEXT-STEPS・DEVELOPMENT・REFERENCESのREADME見出しリンクを更新した。
+
+文書変更のみ。Markdownのローカルリンク・見出し・コードフェンス検査とgit diff --checkが成功した。起動コマンドはpackage.json・既存手順と照合し、アプリや外部サービスは起動していない。この変更は未コミット。
+
+
+## 242. 第三者ライセンス通知を配布物へ追加（2026-09-11）
+
+利用者指定により、公式MIT/OFL本文、Weather Icons採用revision、StyleX 0.19.0の上流LICENSE、ローカルの固定npm依存を確認した。Noto Sans JPのOFLと通常依存・推移依存10パッケージの著作権表示・ライセンス全文、星アイコンの作者・出典・変更点・OFL本文をfrontend/public/THIRD-PARTY-NOTICES.txtへまとめた。StyleXのnpm配布物はLICENSEを含まないため、同版の上流本文を用いた。
+
+READMEは概要・技術スタック・起動方法の3項目を維持し、技術スタックからdocs/LICENSES.mdへリンクした。frontend/README・REFERENCES・CHANGELOGを同期した。本体のライセンスを新規に選択していない。case1〜case3の商品画像は現在Git追跡済みだが、既存資料の利用・再配布条件は未確認であり、通知追加では解消しない点も明記した。画像は変更していない。
+
+最初のnpm run buildはリポジトリ直下で実行したためpackage.jsonがなく失敗し、frontendから再実行して成功した。固定版10件と通知の版一致、手元LICENSE全文の包含、アイコン帰属、publicとdistの通知・OFL本文のbyte一致、READMEの主見出し3件を確認した。Markdownのリンク・見出し・コードフェンス検査とgit diff --checkも成功した。外部サービスやUI操作の検証は行っておらず、Python環境全体・別途モデル・評価画像の配布許諾を網羅的に確認した結果ではない。前のREADME整理を保持し、今回の変更は未コミット。
+
+
+## 243. Streamlitを削除（2026-09-11）
+
+利用者指示によりapp.py、src/ui/streamlit_ui.py、専用のtests/test_streamlit_ui.py（3件）、SHOW_DEBUG_INFO設定と.env.exampleの項目、Streamlit依存を削除した。CLIの検索パイプライン、React + StyleXのオフラインモック、既存の機密パス除外は維持した。旧画面仕様はdocs/old/STREAMLIT.mdへ移し、現在のREADME・設計・要件・開発手順・課題・参照をCLIとReactへ同期した。
+
+uv lock --offlineでStreamlitと専用依存を除去し、通常依存だけの環境へ同期したところ、既存テストがStreamlitの推移依存jsonschemaを暗黙に使っており、収集時に18 errorsとなった。jsonschemaを開発用依存として明示し、テスト内容を弱めずに再実行した。最終lockは107から85パッケージへ減り、残存パッケージのバージョン変更はない。通常依存のみの検証後、事前に存在していたlexicalオプション依存をoffline同期で復元し、Streamlitが未インストールのままであることを確認した。
+
+Python 3.13.13でuv run --frozen --offline --no-sync pytest -m 'not live_api'は3045 passed / 20 skipped / 30 deselected（74.01秒）。CLI --help、Streamlitのruntime不在、lock検査、Ruff check/format（369 files）、現行Markdownと移動した旧画面資料のリンク・見出し・コードフェンス、git diff --checkが成功した。実検索・外部API・Bonsaiは実行していない。既存のREADME整理・第三者通知の未コミット変更を保持した。今回のcommit/pushと変更後GitHub CIは未実行。
+
+
+## 244. 確認報告を第三者ライセンス表記へ変更（2026-09-11）
+
+利用者の訂正に従い、確認結果を説明する未コミットのdocs/LICENSES.mdを削除した。READMEの技術スタック内に使用資材のライセンス名を明記し、著作権表示・許諾文・免責文・変更通知を含むTHIRD-PARTY-NOTICES.txtへ直接リンクした。通知冒頭の調査・更新手順の説明を除き、ライセンス全文と帰属表記は維持した。REFERENCES・CHANGELOGの参照も更新した。Markdownリンクとgit diff --checkが成功。変更は未コミット。
+
+
+## 245. READMEの技術スタックを詳細化（2026-09-11）
+
+利用者指定により技術スタックを技術名・用途・構成の表へ拡張し、JMdict・Japanese WordNet・GiNZA・文脈照合用ONNXモデル・OPUS-MT翻訳・SigLIP 2と旧CLIP互換・画像生成・保存・検証を記載した。既存CLI、候補検索、Reactオフラインモックの接続範囲を区別し、辞書の任意依存と資材準備へのリンクを追加した。技術スタックからフォント名を除き、配布用の第三者ライセンス本文は維持した。
+
+記載はpyproject.toml、現行バックエンド設計、辞書・翻訳workerの実装と照合した。READMEの主見出し3項目、Markdownリンクとgit diff --checkが成功。文書のみの変更で、実サービスやモデルの実行は行っていない。変更は未コミット。

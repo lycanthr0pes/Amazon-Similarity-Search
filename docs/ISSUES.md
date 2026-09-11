@@ -193,10 +193,10 @@ APIキーの値は表示対象にしていない。検索結果表示件数ス�
 #### TD-001: 同期的な検索実行
 
 - 状態: 対応中
-- 根拠: `src/ui/streamlit_ui.py` が `run_product_search()` を直接呼び、`src/clients/outscraper_client.py` がポーリング間隔ごとに `time.sleep()` する
+- 根拠: CLIが `run_product_search()` を直接呼び、`src/clients/outscraper_client.py` がポーリング間隔ごとに `time.sleep()` する
 - 実装済みの緩和: `src/search_v2/search_job.py` に固定local owner、SQLite状態、同時実行1件、同一bindingの重複防止、状態照会、queued取消、running協調取消、24時間の開始期限、再起動時の安全な終端、終了後30日の明示purgeを持つbackend境界を追加した。`production_search.py` は最終承認済み検索をOutscraper、商品画像、固定CLIP、ranking v5、履歴locatorへ接続する。`production_api.py` はjob投入・状態取得・取消・schema 5.0履歴詳細取得をlocal ASGI APIへ投影する
-- 現在の影響: legacy Streamlitは検索完了または待機上限まで同じ画面実行で待つ。次期production callbackとAPI factoryはoffline確認済みだが、server起動構成、最終承認controller、現行検索、UIへは接続していない
-- ローカル利用上の扱い: 現行画面では従来どおりスピナーを表示して同期完了を待つ。job部品を接続済みの利用者機能として案内しない
+- 現在の影響: CLIは検索完了または待機上限まで同じprocessで待つ。次期production callbackとAPI factoryはoffline確認済みだが、server起動構成、最終承認controller、現行検索、UIへは接続していない
+- ローカル利用上の扱い: CLIでは同期完了を待ち、Reactモックは固定の処理中表示を使う。job部品を接続済みの利用者機能として案内しない
 - 解消条件: 自前開発する次期フロントエンドに向けて最終承認controllerとserver起動構成を追加し、結果locator、状態表示・取消操作をUIへ接続して一連の状態遷移を検証できる
 - 関連大規模タスク: [TASK-001](GOAL.md#task-001-検索処理のジョブ化)
 
@@ -205,14 +205,14 @@ APIキーの値は表示対象にしていない。検索結果表示件数ス�
 - 状態: 未着手
 - 根拠: `JsonCacheRepository` はアトミック置換を行うが、プロセス間ロック、容量上限、削除処理を持たない。正規化・採点キャッシュは読込TTLを持たない
 - 現在の影響: 長期利用でファイルが増え続け得る。同じキーへの複数プロセス書込を調停せず、認証利用者単位の保存領域もない
-- 実装済みの緩和: namespaceとキー検証、アトミック書込、属性と生レスポンスのTTL、破損時の再計算、Streamlitセッションscope
+- 実装済みの緩和: namespaceとキー検証、アトミック書込、属性と生レスポンスのTTL、破損時の再計算、呼出元指定のcache scope
 - 解消条件: 保存方式を決定し、容量・保持期限・削除・競合・利用者分離の方針を実装して負荷・競合テストを通す
 - 関連大規模タスク: [TASK-002](GOAL.md#task-002-キャッシュ基盤の運用対応)
 
 #### TD-003: アクセス制御と利用量制御
 
 - 状態: 未着手
-- 根拠: 現行依存関係と `src/ui/streamlit_ui.py` にアプリ独自の認証、認可、監査がない。キャッシュscopeはランダム値であり認証主体ではない。本番quotaを設けないことは現行local productionの明示方針であり、公開時の濫用対策を代替しない
+- 根拠: 現行CLIとローカルAPI境界 にアプリ独自の認証、認可、監査がない。キャッシュscopeは認証主体ではない。本番quotaを設けないことは現行local productionの明示方針であり、公開時の濫用対策を代替しない
 - 現在の影響: アクセス制御なしで公開すると、第三者がOutscraper利用とローカル計算を発生させ得る。利用者別の保存・削除要求にも対応できない
 - 実装済みの緩和: 次期v2の同一process ledgerはquota有効policyではowner・session・dayごとの上限を送信前に強制できる。現行production policyはquotaを明示的に無効化し、Bonsai・Cloudflare・Outscraperの開始済みattemptと費用を拒否判定なしで記録する。どちらも明示承認、single-use token、操作単位の固定call数、自動retryなしを維持する。暫定counterfactual分岐は専用SQLiteでraw tokenを保存せず15分のreference approvalを永続化し、再起動後も最初のconsumeだけを原子的に許可する。完了resultは表示用履歴へ変換でき、旧version 2と暫定version 5の別SQLite repositoryは全操作でownerを必須にし、owner不一致を不在と同じ固定失敗にし、owner内の冪等保存と30日期限削除を行う。ただしownerを認証済み主体から解決せず、同じOS userのfileを共有する。利用量ledgerの永続化、複数worker全体の原子性、認証・認可、API接続は未実装である
 - 解消条件: 公開へ変更する場合は想定利用者と公開範囲を要件化し、認証、認可、濫用対策、永続データ分離、監査を一体で検証する。quotaを追加する場合は現行の無quota方針を別Planで変更する

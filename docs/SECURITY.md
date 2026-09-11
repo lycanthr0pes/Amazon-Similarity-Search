@@ -2,9 +2,9 @@
 
 ## 1. 対象範囲
 
-この文書は、現行のローカル実行向け amazon-explorer に実装されている保護と、運用上必要な制約を整理する。アプリの実装根拠は `src/config.py`、`src/clients/`、`src/repositories/cache_repository.py`、`src/ui/streamlit_ui.py`、次期domain境界は `src/search_v2/`、AIレビュー用の境界は `tools/ai_review/` と `tests/conftest.py` を正とする。現行Bonsai経路と次期検索の内部境界は [BACKEND.md](BACKEND.md)、利用者向けの確認順序は [SEARCH-FLOW.md](../SEARCH-FLOW.md) を参照する。
+この文書は、現行のローカル実行向け amazon-explorer に実装されている保護と、運用上必要な制約を整理する。アプリの実装根拠は `src/config.py`、`src/clients/`、`src/repositories/cache_repository.py`、`frontend/src/`、次期domain境界は `src/search_v2/`、AIレビュー用の境界は `tools/ai_review/` と `tests/conftest.py` を正とする。現行Bonsai経路と次期検索の内部境界は [BACKEND.md](BACKEND.md)、利用者向けの確認順序は [SEARCH-FLOW.md](../SEARCH-FLOW.md) を参照する。
 
-現行のStreamlit・CLIアプリケーションには、アプリ独自の認証、認可、利用者別OS永続領域、レート制限、監査ログはない。現行local productionは利用者判断によりper-user・session・day・cost quotaを設けない。次期検索には呼出元が渡すownerで論理分離するローカル履歴repositoryと、ownerを `local-user` へ固定するlocal job repositoryがある。local ASGI APIもownerをrequestから受けず、この固定値だけでjob・schema 5.0履歴を操作する。これは認証主体を決定する機能ではなく、現行Streamlit、最終承認controller、server起動構成にも未接続である。インターネットへ公開する前提の多利用者向けサービスではない。
+現行のCLIアプリケーションには、アプリ独自の認証、認可、利用者別OS永続領域、レート制限、監査ログはない。現行local productionは利用者判断によりper-user・session・day・cost quotaを設けない。次期検索には呼出元が渡すownerで論理分離するローカル履歴repositoryと、ownerを `local-user` へ固定するlocal job repositoryがある。local ASGI APIもownerをrequestから受けず、この固定値だけでjob・schema 5.0履歴を操作する。これは認証主体を決定する機能ではなく、React画面、最終承認controller、server起動構成にも未接続である。インターネットへ公開する前提の多利用者向けサービスではない。
 
 ### 1.1 local HTTP APIの境界
 
@@ -23,7 +23,7 @@ job応答からowner、binding SHA、内部failure codeを、履歴応答からp
   -> Outscraper API
   -> Amazon商品候補
   -> ローカルJSONキャッシュ
-  -> Streamlit / CLI
+  -> CLI
 ```
 
 守る対象は次である。
@@ -47,7 +47,7 @@ job応答からowner、binding SHA、内部failure codeを、履歴応答からp
 - `.env` と `.streamlit/secrets.toml` は `.gitignore` 対象である
 - `.env.example` は変数名だけを示し、実値を含めない
 - APIキーをクエリURL、キャッシュキー、JSON payloadへ含めない
-- Streamlitのサイドバーはキーの有無だけを表示し、値を表示しない
+- ReactモックはAPIキーを要求・使用しない
 - APIキーが空ならOutscraperへのHTTP要求前に停止する
 - Cloudflare API tokenは通常のglobal `settings` のfieldへ保持せず、live test開始時だけ専用 `CloudflareLiveSettings` の `SecretStr` で受け取る。live runnerのrepr・結果・固定例外・保存PNGへ実値を含めない
 - 対話式の暫定ranking live E2Eは、Outscraper API keyを `SecretStr` にする専用loaderを人間による参照承認consume後にだけ呼ぶ。参照拒否、期限切れ、file改ざんではloaderを呼ばず、Outscraper・商品画像を0件にする
@@ -160,9 +160,7 @@ legacy現行検索のBonsai属性抽出POSTには既定60秒のタイムアウ�
 
 検索語、Outscraperの要求URL、`results_location`、APIキーは現行の標準出力へ直接出していない。
 
-Streamlitは検索中の例外を `LOGGER.exception()` でサーバーログへ記録し、利用者には「検索に失敗しました。設定と外部サービスの状態を確認してください。」という固定メッセージを表示する。スタックトレースや内部例外を画面へ返さない。サイドバーにはBonsai base URL、Amazonドメイン、言語、取得件数が表示される。
-
-サーバーログには外部例外の詳細やローカルパスが残る可能性がある。ログを外部へ転送する前に、保存先、アクセス権、保持期間、マスキング対象を決める。`SHOW_DEBUG_INFO=true` は重みを表示するだけで、APIキーは表示しない。
+CLIは例外を捕捉して整形せず、トレースバックを出す場合がある。Reactモックは実バックエンドと未接続で、固定の失敗状態を表示する。ログを外部へ転送する前に、保存先、アクセス権、保持期間、マスキング対象を決める。Streamlit固有の画面・ログ処理と `SHOW_DEBUG_INFO` は削除した。
 
 ## 8. キャッシュの保護
 
@@ -175,7 +173,7 @@ Streamlitは検索中の例外を `LOGGER.exception()` でサーバーログへ�
 - 同じディレクトリの一時ファイルへ書き、flush、`fsync`、置換する
 - JSON破損、文字コードエラー、読込エラーをキャッシュミスとして扱う
 - 属性、正規化、採点をPydanticモデルで再検証する
-- Streamlitはセッションごとにランダムscopeをキーへ含める
+- Python呼出元が指定したscopeをキャッシュキーへ含める
 
 現在実装されていない保護:
 
@@ -186,11 +184,11 @@ Streamlitは検索中の例外を `LOGGER.exception()` でサーバーログへ�
 - ファイル権限のコードによる強制
 - 破損ファイルの隔離と監査通知
 
-Streamlitのscopeは偶然のセッション間再利用を避けるためのキー材料であり、認証トークンやアクセス制御ではない。CLIは固定の `local-cli` scopeを使う。共有ホストではOSアカウントとディレクトリ権限で `CACHE_DIR` を保護し、Web公開領域や不要なバックアップへ含めない。
+scopeはキー材料であり、認証トークンやアクセス制御ではない。CLIは固定の `local-cli` scopeを使う。共有ホストではOSアカウントとディレクトリ権限で `CACHE_DIR` を保護し、Web公開領域や不要なバックアップへ含めない。
 
 ## 9. UIと公開範囲
 
-現行Streamlit UIにはアプリ独自のログイン、権限確認、利用回数制限がない。検索はStreamlitの実行中に同期処理され、外部API利用を伴う。したがって、アクセス制御のない状態でインターネットへ公開しない。
+React画面はオフラインモックであり、実検索はCLIで行う。Streamlitは削除した。今後実検索APIを公開する場合は、認証・認可・外部API利用の濫用対策を別途設計する。
 
 商品画像と商品リンクはOutscraper由来の外部URLである。現行データモデルはURLスキームやホストを制限していない。信頼できない配信元を許容しない運用では、表示前のURLポリシーを別途実装する必要がある。
 
