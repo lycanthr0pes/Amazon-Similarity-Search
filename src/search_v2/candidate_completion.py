@@ -1,0 +1,408 @@
+"""Deterministic condition/title rankings plus approved visual evidence and history."""
+
+from dataclasses import dataclass
+import hashlib
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from src.search_v2.attribute_image_ranking import (
+    AttributeImageBatch,
+    AttributeImageComponent,
+    PROFILE_SHA256 as ATTRIBUTE_IMAGE_SHA256,
+    FEATURE_PROFILE_SHA256 as FEATURE_IMAGE_SHA256,
+)
+from src.search_v2.candidate_search import CandidateRanking, CandidateRankedProduct, _digest
+from src.search_v2.counterfactual_image import (
+    counterfactual_reference_set_sha256,
+    visual_condition_set_sha256,
+)
+from src.search_v2.counterfactual_product_evaluator import evaluate_counterfactual_product_images
+from src.search_v2.counterfactual_reference_approval import ApprovedCounterfactualReferences
+from src.search_v2.product_evidence import normalized_product_candidate_sha256
+from src.search_v2.provisional_counterfactual import (
+    ProvisionalCounterfactualBatch,
+    ProvisionalImageComponent,
+)
+from src.search_v2.provisional_history_repository import (
+    ProvisionalHistoryDetail,
+    ProvisionalHistoryProductView,
+    ProvisionalHistoryReferenceImageWrite,
+    ProvisionalHistoryWrite,
+)
+from src.search_v2.provisional_history_snapshot import _clean_source_text, _png, _safe_product_url
+from src.search_v2.requirement_evaluation import typed_product_sort_key
+from src.search_v2.relative_image_ranking import (
+    AppearanceImageBatch,
+    Siglip2AppearanceImageBatch,
+    SIGLIP2_APPEARANCE_SHA256,
+    APPEARANCE_PROFILE_SHA256,
+    RelativeImageBatch,
+    RelativeImageComponent,
+)
+
+
+PROFILE_ID = "candidate-lexical-clip-v3"
+IMAGE_WEIGHT = 0.2
+PROFILE_SHA256 = _digest(
+    {
+        "profile": PROFILE_ID,
+        "image_weight": IMAGE_WEIGHT,
+        "missing_image": "lexical_only",
+        "lexical": "sudachi-original-bilingual-title-v2",
+        "image": "relative-image-v1",
+        "required_conditions": "first",
+    }
+)
+
+
+ATTRIBUTE_PROFILE_ID = "candidate-attribute-image-v1"
+ATTRIBUTE_PROFILE_SHA256 = _digest(
+    {
+        "profile": ATTRIBUTE_PROFILE_ID,
+        "image_weight": IMAGE_WEIGHT,
+        "image": ATTRIBUTE_IMAGE_SHA256,
+        "visual_availability": "observed-first-within-qualification",
+        "required_conditions": "first",
+        "missing_image": "lexical_only",
+        "lexical": "sudachi-original-bilingual-title-v2",
+    }
+)
+
+
+FEATURE_PROFILE_ID = "candidate-attribute-image-v2"
+FEATURE_PROFILE_SHA256 = _digest(
+    {"profile": FEATURE_PROFILE_ID, "base": ATTRIBUTE_PROFILE_SHA256, "image": FEATURE_IMAGE_SHA256}
+)
+
+
+APPEARANCE_PROFILE_ID = "candidate-appearance-v1"
+APPEARANCE_RANKING_SHA256 = _digest(
+    {
+        "profile": APPEARANCE_PROFILE_ID,
+        "base": PROFILE_SHA256,
+        "image": APPEARANCE_PROFILE_SHA256,
+        "evidence_scope": "whole_image_similarity",
+    }
+)
+
+
+SIGLIP2_PROFILE_ID = "candidate-siglip2-appearance-v1"
+SIGLIP2_RANKING_SHA256 = _digest(
+    {
+        "profile": SIGLIP2_PROFILE_ID,
+        "base": PROFILE_SHA256,
+        "image": SIGLIP2_APPEARANCE_SHA256,
+        "evidence_scope": "whole_image_similarity",
+    }
+)
+
+
+LEGACY_PROFILE_SHA256 = _digest(
+    {
+        "profile": "candidate-lexical-clip-v2",
+        "image_weight": IMAGE_WEIGHT,
+        "missing_image": "lexical_only",
+        "lexical": "sudachi-title-token-coverage-v1",
+        "required_conditions": "first",
+    }
+)
+
+
+def _total(candidate, image):
+    lexical = candidate.lexical_score
+    return (
+        lexical
+        if image.image_score is None
+        else (1 - IMAGE_WEIGHT) * lexical + IMAGE_WEIGHT * image.image_score
+    )
+
+
+class CandidateVisualProduct(BaseModel):
+    model_config = ConfigDict(
+        strict=True, frozen=True, extra="forbid", revalidate_instances="always"
+    )
+    candidate: CandidateRankedProduct = Field(repr=False)
+    image: ProvisionalImageComponent | RelativeImageComponent | AttributeImageComponent
+    total_score: float = Field(ge=0.0, le=1.0)
+
+    @model_validator(mode="after")
+    def validate_score(self):
+        if self.image.normalized_product_sha256 != normalized_product_candidate_sha256(
+            self.candidate.product
+        ) or self.total_score != _total(self.candidate, self.image):
+            raise ValueError("Candidate visual score does not match its product")
+        return self
+
+
+def _sort_key(row):
+    key = typed_product_sort_key(
+        row.candidate.evaluation,
+        overall_score=row.total_score,
+        response_index=row.candidate.product.provenance.response_index,
+    )
+
+    if isinstance(row.image, AttributeImageComponent):
+        return (*key[:3], row.image.image_score is None, *key[3:])
+    return key
+
+
+class CandidateVisualRanking(BaseModel):
+    model_config = ConfigDict(
+        strict=True, frozen=True, extra="forbid", revalidate_instances="always"
+    )
+    profile_id: Literal[
+        "candidate-lexical-clip-v2",
+        "candidate-lexical-clip-v3",
+        "candidate-attribute-image-v1",
+        "candidate-attribute-image-v2",
+        "candidate-appearance-v1",
+        "candidate-siglip2-appearance-v1",
+    ] = PROFILE_ID
+    source: CandidateRanking = Field(repr=False)
+    image_batch: (
+        Siglip2AppearanceImageBatch
+        | AppearanceImageBatch
+        | ProvisionalCounterfactualBatch
+        | RelativeImageBatch
+        | AttributeImageBatch
+    ) = Field(repr=False)
+    products: tuple[CandidateVisualProduct, ...] = Field(repr=False)
+    approval_receipt_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    visual_evaluation_status: Literal["evaluated"] = "evaluated"
+
+    @model_validator(mode="after")
+    def validate_bindings(self):
+        source = self.source
+        if (self.profile_id == SIGLIP2_PROFILE_ID) != isinstance(
+            self.image_batch, Siglip2AppearanceImageBatch
+        ):
+            raise ValueError("Candidate SigLIP profile does not match its image model")
+        if (self.profile_id == APPEARANCE_PROFILE_ID) != isinstance(
+            self.image_batch, AppearanceImageBatch
+        ):
+            raise ValueError("Candidate appearance scope does not match its ranking method")
+        relative = self.profile_id != "candidate-lexical-clip-v2"
+        attribute = self.profile_id in {ATTRIBUTE_PROFILE_ID, FEATURE_PROFILE_ID}
+        if relative != (source.profile_id == "candidate-confirmed-lexical-v3"):
+            raise ValueError("Candidate text profile does not match its ranking method")
+        batch_type = (
+            AttributeImageBatch
+            if attribute
+            else RelativeImageBatch
+            if relative
+            else ProvisionalCounterfactualBatch
+        )
+        component_type = (
+            AttributeImageComponent
+            if attribute
+            else RelativeImageComponent
+            if relative
+            else ProvisionalImageComponent
+        )
+        if not isinstance(self.image_batch, batch_type) or any(
+            not isinstance(p.image, component_type) for p in self.products
+        ):
+            raise ValueError("Candidate image profile does not match the scoring method")
+        if source.retrieval_plan_sha256 != _digest(source.retrieval_plan):
+            raise ValueError("Candidate result plan binding is invalid")
+        conditions = source.retrieval_plan.visual_conditions
+        if (
+            conditions is None
+            or self.image_batch.condition_set_sha256 != visual_condition_set_sha256(conditions)
+        ):
+            raise ValueError("Candidate visual conditions changed")
+        if attribute:
+            if (self.profile_id == FEATURE_PROFILE_ID) != (
+                self.image_batch.profile_id == "attribute-image-v2"
+            ):
+                raise ValueError("Candidate geometry profile changed")
+            targets = tuple(
+                (
+                    c.condition_id,
+                    hashlib.sha256(c.focus.target.encode()).hexdigest(),
+                    c.focus.measure,
+                    c.focus.direction,
+                )
+                for c in conditions.conditions
+                if c.focus is not None and c.focus.kind == "shape"
+            )
+            if targets != tuple(
+                (c.condition_id, c.target_sha256, c.measure, c.direction)
+                for c in self.image_batch.shape_targets
+            ):
+                raise ValueError("Candidate shape targets changed")
+        if (
+            len(self.products) != len(source.products)
+            or len(self.image_batch.candidates) != len(source.products)
+            or sorted(self.products, key=_sort_key) != list(self.products)
+        ):
+            raise ValueError("Candidate visual ordering or count is invalid")
+        original = {normalized_product_candidate_sha256(p.product): p for p in source.products}
+        images = {p.normalized_product_sha256: p for p in self.image_batch.candidates}
+        if (
+            len(original) != len(self.products)
+            or len(images) != len(self.products)
+            or {p.image.normalized_product_sha256 for p in self.products} != set(original)
+        ):
+            raise ValueError("Candidate visual products are not a complete set")
+        for row in self.products:
+            key = row.image.normalized_product_sha256
+            if row.candidate != original[key] or row.image != images.get(key):
+                raise ValueError("Candidate visual evidence changed")
+        return self
+
+
+@dataclass(frozen=True, repr=False)
+class CandidateCompletion:
+    ranking: CandidateVisualRanking
+    history: ProvisionalHistoryDetail
+
+
+def complete_candidate_ranking(
+    source,
+    approved,
+    *,
+    proxy_service,
+    asset_root,
+    encoder,
+    region_extractor=None,
+    image_score_mode="siglip2_appearance",
+):
+    if image_score_mode not in {"siglip2_appearance", "appearance", "relative"}:
+        raise ValueError("Invalid candidate image score mode")
+    source = CandidateRanking.model_validate(source)
+    approved = ApprovedCounterfactualReferences.model_validate(approved)
+    plan = source.retrieval_plan
+    if (
+        plan.visual_conditions is None
+        or approved.owner_id != plan.owner_id
+        or approved.session_id != plan.session_id
+        or approved.condition_set_sha256 != visual_condition_set_sha256(plan.visual_conditions)
+    ):
+        raise ValueError("Candidate reference binding is invalid")
+    images = evaluate_counterfactual_product_images(
+        product_batch=source.product_batch,
+        condition_set=plan.visual_conditions,
+        reference_set=approved.reference_set,
+        reference_images=approved.reference_images,
+        proxy_service=proxy_service,
+        asset_root=asset_root,
+        encoder=encoder,
+        score_mode=image_score_mode,
+        region_extractor=region_extractor,
+    )
+    by_product = {image.normalized_product_sha256: image for image in images.candidates}
+    rows = []
+    for candidate in source.products:
+        image = by_product[normalized_product_candidate_sha256(candidate.product)]
+        rows.append(
+            CandidateVisualProduct(
+                candidate=candidate, image=image, total_score=_total(candidate, image)
+            )
+        )
+    return CandidateVisualRanking(
+        profile_id=(
+            SIGLIP2_PROFILE_ID
+            if isinstance(images, Siglip2AppearanceImageBatch)
+            else APPEARANCE_PROFILE_ID
+            if isinstance(images, AppearanceImageBatch)
+            else FEATURE_PROFILE_ID
+            if isinstance(images, AttributeImageBatch) and images.profile_id == "attribute-image-v2"
+            else ATTRIBUTE_PROFILE_ID
+            if isinstance(images, AttributeImageBatch)
+            else PROFILE_ID
+        ),
+        source=source,
+        image_batch=images,
+        products=tuple(sorted(rows, key=_sort_key)),
+        approval_receipt_sha256=approved.approval_receipt_sha256,
+    )
+
+
+def candidate_history_snapshot(ranking, approved, *, source_text, completed_at):
+    ranking = CandidateVisualRanking.model_validate(ranking)
+    approved = ApprovedCounterfactualReferences.model_validate(approved)
+    plan = ranking.source.retrieval_plan
+    source_hash, summary = _clean_source_text(source_text)
+    reference_hash = counterfactual_reference_set_sha256(approved.reference_set)
+    if (
+        source_hash != plan.source_sha256
+        or approved.owner_id != plan.owner_id
+        or approved.session_id != plan.session_id
+        or ranking.approval_receipt_sha256 != approved.approval_receipt_sha256
+        or ranking.image_batch.reference_set_sha256 != reference_hash
+        or ranking.image_batch.condition_set_sha256 != approved.condition_set_sha256
+    ):
+        raise ValueError("Candidate history binding is invalid")
+    references = []
+    for index, image in enumerate(approved.reference_images):
+        body = _png(image)
+        references.append(
+            ProvisionalHistoryReferenceImageWrite(
+                schema_version="5.0",
+                target="desired" if index == 0 else "counterfactual",
+                condition_id=None if index == 0 else f"visual-condition-{index:03d}",
+                content_type="image/png",
+                sha256=hashlib.sha256(body).hexdigest(),
+                byte_length=len(body),
+                width=image.width,
+                height=image.height,
+                body=body,
+            )
+        )
+    products = tuple(
+        ProvisionalHistoryProductView(
+            schema_version="5.0",
+            rank=index,
+            title=row.candidate.product.title,
+            price_jpy=row.candidate.product.price_jpy,
+            product_url=_safe_product_url(row.candidate.product.product_url),
+            required_status=row.candidate.evaluation.required_status,
+            image_component_status=row.image.status,
+            image_score=row.image.image_score,
+            total_score=row.total_score,
+        )
+        for index, row in enumerate(ranking.products, 1)
+    )
+    return ProvisionalHistoryWrite(
+        schema_version="5.0",
+        owner_id=plan.owner_id,
+        completion_key=_digest({"profile": ranking.profile_id, "ranking": _digest(ranking)}),
+        completed_at=completed_at,
+        summary=summary,
+        provisional_profile_id=(
+            "counterfactual-siglip2-appearance-v1"
+            if ranking.profile_id == SIGLIP2_PROFILE_ID
+            else "counterfactual-appearance-v1"
+            if ranking.profile_id == APPEARANCE_PROFILE_ID
+            else "counterfactual-attribute-v2"
+            if ranking.profile_id == FEATURE_PROFILE_ID
+            else "counterfactual-attribute-v1"
+            if ranking.profile_id == ATTRIBUTE_PROFILE_ID
+            else "counterfactual-relative-v1"
+            if ranking.profile_id == PROFILE_ID
+            else "counterfactual-v4-provisional-production-v1"
+        ),
+        known_holdout_accuracy=None,
+        ranking_profile_id=ranking.profile_id,
+        ranking_profile_sha256=(
+            SIGLIP2_RANKING_SHA256
+            if ranking.profile_id == SIGLIP2_PROFILE_ID
+            else APPEARANCE_RANKING_SHA256
+            if ranking.profile_id == APPEARANCE_PROFILE_ID
+            else FEATURE_PROFILE_SHA256
+            if ranking.profile_id == FEATURE_PROFILE_ID
+            else ATTRIBUTE_PROFILE_SHA256
+            if ranking.profile_id == ATTRIBUTE_PROFILE_ID
+            else PROFILE_SHA256
+            if ranking.profile_id == PROFILE_ID
+            else LEGACY_PROFILE_SHA256
+        ),
+        source_typed_ranked_product_batch_sha256=_digest(ranking.source),
+        condition_set_sha256=approved.condition_set_sha256,
+        reference_set_sha256=reference_hash,
+        runtime_sha256=ranking.image_batch.runtime_sha256,
+        reference_images=tuple(references),
+        products=products,
+    )

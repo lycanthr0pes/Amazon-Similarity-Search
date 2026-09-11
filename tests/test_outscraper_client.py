@@ -37,6 +37,20 @@ def test_settings_use_bounded_outscraper_defaults() -> None:
     assert configured.outscraper_retry_backoff_seconds == 1.0
 
 
+def test_settings_ignore_removed_observability_placeholders(monkeypatch) -> None:
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("LOG_LEVEL", "DEBUG")
+    monkeypatch.setenv("SEARCH_RESULT_DISPLAY_LIMIT", "7")
+
+    configured = Settings(_env_file=None)
+
+    assert configured.search_result_display_limit == 7
+    assert "app_env" not in Settings.model_fields
+    assert "log_level" not in Settings.model_fields
+    assert "app_env" not in configured.model_dump()
+    assert "log_level" not in configured.model_dump()
+
+
 @pytest.mark.parametrize(
     ("field", "value"),
     [

@@ -31,23 +31,278 @@ _BLOCKED_MESSAGE = (
 
 def pytest_addoption(parser: pytest.Parser) -> None:
     parser.addoption(
+        "--lexical-assets",
+        default=None,
+        help="prepared local lexical assets for optional CPU integration tests",
+    )
+    parser.addoption(
+        "--bonsai-response-log-dir",
+        default=None,
+        help="absolute new private directory for all attribute-test response bodies",
+    )
+    parser.addoption(
+        "--run-bonsai-attribute-inference",
+        action="store_true",
+        default=False,
+        help="run the separately approved single-call Bonsai attribute inference probe",
+    )
+    parser.addoption(
+        "--run-clip-runtime",
+        action="store_true",
+        default=False,
+        help="run tests that load the pinned repository-local CLIP model",
+    )
+    parser.addoption(
         "--run-live-api",
         action="store_true",
         default=False,
         help="run tests that may contact explicitly approved live services",
     )
+    parser.addoption(
+        "--run-bonsai-e2e",
+        action="store_true",
+        default=False,
+        help="run the explicitly approved localhost Bonsai v6 prompt-cache test",
+    )
+    parser.addoption(
+        "--run-cloudflare-e2e",
+        action="store_true",
+        default=False,
+        help="run the separately approved single-image Cloudflare Workers AI test",
+    )
+    parser.addoption(
+        "--cloudflare-output-path",
+        default=None,
+        help="absolute new PNG path for the approved Cloudflare image test",
+    )
+    parser.addoption(
+        "--run-counterfactual-cloudflare-e2e",
+        action="store_true",
+        default=False,
+        help="run the separately approved minimum counterfactual Cloudflare test",
+    )
+    parser.addoption(
+        "--counterfactual-cloudflare-output-dir",
+        default=None,
+        help="absolute new directory for the approved counterfactual Cloudflare test",
+    )
+    parser.addoption(
+        "--run-product-image-proxy-e2e",
+        action="store_true",
+        default=False,
+        help="run the separately approved one-image product proxy and CLIP test",
+    )
+    parser.addoption(
+        "--product-image-reference-dir",
+        default=None,
+        help="absolute directory containing the approved two-image reference set",
+    )
+    parser.addoption(
+        "--product-image-output-path",
+        default=None,
+        help="absolute new PNG path for the approved product image proxy test",
+    )
+    parser.addoption(
+        "--run-backend-search-e2e",
+        action="store_true",
+        default=False,
+        help="run the separately approved natural-language-to-history backend E2E",
+    )
+    parser.addoption(
+        "--backend-search-output-dir",
+        default=None,
+        help="absolute new private directory for the approved backend E2E",
+    )
+    parser.addoption(
+        "--backend-search-clip-asset-root",
+        default=None,
+        help="absolute pinned CLIP asset directory for the backend E2E",
+    )
+    parser.addoption(
+        "--run-provisional-search-e2e",
+        action="store_true",
+        default=False,
+        help="run the separately approved interactive provisional product-search test",
+    )
+    parser.addoption(
+        "--provisional-search-review-dir",
+        default=None,
+        help="absolute new directory for the provisional search reference review",
+    )
+    parser.addoption(
+        "--provisional-search-approval-db",
+        default=None,
+        help="absolute SQLite path for the provisional reference approval",
+    )
+    parser.addoption(
+        "--provisional-search-clip-asset-root",
+        default=None,
+        help="absolute pinned CLIP asset root for the provisional search test",
+    )
+    parser.addoption(
+        "--run-bonsai-latency-diagnostic",
+        action="store_true",
+        default=False,
+        help="select the separately approved same-input Bonsai timing diagnostic",
+    )
+    parser.addoption(
+        "--bonsai-server-bin",
+        default=None,
+        help="absolute path to the llama-server executable for the localhost Bonsai test",
+    )
+    parser.addoption(
+        "--bonsai-model-path",
+        default=None,
+        help="absolute path to the GGUF model for the localhost Bonsai test",
+    )
+    parser.addoption(
+        "--bonsai-e2e-port",
+        type=int,
+        default=18080,
+        help="unused loopback port for the localhost Bonsai test (default: 18080)",
+    )
+
+
+def bonsai_live_test_enabled(
+    *,
+    is_latency_diagnostic: bool,
+    run_live_api: bool,
+    run_bonsai_e2e: bool,
+    run_latency_diagnostic: bool,
+) -> bool:
+    if not run_live_api or not run_bonsai_e2e:
+        return False
+    if is_latency_diagnostic:
+        return run_latency_diagnostic
+    return not run_latency_diagnostic
+
+
+def cloudflare_live_test_enabled(
+    *,
+    run_live_api: bool,
+    run_cloudflare_e2e: bool,
+) -> bool:
+    return run_live_api and run_cloudflare_e2e
+
+
+def counterfactual_cloudflare_live_test_enabled(
+    *,
+    run_live_api: bool,
+    run_counterfactual_cloudflare_e2e: bool,
+) -> bool:
+    return run_live_api and run_counterfactual_cloudflare_e2e
+
+
+def product_image_proxy_live_test_enabled(
+    *,
+    run_live_api: bool,
+    run_product_image_proxy_e2e: bool,
+) -> bool:
+    return run_live_api and run_product_image_proxy_e2e
+
+
+def provisional_search_live_test_enabled(
+    *,
+    run_live_api: bool,
+    run_clip_runtime: bool,
+    run_provisional_search_e2e: bool,
+) -> bool:
+    return run_live_api and run_clip_runtime and run_provisional_search_e2e
+
+
+def backend_search_live_test_enabled(
+    *, run_live_api: bool, run_clip_runtime: bool, run_backend_search_e2e: bool
+) -> bool:
+    return run_live_api and run_clip_runtime and run_backend_search_e2e
 
 
 def pytest_collection_modifyitems(
     config: pytest.Config,
     items: list[pytest.Item],
 ) -> None:
-    if config.getoption("--run-live-api"):
-        return
+    run_clip_runtime = config.getoption("--run-clip-runtime")
+    run_live_api = config.getoption("--run-live-api")
+    run_bonsai_e2e = config.getoption("--run-bonsai-e2e")
+    run_cloudflare_e2e = config.getoption("--run-cloudflare-e2e")
+    run_counterfactual_cloudflare_e2e = config.getoption("--run-counterfactual-cloudflare-e2e")
+    run_product_image_proxy_e2e = config.getoption("--run-product-image-proxy-e2e")
+    run_provisional_search_e2e = config.getoption("--run-provisional-search-e2e")
+    run_backend_search_e2e = config.getoption("--run-backend-search-e2e")
+    run_latency_diagnostic = config.getoption("--run-bonsai-latency-diagnostic")
+    skip_clip_runtime = pytest.mark.skip(reason="requires explicit --run-clip-runtime opt-in")
     skip_live_api = pytest.mark.skip(reason="requires explicit --run-live-api opt-in")
+    skip_bonsai_e2e = pytest.mark.skip(
+        reason="requires explicit --run-live-api and --run-bonsai-e2e opt-ins"
+    )
+    skip_bonsai_latency = pytest.mark.skip(
+        reason="requires the separately approved --run-bonsai-latency-diagnostic mode"
+    )
+    skip_cloudflare_e2e = pytest.mark.skip(
+        reason="requires explicit --run-live-api and --run-cloudflare-e2e opt-ins"
+    )
+    skip_counterfactual_cloudflare_e2e = pytest.mark.skip(
+        reason=("requires explicit --run-live-api and --run-counterfactual-cloudflare-e2e opt-ins")
+    )
+    skip_product_image_proxy_e2e = pytest.mark.skip(
+        reason="requires explicit --run-live-api and --run-product-image-proxy-e2e opt-ins"
+    )
+    skip_provisional_search_e2e = pytest.mark.skip(
+        reason=(
+            "requires explicit --run-live-api, --run-clip-runtime, and "
+            "--run-provisional-search-e2e opt-ins"
+        )
+    )
     for item in items:
-        if item.get_closest_marker("live_api") is not None:
+        if item.get_closest_marker("backend_search_e2e") is not None and not (
+            backend_search_live_test_enabled(
+                run_live_api=run_live_api,
+                run_clip_runtime=run_clip_runtime,
+                run_backend_search_e2e=run_backend_search_e2e,
+            )
+        ):
+            item.add_marker(pytest.mark.skip(reason="requires all backend E2E opt-ins"))
+        if item.get_closest_marker("clip_runtime") is not None and not run_clip_runtime:
+            item.add_marker(skip_clip_runtime)
+        if item.get_closest_marker("live_api") is not None and not run_live_api:
             item.add_marker(skip_live_api)
+        if item.get_closest_marker("bonsai_e2e") is not None:
+            is_latency_diagnostic = item.get_closest_marker("bonsai_latency_diagnostic") is not None
+            if not bonsai_live_test_enabled(
+                is_latency_diagnostic=is_latency_diagnostic,
+                run_live_api=run_live_api,
+                run_bonsai_e2e=run_bonsai_e2e,
+                run_latency_diagnostic=run_latency_diagnostic,
+            ):
+                item.add_marker(skip_bonsai_latency if is_latency_diagnostic else skip_bonsai_e2e)
+        if item.get_closest_marker("cloudflare_e2e") is not None and not (
+            cloudflare_live_test_enabled(
+                run_live_api=run_live_api,
+                run_cloudflare_e2e=run_cloudflare_e2e,
+            )
+        ):
+            item.add_marker(skip_cloudflare_e2e)
+        if item.get_closest_marker("counterfactual_cloudflare_e2e") is not None and not (
+            counterfactual_cloudflare_live_test_enabled(
+                run_live_api=run_live_api,
+                run_counterfactual_cloudflare_e2e=run_counterfactual_cloudflare_e2e,
+            )
+        ):
+            item.add_marker(skip_counterfactual_cloudflare_e2e)
+        if item.get_closest_marker("product_image_proxy_e2e") is not None and not (
+            product_image_proxy_live_test_enabled(
+                run_live_api=run_live_api,
+                run_product_image_proxy_e2e=run_product_image_proxy_e2e,
+            )
+        ):
+            item.add_marker(skip_product_image_proxy_e2e)
+        if item.get_closest_marker("provisional_search_e2e") is not None and not (
+            provisional_search_live_test_enabled(
+                run_live_api=run_live_api,
+                run_clip_runtime=run_clip_runtime,
+                run_provisional_search_e2e=run_provisional_search_e2e,
+            )
+        ):
+            item.add_marker(skip_provisional_search_e2e)
 
 
 class _NetworkBlockedSocket(_ORIGINAL_SOCKET):
