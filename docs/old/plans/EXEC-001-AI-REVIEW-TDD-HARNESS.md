@@ -1,6 +1,6 @@
 # EXEC-001: AI相互レビューとTDDハーネスの導入
 
-> **履歴資料:** このPlanは2026-08-15のTASK-006 bootstrap時点を記録する。本文の「未実装」「禁止」「保留」は当時の状態であり、現行要件ではない。現在のattested境界と残作業は [EXEC-002](EXEC-002-ATTESTED-AI-REVIEW-BOUNDARIES.md)、実行可否と手順は [HARNESS-RUNBOOK.md](../HARNESS-RUNBOOK.md) を正とする。
+> **履歴資料:** このPlanは2026-08-15のTASK-006 bootstrap時点を記録する。本文の「未実装」「禁止」「保留」は当時の状態であり、現行要件ではない。現在のattested境界と残作業は [EXEC-002](../../plans/EXEC-002-ATTESTED-AI-REVIEW-BOUNDARIES.md)、実行可否と手順は [HARNESS-RUNBOOK.md](../../HARNESS-RUNBOOK.md) を正とする。
 
 ## メタデータ
 
@@ -9,9 +9,9 @@
 - 作成日: 2026-08-15
 - 最終更新日: 2026-08-16（history-only notice追加）
 - 基準commit: `2fd9c5b1c12efbcf14172d62ad23341291292a3a`
-- 関連規約: [PLANS.md](../PLANS.md)、[AI_GUIDE.md](../AI_GUIDE.md)
-- 関連負債: [TD-009](../TECH-DEBT-TRACKER.md#td-009-ai変更の役割分離と証拠契約)
-- 解決対象: [ISS-001](../ISSUES.md#iss-001-デバッグ表示に2つの条件語重みがない)、`TODO-002`、`TODO-003`、`TODO-004`
+- 関連規約: [PLANS.md](../../PLANS.md)、[AI_GUIDE.md](../../AI_GUIDE.md)
+- 関連負債: [TD-009](../../TECH-DEBT-TRACKER.md#td-009-ai変更の役割分離と証拠契約)
+- 解決対象: [ISS-001](../../ISSUES.md#iss-001-デバッグ表示に2つの条件語重みがない)、`TODO-002`、`TODO-003`、`TODO-004`
 
 ## 目的
 
@@ -36,7 +36,7 @@ AIを利用する変更で実装者の自己評価だけに依存せず、次を
 - 通常pytestのPython network monkeypatch guardと `live_api` の二重opt-in
 - GitHub Actionsのlock、Ruff、offline pytest、diff check
 - Streamlitデバッグ表示、表示整形、検索語fallback、APIキー欠落経路の回帰テスト
-- [AI_GUIDE.md](../AI_GUIDE.md) と関連管理文書
+- [AI_GUIDE.md](../../AI_GUIDE.md) と関連管理文書
 
 ## 対象外
 
@@ -113,7 +113,7 @@ pytest guardもOSレベルの遮断ではない。subprocess、raw file descript
 
 ## 進捗
 
-以下の未チェック項目はTASK-006当時の移管項目であり、現在の未実装一覧ではない。後続の達成状況と残作業は [EXEC-002](EXEC-002-ATTESTED-AI-REVIEW-BOUNDARIES.md) を参照する。
+以下の未チェック項目はTASK-006当時の移管項目であり、現在の未実装一覧ではない。後続の達成状況と残作業は [EXEC-002](../../plans/EXEC-002-ATTESTED-AI-REVIEW-BOUNDARIES.md) を参照する。
 
 - [x] task、policy、gate、review、TDD evidence、verdictのモデルと6 schemaを追加した。
 - [x] raw task、candidate、gate、TDD、reviewのbindingを強化した。
@@ -154,7 +154,7 @@ GitHub ActionsのPython 3.10 / 3.13 job、外部Codex、Bonsai、Outscraper、�
 
 ## セキュリティ判断
 
-次表はTASK-006当時の判断と見直し条件である。見直し後の現行判断は [EXEC-002](EXEC-002-ATTESTED-AI-REVIEW-BOUNDARIES.md#判断記録) を正とする。
+次表はTASK-006当時の判断と見直し条件である。見直し後の現行判断は [EXEC-002](../../plans/EXEC-002-ATTESTED-AI-REVIEW-BOUNDARIES.md#判断記録) を正とする。
 
 | 判断 | 理由 | 見直し条件 |
 |---|---|---|
@@ -193,4 +193,4 @@ GitHub ActionsのPython 3.10 / 3.13 job、外部Codex、Bonsai、Outscraper、�
 
 2026-08-15時点で安全側MVPを完了した。strictな6 JSON契約、raw task / candidate / gate / TDD binding、standalone clone policy、current repository再検査を行うjudge、実行無効のCodex dry-run、補助的network guard、CI定義、TDDパイロット、運用文書をそろえた。
 
-同日の完了時点ではattested自動実行を未完・保留とし、外部Codex、Bonsai、Outscraper、実networkを実行しなかった。そこで移管したpreflight、snapshot、OS隔離、broker、署名、attested judgeの現行実装と、supported production一括運用・配備の残りは [EXEC-002](EXEC-002-ATTESTED-AI-REVIEW-BOUNDARIES.md) に記録する。
+同日の完了時点ではattested自動実行を未完・保留とし、外部Codex、Bonsai、Outscraper、実networkを実行しなかった。そこで移管したpreflight、snapshot、OS隔離、broker、署名、attested judgeの現行実装と、supported production一括運用・配備の残りは [EXEC-002](../../plans/EXEC-002-ATTESTED-AI-REVIEW-BOUNDARIES.md) に記録する。

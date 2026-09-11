@@ -1,5 +1,7 @@
 # 大規模タスク一覧
 
+> **標準文書との関係:** 現在の到達点と進行中の計画は [GOAL.md](GOAL.md)、問題と作業台帳の入口は [ISSUES.md](ISSUES.md) とする。この文書は大規模タスクのID、詳細、完了条件を保持する。
+
 ## 1. 役割
 
 この文書は、複数の設計判断、複数モジュール、段階的な検証を要する成果単位を管理する。候補項目は現行実装で確認できる制約から導いたものであり、着手承認、担当者、期限、実装方式が決まったことを意味しない。`TASK-006` は安全側MVP、`TASK-007` はattested境界とproduction接続を扱う。
@@ -22,6 +24,7 @@
 | TASK-005 | 候補 | ランキング品質評価の確立 |
 | TASK-006 | 完了 | AI相互レビューとTDDハーネスの導入 |
 | TASK-007 | 実行中 | attested AI review境界の実装 |
+| TASK-008 | 実行中 | 次期検索フロー v2 の実装 |
 
 優先順位と実施時期は確定していない。ローカル単独利用を続けるか、外部公開するかで必要性が大きく変わる。
 
@@ -151,7 +154,7 @@
 ## TASK-006: AI相互レビューとTDDハーネスの導入
 
 - 状態: 完了
-- 実行計画: [EXEC-001](plans/EXEC-001-AI-REVIEW-TDD-HARNESS.md)
+- 実行計画: [EXEC-001](old/plans/EXEC-001-AI-REVIEW-TDD-HARNESS.md)
 - 根拠: [TD-009](TECH-DEBT-TRACKER.md#td-009-ai変更の役割分離と証拠契約)
 - 成果: strict task/policy/gate/review/TDD/verdict契約、canonical single-commit policy、Git object再hash、standalone clone検査、deterministic judge、network guard、CI gate、TDDパイロットを導入した
 - 境界: EXEC-001はbootstrap時点の履歴であり、その後のattested runtime、snapshot、runner、broker、署名はTASK-007で実装した
@@ -210,6 +213,61 @@ TASK-006自体では外部AI、Bonsai、Outscraper、Amazonの実通信、課金
 2026-08-16の実配備では `ai-review` UID 1100、`amazon-candidate` UID 1101、ai-review専用subuid/subgid、rootless Podman 6.1、user namespace、seccompを確認した。clean base `dd4b6bde2bd2d7f3ebc67c5190949c1cc97652ee`、canary head `c603ec833e13f13bdce5af4e0b36f5917e0d4f98`、manifest SHA-256 `703d2e183558afe6e52198247888675d7f0b526f5082051a9ae75d5ea3a402ae` を `/opt/amazon-explorer-ai-review/releases/dd4b6bde2bd2d7f3ebc67c5190949c1cc97652ee` とprivate `/var/lib/amazon-explorer-ai-review` へ分離し、4 imageのlocal inspect/networkなしsmokeが `nonlive_ready` で成功した。package導入、public base image pull、image内package取得、4 image buildは実施したが、OpenAI credential/API、external network、live workflow、課金は未実行である。
 
 同じmanifest anchorとcanonical patch `a9d49bea2225a903fe693f913c1f8652cdea56d02b03355e17f472363ca3b715` を再照合し、local objectを共有しないUID 1100所有candidateから `/var/lib/amazon-explorer-ai-review/artifacts/TASK-CANARY-001-live-init-r2/phase-request.json` を生成した。directoryは0500、fileは0400、file SHA-256は `57266f318584f01dd0fc3cccf08a9e356db67371277e974393d7c8b91f42c706` であり、UID 1101からは読めない。これはcredential/APIを使わない初期化実績であり、live 7-phase成功ではない。
+
+## TASK-008: 次期検索フロー v2 の実装
+
+- 状態: 進行中（backend基盤の第1マイルストーン）
+- 仕様: [SEARCH-FLOW.md](SEARCH-FLOW.md)
+- 実行計画・第1マイルストーン証拠: [EXEC-003](old/plans/EXEC-003-SEARCH-FLOW-V2-BACKEND.md)。同Planに残るOpenAI provider案は履歴であり、現行provider判断には [SEARCH-FLOW.md](SEARCH-FLOW.md) を使う
+- 関連: [TASK-001](#task-001-検索処理のジョブ化)、[TASK-003](#task-003-多利用者向けセキュリティ境界の構築)、[TASK-005](#task-005-ランキング品質評価の確立)
+- 現行: Bonsaiで属性を抽出し、1クエリのOutscraper検索、決定的正規化、テキスト・価格採点をStreamlit要求内で同期実行する
+- 目標: Bonsai JSON textのfail-closed parseとstrict intent、決定的query plan、Cloudflare 4方向画像、2段階確認、複数query Outscraper、未知商品属性を推測で埋めない決定的正規化、説明可能なtext/price/image ranking、モーダル系UI境界、検索履歴を実装する
+
+確定した主要判断:
+
+1. 画像生成トグルは既定OFF
+2. ON時は `@cf/black-forest-labs/flux-2-klein-4b` だけで基準、左、右、背面の4方向を生成する
+3. 派生3方向は同じ基準画像を参照し、再生成は4枚一括とする
+4. pHash/Hamming距離は重複検出、固定CLIP embeddingは意味的画像scoreに使う
+5. Outscraperはexact parameterを示す第2確認のsingle-use承認後だけ呼ぶ
+6. component欠損時はweightを再正規化し、総合score降順にする
+7. UI技術と検索domainを分離し、StreamlitからReact/Tailwindへ変更しても同じtyped APIを使う
+8. 画像拡大、再生成確認、安全な中止、条件付き再試行を共通Lightbox、AlertDialogへ分離し、待機中の承認済み条件は読み取り専用の右側要約として常時表示する
+9. 完了した検索は0件を含めて履歴へ1件だけ30日間保存し、履歴の閲覧・再読込・個別削除・期限削除で外部処理を再実行しない
+10. 初回実装の共通ヘッダーは `検索履歴` だけを追加し、設定ボタン、設定画面、設定用routeは保留する
+
+想定する成果物:
+
+1. Bonsai response envelope、content全体のfail-closed JSON parser、strict Pydantic domain model（第1マイルストーンでdomain model完了、Bonsai v2応答境界は未実装）
+2. intent正規化、Sudachi/英数字tokenizer、最大2件のquery plan（第1マイルストーンでintent正規化とquery plan完了、tokenizerは未実装）
+3. 2段階承認state machine、single-use digest、call/token/cost ledger
+4. Cloudflare 4方向request builder、image set、全体再生成
+5. Outscraper複数queryと承認guard
+6. deterministic product normalization、未知属性の維持、post-Outscraper LLM非呼出しguard
+7. image proxy、pHash dedupe、pinned CLIP runtime
+8. ranking profile v2、stable sort、score breakdown
+9. API-first UI contract、モーダル系共通component、実画面
+10. owner分離した検索履歴の保存、一覧、詳細、個別削除、30日の期限物理削除
+11. offline/security/ranking評価と承認済みの最小live試験
+
+完了条件:
+
+- [ ] Bonsaiの通信・envelope・JSON・strict schema不一致をfail closedにし、Markdown fenceやJSON断片抽出で救済しない
+- [ ] 意図、推定価格、クエリを第1確認で編集できる
+- [ ] Cloudflare Workers AIで4方向setを生成・一括再生成できる
+- [ ] 第2確認なしのOutscraper呼出しを全経路で拒否する
+- [ ] Outscraper後にLLMを呼ばず、観測できない商品属性は未知のまま、決定的な値だけで続行する
+- [ ] pHashとCLIPの役割を分離し、固定fixtureで画像rankingの採否を決める
+- [ ] 欠損weight再正規化、negative penalty、stable descending sortを再現できる
+- [ ] per-user/session/dayでBonsaiのcall・生成上限とCloudflare・Outscraperのcall・cost上限を送信前に強制する
+- [ ] LightboxとAlertDialogの用途を分け、待機画面右側へ承認済み条件の読み取り専用要約を常時表示し、検索語編集と商品詳細をページ内に維持する
+- [ ] completed 1件を履歴1件へ冪等保存し、空・読込失敗・削除失敗を含むUI状態を提供する
+- [ ] 履歴の一覧・詳細・再読込・削除が外部処理を呼ばず、owner不一致と内部metadata表示を拒否する
+- [ ] 履歴と専有生成画像を完了日時から30日で期限物理削除し、期限後の一覧・詳細から返さない
+- [ ] 通常CIをnetworkなしで完了し、live試験の送信内容・承認・費用・結果を別記録にする
+- [ ] [SEARCH-FLOW.md](SEARCH-FLOW.md)、要件、設計、UI、security、cache schemaを実装と一致させる
+
+実Outscraperテストは送信内容と費用を提示して毎回承認を得る。Cloudflareの最初の実試験は基準画像1枚に限定し、4方向setと再生成を別承認にする。着手時は [PLANS.md](PLANS.md) に従ってExecution Planを作成する。
 
 ## 3. 更新規則
 

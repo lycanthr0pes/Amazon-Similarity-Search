@@ -1,5 +1,7 @@
 # 設計方針
 
+> **標準文書との関係:** 実装領域ごとの正本は [FRONTEND.md](FRONTEND.md)、[BACKEND.md](BACKEND.md)、[SECURITY.md](SECURITY.md)、[DB-SCHEMA.md](DB-SCHEMA.md) とする。この文書は領域を横断する設計原則と構成を保持する。
+
 ## 1. 文書の目的
 
 この文書は、amazon-explorer の現行アーキテクチャ、責務分割、主要な設計判断を示す。実装済みの事実と将来の設計候補を混同しないため、次の優先順位で判断する。
@@ -8,7 +10,7 @@
 2. `tests/` が固定している振る舞い
 3. この文書を含む `docs/`
 
-文書とコードが食い違う場合はコードを正とし、同じ変更で文書とテストを更新する。要件は [REQUIREMENTS.md](REQUIREMENTS.md)、制約は [CONSTRAINTS.md](CONSTRAINTS.md)、サーバー側の詳細は [BACKEND.md](BACKEND.md)、永続化形式は [DB-SCHEMA.md](DB-SCHEMA.md)を参照する。
+文書とコードが食い違う場合はコードを正とし、同じ変更で文書とテストを更新する。要件は [REQUIREMENTS.md](REQUIREMENTS.md)、承認済みの次期検索フローは [SEARCH-FLOW.md](SEARCH-FLOW.md)、制約は [CONSTRAINTS.md](CONSTRAINTS.md)、サーバー側の詳細は [BACKEND.md](BACKEND.md)、永続化形式は [DB-SCHEMA.md](DB-SCHEMA.md)を参照する。
 
 ## 2. プロダクトの境界
 
@@ -30,7 +32,7 @@ amazon-explorer は、日本語の自然文から Amazon.co.jp の商品候補�
 - RDB、検索エンジン、オブジェクトストレージ
 - 認証、認可、テナント管理
 - バックグラウンドジョブ、キャンセル、進捗API
-- ComfyUI、画像生成、画像類似度
+- [次期検索フロー v2](SEARCH-FLOW.md) のBonsai strict応答境界、Cloudflare 4方向画像生成、2段階確認、画像類似度。strict intent、正規化、最大2件query planだけは独立domain基盤として実装済み
 - コンテナ、クラウド配布設定。決定論的CI定義は現行作業ツリーに追加済みだが、GitHub上の実行結果は未確認
 
 ## 3. アーキテクチャ原則
@@ -64,7 +66,7 @@ Outscraperの結果URLは、APIキーを送信する前にHTTPSかつ設定endpo
 
 ### 3.5 現行機能と設計候補を区別する
 
-将来構想は、実装、設定、テストが追加されるまで現行仕様として扱わない。特に本番化、認証、ジョブキュー、RDB移行、画像処理は未実装である。
+将来構想は、実装、設定、テストが追加されるまで現行仕様として扱わない。特に本番化、認証、ジョブキュー、RDB移行、画像処理は未実装である。ただし画像処理を含む次期検索フローの採用判断は [SEARCH-FLOW.md](SEARCH-FLOW.md) で確定済みであり、未決候補ではなく実装待ちの仕様として扱う。
 
 ## 4. システム構成
 
@@ -221,3 +223,40 @@ Streamlitは詳細例外をサーバーログへ記録し、画面には固定�
 7. CI、配布方式、シークレット管理
 
 これらの未実装項目は [TECH-DEBT-TRACKER.md](TECH-DEBT-TRACKER.md)、[ISSUES.md](ISSUES.md)、[TASKS.md](TASKS.md)で状態を管理する。
+
+## 14. 承認済みの次期検索アーキテクチャ（基盤を一部実装）
+
+[SEARCH-FLOW.md](SEARCH-FLOW.md) は次期検索フロー v2 の正本である。現行4段階パイプラインへ画像生成を直接差し込まず、次の独立した状態機械へ置き換える。
+
+```text
+自然文
+  -> Bonsai JSON text / fail-closed strict intent
+  -> deterministic normalization / query plan
+  -> 第1確認
+  -> optional Cloudflare 4方向画像
+  -> 第2確認
+  -> Outscraper
+  -> deterministic product normalization
+  -> deterministic product attributes / unknown preservation
+  -> text / price / optional image scoring
+  -> total score降順
+  -> immutable result snapshot / search history
+```
+
+次の判断は確定している。
+
+- 画像生成トグルは既定OFF
+- ONでは `@cf/black-forest-labs/flux-2-klein-4b` が基準、左、右、背面の4方向をすべて生成する
+- 派生3方向は同じ基準画像を参照し、他providerやComfyUIへ分岐しない
+- pHashは重複検出、固定CLIP embeddingは意味的画像scoreと役割を分ける
+- 欠損componentのweightを除外して再正規化する
+- Outscraperは第2確認のsingle-use承認なしでは呼ばない
+- Outscraper後の商品候補はBonsai、OpenAIその他のLLMへ送らず、未観測属性を未知のまま保持する
+- UIは状態機械とtyped APIだけに依存し、StreamlitまたはReact/Tailwindを検索ロジックの所有者にしない
+- 完了結果は0件も含めて検索履歴へ冪等に保存し、履歴一覧・詳細・削除から外部処理を呼ばない
+- 検索履歴はcache TTLと分離して完了日時から30日間保持し、ownerを検証した表示用スナップショットだけを通常画面へ返す。個別削除と期限削除は結果と専有生成画像を物理削除する
+- 一時確認はLightboxとAlertDialogへ分離し、待機中の承認済み条件は読み取り専用の右側要約として常時表示する。検索語と商品詳細はページ内折り畳みを維持する
+
+実装は [TASK-008](TASKS.md#task-008-次期検索フロー-v2-の実装) と個別Execution Planで管理する。
+
+最初の境界として `src/search_v2/intent.py` と `query_planner.py` を現行pipelineから分離して追加した。ここではstrict schema、価格mode整合、NFKC正規化、source/prompt/schema/response digest、最大2件queryとplan digestだけを扱う。外部client、state machine、画像、商品候補、採点をimportしないため、この追加だけで利用者フローや外部通信は変化しない。実装証拠は [EXEC-003](old/plans/EXEC-003-SEARCH-FLOW-V2-BACKEND.md) を参照する。

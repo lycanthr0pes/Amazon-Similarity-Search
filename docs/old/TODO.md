@@ -1,5 +1,7 @@
 # 小規模タスク一覧
 
+> **標準文書との関係:** 問題と作業台帳の入口は [ISSUES.md](ISSUES.md)、現在の到達点は [GOAL.md](GOAL.md) とする。この文書は単独で完了できる小規模作業のIDと状態を保持する。
+
 ## 1. 役割
 
 この文書は、対象と完了条件が明確で、原則として1回の小さな変更で完結する作業を管理する。2026-08-16時点の現行コードとテストから確認できた項目だけを掲載する。AIハーネスの専用user/subuid/subgid/rootless Podman設定、clean release、具体的TaskSpec v2 canary、`nonlive_ready` 実host確認、launcher user向けinitial request生成は完了した。残るlive E2Eとnonce ledger長期運用は単発作業ではないため、[TASK-007](TASKS.md#task-007-attested-ai-review境界の実装) と [TD-009](TECH-DEBT-TRACKER.md#td-009-ai変更の役割分離と証拠契約) で追跡する。credential-free配備確認をOpenAI APIのlive成功として扱わない。

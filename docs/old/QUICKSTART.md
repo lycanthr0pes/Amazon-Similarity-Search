@@ -1,5 +1,7 @@
 # クイックスタート
 
+> **標準文書との関係:** リポジトリ概要と基本セットアップは [README.md](../README.md) を入口とする。この文書はローカル起動と外部APIを使わない確認手順を詳細化する。
+
 ## 1. 最短構成
 
 amazon-explorer を実検索まで動かすには、次が必要である。
@@ -144,10 +146,10 @@ Outscraperの非同期タスクではrequest IDとポーリング回数・状態
 コード変更後の基本確認は外部APIを呼ばない。
 
 ```sh
-uv run ruff check .
-uv run ruff format --check .
-uv run pytest
-uv lock --check
+uv lock --check --offline
+uv run --frozen --offline --no-sync ruff check .
+uv run --frozen --offline --no-sync ruff format --check .
+uv run --frozen --offline --no-sync pytest -m 'not live_api'
 git diff --check
 ```
 

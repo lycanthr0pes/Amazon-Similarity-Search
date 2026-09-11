@@ -3,9 +3,9 @@
 ## メタデータ
 
 - タスクID: `TASK-007`
-- 状態: 進行中（7/7 actual handler、frozen sign/judge、exact nonce contract、workflow初期化、credential-free deployment check、独立security reviewは完了。rootless Podmanへの実配備、具体的v2 canary、nonce長期運用が残る）
+- 状態: 進行中（7/7 actual handler、frozen sign/judge、exact nonce contract、workflow初期化、credential-free deployment check、独立security review、rootless Podman実配備、具体的TaskSpec v2 canaryの `nonlive_ready`、live launcher用initial request準備は完了。別途承認するfull 7-phase OpenAI live E2Eとnonce ledger長期運用が残る）
 - 作成日: 2026-08-15
-- 最終更新日: 2026-08-16
+- 最終更新日: 2026-09-02
 - 前提タスク: [TASK-006](../TASKS.md#task-006-ai相互レビューとtddハーネスの導入)
 - 関連負債: [TD-009](../TECH-DEBT-TRACKER.md#td-009-ai変更の役割分離と証拠契約)
 - 運用規約: [AI_GUIDE.md](../AI_GUIDE.md)
@@ -83,7 +83,7 @@ brokerのouter rawは両roleのprovisioned lifecycleに加え、失敗attemptを
 - nonce ledgerの長期保持、backup、容量、rotation運用が未定義である
 - external OpenAI APIはcredential/費用opt-inがなく未実行である
 
-package/user/system変更、rootless Podman設定、image build/pull、release installは人間承認が必要であり、今回実行していない。これらを理由に、個別APIを手作業でつないだlive実行を行わない。
+package/user/system変更、rootless Podman設定、image build/pull、release installは人間承認後に実施した。ただし、ここまでの結果はcredential-freeな非live配備準備・検証であり、`nonlive_ready` をlive/E2E完了とは扱わない。OpenAI credential、external API、broker external network、full 7-phase live workflow、課金は実行していない。個別APIを手作業でつないだlive実行も行わない。
 
 ## 実行手順と進捗
 
@@ -152,8 +152,11 @@ package/user/system変更、rootless Podman設定、image build/pull、release i
 - [x] nonce DBのexact schema・PRAGMA・index・file identity・sidecar不在を固定し、replay setを単一transactionで原子的に予約する
 - [x] credential/API/external networkなしでrootless backendと4 imageをlocal inspect/smokeし、`nonlive_ready` evidenceだけを返すdeployment checkを追加する
 - [ ] 失敗時に同workflowを再開せず、新しいworkflow IDでやり直す運用をE2Eで確認する
-- [ ] 管理者承認後に専用user/subuid/subgid/rootless Podman、trusted `/opt`、private `/var/lib` を用意する
-- [ ] 人手監査済みclean commit、具体的TaskSpec v2 canary、external approved manifest SHA、4 image digestからroot-owned releaseをinstallし、`--deployment-check` の `nonlive_ready` とrootful/root/no-usernsのfail closedを実hostで確認する
+- [x] 管理者承認後に専用user/subuid/subgid/rootless Podman、trusted `/opt`、private `/var/lib` を用意する
+- [x] 人手監査済みclean commit、具体的TaskSpec v2 canary、external approved manifest SHA、4 image digestからroot-owned releaseをinstallし、実hostで `--deployment-check` のcredential-free `nonlive_ready` を確認する
+- [x] external manifest/patch anchorを再照合し、UID 1100所有のstandalone candidateとprivate artifact rootからlive launcherが読めるinitial requestを生成する
+- [ ] 別途承認した送信内容、OpenAI credential、費用上限を使うfull 7-phase OpenAI live workflowをE2Eで確認する
+- [ ] nonce ledgerの長期保持、backup、容量、rotation、古いattestation検証方針を定義する
 - [x] schema生成・一致、full offline pytest、Ruff、lock、diff、Markdown link/anchorを最終確認する
 - [x] 独立security reviewの未修正CRITICAL/HIGHを0にし、7-phase重点回帰とnonce再監査を完了する
 - [x] TASKS、TECH-DEBT、WORKLOG、runbookを最終状態へ同期する

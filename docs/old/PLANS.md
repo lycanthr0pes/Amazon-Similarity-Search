@@ -1,5 +1,7 @@
 # Execution Plan 規約
 
+> **標準文書との関係:** Planを必要とする条件と共通の完了規則は [DEVELOPMENT.md](DEVELOPMENT.md) を正本とする。この文書は個別Planの詳細な記載形式を保持し、現在の到達点と進行状態は [GOAL.md](GOAL.md) に集約する。
+
 ## 1. 目的
 
 Execution Plan（以下、Plan）は、長時間または複雑な変更を、会話履歴に依存せず引き継ぎ・再開・検証できる状態に保つための実行文書である。単なる予定表ではなく、現在地、判断、検証結果、残作業を一つの文書に集約する。
@@ -21,7 +23,7 @@ Execution Plan（以下、Plan）は、長時間または複雑な変更を、�
 
 ## 3. 保存と識別
 
-詳細Planは `docs/plans/<task-id>-<短い名前>.md` に置き、`TASKS.md` の対応項目から相対リンクする。最初の完了済みPlanは [EXEC-001: AI相互レビューとTDDハーネスの導入](plans/EXEC-001-AI-REVIEW-TDD-HARNESS.md) である。
+進行中の詳細Planは `docs/plans/<task-id>-<短い名前>.md` に置き、`TASKS.md` の対応項目から相対リンクする。完了して現行Planではなくなった文書は、すべての参照を更新した上で `docs/old/plans/` へ移す。旧Planは現行要件を上書きしない。最初の完了済みPlanは [EXEC-001: AI相互レビューとTDDハーネスの導入](old/plans/EXEC-001-AI-REVIEW-TDD-HARNESS.md) である。
 
 各Planには、少なくとも次の識別情報を記載する。
 
@@ -67,9 +69,9 @@ Planだけを読んだ作業者が、現在のリポジトリから安全に作�
 各マイルストーンには、実行コマンドと期待結果を対応付ける。amazon-explorer の基準となるローカル検証は次である。
 
 ```sh
-uv run ruff check .
-uv run ruff format --check .
-uv run pytest -m 'not live_api'
+uv run --frozen --offline --no-sync ruff check .
+uv run --frozen --offline --no-sync ruff format --check .
+uv run --frozen --offline --no-sync pytest -m 'not live_api'
 git diff --check
 ```
 
@@ -150,9 +152,9 @@ Planを `完了` にできるのは、次をすべて満たした場合である
 - 状態: 未着手
 - 作成日: YYYY-MM-DD
 - 最終更新: YYYY-MM-DD
-- 関連要件: <requirement-id>（例: FR-101。参照: [REQUIREMENTS.md](../REQUIREMENTS.md#3-機能要件)）
-- 関連課題: <issue-id>（参照: [ISSUES.md](../ISSUES.md#2-オープン)）
-- 関連負債: <debt-id>（参照: [TECH-DEBT-TRACKER.md](../TECH-DEBT-TRACKER.md#3-一覧)）
+- 関連要件: <requirement-id>（例: FR-101。参照: [REQUIREMENTS.md](REQUIREMENTS.md#3-機能要件)）
+- 関連課題: <issue-id>（参照: [ISSUES.md](ISSUES.md#2-オープン)）
+- 関連負債: <debt-id>（参照: [TECH-DEBT-TRACKER.md](TECH-DEBT-TRACKER.md#3-一覧)）
 
 ## 目的
 
@@ -180,8 +182,8 @@ Planを `完了` にできるのは、次をすべて満たした場合である
 
 | 対象 | コマンドまたは方法 | 期待結果 | 実結果 |
 |---|---|---|---|
-| 静的解析 | `uv run ruff check .` | 違反0件 | 未実行 |
-| テスト | `uv run pytest -m 'not live_api'` | 全件成功 | 未実行 |
+| 静的解析 | `uv run --frozen --offline --no-sync ruff check .` | 違反0件 | 未実行 |
+| テスト | `uv run --frozen --offline --no-sync pytest -m 'not live_api'` | 全件成功 | 未実行 |
 
 ## セキュリティ・データ・互換性
 

@@ -2,7 +2,7 @@
   "schema_version": "1.0",
   "task_id": "TASK-006",
   "base_sha": "2fd9c5b1c12efbcf14172d62ad23341291292a3a",
-  "trusted_harness_sha256": "0d27b9c541b01b1fb6f02c270286965c1507748abe5f5667ac5a9e7250426278",
+  "trusted_harness_sha256": "53eb3f84c3b728ef1a95fb2ca2103114c2ca051e1ac48cd9c00b0fc0ea358cfb",
   "objective": "amazon-explorerへ、外部preflightで固定したtrusted runtime、OS隔離したAI相互レビュー、凍結証拠、TDD判定を七段階で結ぶfail-closedな運用基盤を導入する。",
   "requirements": [
     {

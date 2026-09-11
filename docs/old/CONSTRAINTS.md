@@ -1,8 +1,10 @@
 # 制約
 
+> **標準文書との関係:** 満たすべき要件と受入条件は [REQUIREMENTS.md](REQUIREMENTS.md) を入口とする。この文書は実行環境、外部サービス、同期処理、運用上の限界を詳細化する。
+
 ## 1. 文書の目的
 
-この文書は、amazon-explorer の現行実装を利用・変更するときに前提とする技術的、運用上、データ上の制約をまとめる。制約を解消する提案は現行機能ではなく、[TECH-DEBT-TRACKER.md](TECH-DEBT-TRACKER.md)、[ISSUES.md](ISSUES.md)、[TASKS.md](TASKS.md)で管理する。
+この文書は、amazon-explorer の現行実装を利用・変更するときに前提とする技術的、運用上、データ上の制約をまとめる。制約を解消する提案は現行機能ではなく、[TECH-DEBT-TRACKER.md](TECH-DEBT-TRACKER.md)、[ISSUES.md](ISSUES.md)、[TASKS.md](TASKS.md)で管理する。承認済みで基盤を一部実装した次期検索制約は [SEARCH-FLOW.md](SEARCH-FLOW.md) も参照する。
 
 ## 2. 実行環境
 
@@ -37,6 +39,19 @@
 - USDからJPYへの換算は既定160円の固定値である。
 - 実勢レートを取得せず、取得時刻やレート出典も保存しない。
 - `price_jpy` が円換算済みでも `currency` は元の検出通貨 `USD` のままになり得る。
+
+### 3.4 次期検索フローの外部サービス（未実装）
+
+strict intent、決定的正規化、最大2件query planはnetworkなしのdomain実装として存在するが、次のprovider境界はすべて未実装である。
+
+- Bonsaiは現行と同じローカルLLM境界として維持し、Cloudflare Workers AIとOutscraperはそれぞれ別credential、別利用上限、別障害境界として扱う。
+- Cloudflareの4方向画像は同一性、仕様の正確性、seedによるbyte再現を保証しない。
+- 4方向setは初回4 callsであり、既定の一括再生成上限まで使うと最大8 callsになる。
+- 画像生成は商品検索ではなく利用者の意図確認を補助する。生成画像を実在商品の証拠にしない。
+- CLIP image-to-image類似度は本用途で品質保証されていないため、固定評価を通すまでranking weightを有効にしない。
+- BonsaiのJSON textをstrict検証しても、意味上の誤推論やモデル更新による変化は排除できない。固定fixtureで品質を評価する必要がある。
+- BonsaiはJSON Schemaをserver-sideで強制しないため、v2はcontent全体のJSON parseとstrict Pydantic検証をapplication境界で強制する。
+- CloudflareとOutscraperの料金、quota、model availabilityは変更され得るため、live実行前に公式資料と承認済みpricing policyを再確認する。
 
 ## 4. 同期実行と可用性
 
@@ -105,7 +120,7 @@
 - 総合重みと否定ペナルティは手動設定値であり、代表検索データによる評価・最適化は未実施である。
 - `required_terms` は名前に反して候補を除外するハード条件ではなく、ランキング上の高い重みである。
 - 価格が不明なら価格スコアは0、価格指定がなければ既定0.5であるため、価格欠損の影響が残る。
-- 評価、レビュー件数、Prime、配送、元検索順位は表示・正規化されるが、現行の総合スコアには使わない。
+- 評価とレビュー件数は現行Streamlitに表示するが、Prime、配送、元検索順位は通常画面に表示しない。これらは現行の総合スコアに使わない。
 
 ## 11. UIとCLI
 
@@ -158,12 +173,12 @@
 
 次は設計メモに由来する候補であって、現行実装の制約内では利用できない。
 
-- ComfyUIや画像生成
-- 画像埋め込み・画像類似度
+- ComfyUI連携
 - SSH連携による分散実行
-- 認証ユーザー別の永続検索履歴
 - アプリ独自のHTTP API
 - RDBやオブジェクトストレージ
 - ジョブキューと複数ワーカー
 
 これらを追加する場合は、[PLANS.md](PLANS.md) の規約に従って現行制約への影響、データ移行、失敗時の戻し方、検証方法を明示する。
+
+Cloudflare Workers AIによる4方向画像生成、pHash重複検出、固定CLIP embedding、2段階確認、モーダル系UI境界、認証主体別の検索履歴は候補ではなく [SEARCH-FLOW.md](SEARCH-FLOW.md) で仕様確定済みである。ただし [TASK-008](TASKS.md#task-008-次期検索フロー-v2-の実装) が完了するまでは現行実装の制約内で利用できない。

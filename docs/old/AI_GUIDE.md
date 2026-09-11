@@ -1,5 +1,7 @@
 # AI相互レビューとTDD運用規約
 
+> **標準文書との関係:** 開発・TDD・外部実行承認の共通規則は [DEVELOPMENT.md](DEVELOPMENT.md)、信頼境界は [SECURITY.md](SECURITY.md) を正本とする。この文書はAIレビュー固有の詳細契約を保持し、実行手順は [HARNESS-RUNBOOK.md](HARNESS-RUNBOOK.md) に分離する。
+
 ## 1. 目的
 
 この文書は、amazon-explorerでAIを利用して実装・レビューするときの強制規約である。AIの自己評価ではなく、固定したtask、RED→GREEN、immutable snapshot、raw execution evidence、独立したreviewer/adversary、署名、deterministic judge、人間承認を同じchainへ結び付ける。
@@ -147,16 +149,16 @@ AI inferenceより前に次を通す。
 2. candidate Git/policyとcanonical diff SHA-256
 3. RED snapshotのoverlay制約
 4. acceptanceごとのraw RED/GREEN/offline run
-5. `uv lock --check`
-6. `uv run ruff check .`
-7. `uv run ruff format --check .`
-8. `uv run pytest -m 'not live_api'`
+5. `uv lock --check --offline`
+6. `uv run --frozen --offline --no-sync ruff check .`
+7. `uv run --frozen --offline --no-sync ruff format --check .`
+8. `uv run --frozen --offline --no-sync pytest -m 'not live_api'`
 9. `git diff --check`
 10. bounded review packet生成
 
 先行gateが失敗したらbrokerを起動しない。既知の構文、lint、test失敗を説明させるためにtokenと費用を使わない。
 
-通常pytestのPython network guardは補助であり、OS隔離の代替ではない。production evidenceはoffline containerのraw evidenceを必要とする。
+source-treeでの上記gateは事前準備済み環境を前提とする。依存準備の `uv sync` は別工程であり、package indexへ通信し得る。通常pytestのPython network guardは補助であり、OS隔離の代替ではない。production evidenceはoffline containerのraw evidenceを必要とする。
 
 ## 9. review packetとcredential検査
 

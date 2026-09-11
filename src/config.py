@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from src.paths import PROJECT_ROOT
@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     bonsai_timeout_seconds: int = Field(default=60, gt=0)
     bonsai_temperature: float = Field(default=0.1, ge=0, le=2)
     bonsai_max_tokens: int = Field(default=1000, gt=0)
-    bonsai_prompt_path: Path = PROJECT_ROOT / "src" / "clients" / "bonsai_prompt.md"
+    bonsai_prompt_path: Path = PROJECT_ROOT / "src" / "clients" / "bonsai_prompt.txt"
 
     # Outscraper関連
     outscraper_api_key: str = ""
@@ -55,8 +55,6 @@ class Settings(BaseSettings):
     related_term_weight: int = Field(default=1, ge=0)
 
     # UI関連
-    app_env: str = "local"
-    log_level: str = "INFO"
     search_result_display_limit: int = Field(default=10, gt=0)
     show_debug_info: bool = False
 
@@ -85,6 +83,76 @@ class Settings(BaseSettings):
         if condition_total == 0:
             raise ValueError("at least one condition term weight must be greater than 0")
         return self
+
+
+class CloudflareLiveSettings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=PROJECT_ROOT / ".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
+    cloudflare_account_id: str = Field(pattern=r"^[0-9a-f]{32}$")
+    cloudflare_api_token: SecretStr
+
+    @field_validator("cloudflare_api_token")
+    @classmethod
+    def validate_cloudflare_api_token(cls, value: SecretStr) -> SecretStr:
+        token = value.get_secret_value()
+        if (
+            not token
+            or len(token) > 4_096
+            or not token.isascii()
+            or any(not 0x21 <= ord(character) <= 0x7E for character in token)
+        ):
+            raise ValueError("Cloudflare API token is invalid")
+        return value
+
+
+class ProductImageProxyLiveSettings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=PROJECT_ROOT / ".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
+    amazon_product_image_e2e_url: SecretStr
+
+    @field_validator("amazon_product_image_e2e_url")
+    @classmethod
+    def validate_amazon_product_image_e2e_url(cls, value: SecretStr) -> SecretStr:
+        url = value.get_secret_value()
+        if (
+            not url
+            or len(url) > 2_048
+            or not url.isascii()
+            or any(not 0x21 <= ord(character) <= 0x7E for character in url)
+        ):
+            raise ValueError("Amazon product image E2E URL is invalid")
+        return value
+
+
+class OutscraperLiveSettings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=PROJECT_ROOT / ".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
+    outscraper_api_key: SecretStr
+
+    @field_validator("outscraper_api_key")
+    @classmethod
+    def validate_outscraper_api_key(cls, value: SecretStr) -> SecretStr:
+        api_key = value.get_secret_value()
+        if (
+            not api_key
+            or len(api_key) > 4_096
+            or not api_key.isascii()
+            or any(not 0x21 <= ord(character) <= 0x7E for character in api_key)
+        ):
+            raise ValueError("Outscraper API key is invalid")
+        return value
 
 
 settings = Settings()

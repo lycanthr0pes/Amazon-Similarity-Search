@@ -1565,13 +1565,13 @@ def test_trusted_zipapp_is_deterministic_and_bound_to_external_runtime(tmp_path)
     assert (
         checked_in_task.review_prompts.reviewer_sha256
         == hashlib.sha256(
-            (source_root / "specs" / "prompts" / "reviewer.md").read_bytes()
+            (source_root / "specs" / "prompts" / "reviewer.txt").read_bytes()
         ).hexdigest()
     )
     assert (
         checked_in_task.review_prompts.adversary_sha256
         == hashlib.sha256(
-            (source_root / "specs" / "prompts" / "adversary.md").read_bytes()
+            (source_root / "specs" / "prompts" / "adversary.txt").read_bytes()
         ).hexdigest()
     )
 

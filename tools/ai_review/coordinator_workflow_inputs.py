@@ -270,7 +270,7 @@ def _prompt(
 ) -> str:
     try:
         _evidence, raw = read_protected_file(
-            snapshot.tree / "specs" / "prompts" / f"{role}.md",
+            snapshot.tree / "specs" / "prompts" / f"{role}.txt",
             candidate_uid=candidate_uid,
             label=f"{role} review prompt",
             expected_sha256=expected_sha256,

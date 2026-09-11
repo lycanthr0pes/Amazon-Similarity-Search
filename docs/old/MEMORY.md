@@ -1,5 +1,7 @@
 # プロジェクトメモリ
 
+> **標準文書との関係:** この文書は安定した補助知識であり、作業指示ではない。開発規則は [DEVELOPMENT.md](DEVELOPMENT.md)、現在のゴールは [GOAL.md](GOAL.md)、履歴は [WORKLOG.md](WORKLOG.md) を正本とする。
+
 ## 1. 目的
 
 この文書は、amazon-explorer を長期的に保守するために維持すべき、変化しにくい知識だけを記録する。日々の進捗は [WORKLOG.md](WORKLOG.md)、未完了作業は [TODO.md](TODO.md) と [TASKS.md](TASKS.md)、問題は [ISSUES.md](ISSUES.md) を使う。
@@ -19,7 +21,7 @@ amazon-explorer は、日本語の自然文から Amazon.co.jp の商品候補�
 5. Streamlit UIとCLIからの実行
 6. 段階ごとのローカルJSONキャッシュ
 
-画像生成、画像類似度、ComfyUI、SSH連携、アプリ独自の認証、バックグラウンドジョブは現行機能ではない。将来候補を実装済みとして説明しない。
+画像生成、画像類似度、ComfyUI、SSH連携、アプリ独自の認証、バックグラウンドジョブは現行機能ではない。現行Bonsai属性抽出を正本とし、Cloudflare Workers AIによる4方向画像を含む検索フローは [SEARCH-FLOW.md](SEARCH-FLOW.md) で仕様を管理する。strict intent、正規化、最大2件query planだけはprovider未接続の基盤実装があるが、現行検索への接続、外部API、承認、画像、ranking v2まで実装済みとは説明しない。
 
 ## 3. 権威ある情報源
 
@@ -36,6 +38,7 @@ amazon-explorer は、日本語の自然文から Amazon.co.jp の商品候補�
 | キャッシュのパス検証とTTL | `src/repositories/cache_repository.py` |
 | UI表示とセッション状態 | `src/ui/streamlit_ui.py` |
 | 現行動作の回帰保証 | `tests/` |
+| Bonsai正本の商品検索フロー | `docs/SEARCH-FLOW.md` |
 
 文書と実装が違う場合は、コードとテストで現状を確認し、同じ変更で文書を更新する。
 
@@ -73,6 +76,14 @@ user_input: str
 
 フィールドの完全な定義は [DB-SCHEMA.md](DB-SCHEMA.md)、計算方針は [BACKEND.md](BACKEND.md) を参照する。
 
+### 商品検索LLMのprovider決定
+
+- 商品検索の正本は、現行 `run_product_search()` が使うローカルBonsai OpenAI互換APIである
+- 2026-08-16に検討したOpenAI Responses API / Structured Outputsの商品検索採用案は、2026-08-19の明示決定で置換済みである
+- `src/search_v2/` の存在をOpenAI移行済みの根拠にせず、採用する場合もBonsai応答の後段に置くprovider非依存の検証・正規化境界として扱う
+- 商品検索失敗時にOpenAIへ自動fallbackしない。provider変更は明示決定、互換adapter、回帰テスト、cache移行を伴う別変更にする
+- AIレビューハーネスのOpenAI利用は別システム境界であり、この商品検索provider決定では変更しない
+
 ## 6. キャッシュの基本知識
 
 キャッシュは `CACHE_DIR`（既定 `cache/`）の下に段階別JSONとして保存する。
@@ -108,13 +119,14 @@ outscraper/scored/
 
 ## 8. 開発と検証
 
-依存関係は `uv` で管理する。標準コマンド:
+依存関係は `uv` で管理する。`uv sync --locked` は環境準備として分け、その後の標準検証は外部通信を許可せずに実行する。
 
 ```sh
 uv sync --locked
-uv run ruff check .
-uv run ruff format --check .
-uv run pytest
+uv lock --check --offline
+uv run --frozen --offline --no-sync ruff check .
+uv run --frozen --offline --no-sync ruff format --check .
+uv run --frozen --offline --no-sync pytest -m 'not live_api'
 git diff --check
 ```
 

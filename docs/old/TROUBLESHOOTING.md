@@ -1,5 +1,7 @@
 # トラブルシューティング
 
+> **標準文書との関係:** セットアップと通常利用の入口は [README.md](../README.md) と [QUICKSTART.md](QUICKSTART.md) とする。この文書は症状別の診断・復旧手順を保持する。
+
 ## 1. 調査の基本順序
 
 問題が起きたら、次の順序で境界を切り分ける。
@@ -57,9 +59,10 @@ uv sync --locked
 ### 確認
 
 ```sh
-uv run python --version
-uv lock --check
-uv run python -c "import streamlit, pydantic, sklearn, sudachipy"
+uv lock --check --offline
+uv run --frozen --offline --no-sync python --version
+uv run --frozen --offline --no-sync python -c \
+  "import streamlit, pydantic, sklearn, sudachipy"
 ```
 
 ### 解決
@@ -444,9 +447,9 @@ uv run streamlit run app.py --server.port 8502
 ### 確認
 
 ```sh
-uv run ruff check .
-uv run ruff format --check .
-uv run pytest -q
+uv run --frozen --offline --no-sync ruff check .
+uv run --frozen --offline --no-sync ruff format --check .
+uv run --frozen --offline --no-sync pytest -q -m 'not live_api'
 git diff --check
 ```
 
@@ -455,7 +458,7 @@ git diff --check
 最初に出た失敗を対象ファイルと行番号から直す。自動整形する場合は差分を確認する。
 
 ```sh
-uv run ruff format .
+uv run --frozen --offline --no-sync ruff format .
 git diff --check
 ```
 
