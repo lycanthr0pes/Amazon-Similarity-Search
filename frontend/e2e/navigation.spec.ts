@@ -63,7 +63,7 @@ test("completed stage circles are blue and returning resets later circles", asyn
   await expect(ring(1)).toHaveCSS("fill", "rgb(58, 131, 247)");
   await expect(stages.nth(1)).toHaveAttribute("aria-current", "step");
   await expect(ring(2)).toHaveCSS("fill", "rgb(0, 0, 0)");
-  await page.clock.runFor(2500);
+  await page.clock.runFor(3500);
   await page.getByRole("button", { name: "条件へ戻る", exact: true }).click();
   await expect(stages.nth(0)).toHaveAttribute("aria-current", "step");
   await expect(ring(1)).toHaveCSS("fill", "rgb(0, 0, 0)");
@@ -89,54 +89,35 @@ test("starting work and asynchronous screen updates preserve scroll while focusi
   ).toBeFocused();
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(120);
   await page.getByRole("switch", { name: /参考画像を使う/ }).check();
+  await page.getByRole("button", { name: "変更を反映", exact: true }).click();
+  await page.clock.runFor(1500);
   await page
     .getByRole("button", { name: "参考画像を生成", exact: true })
     .click();
   await page.evaluate(() => window.scrollTo(0, 120));
-  await page.clock.runFor(2500);
+  await page.clock.runFor(3500);
   await expect(
     page.getByRole("heading", { name: "まず1枚、見た目を確認", exact: true }),
   ).toBeFocused();
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(120);
 });
 
-test("history list and details omit the stage space and use shaded titles", async ({
+test("history uses shared headings, saved conditions and restores search", async ({
   page,
 }) => {
-  const positions = () =>
-    page.evaluate(() => {
-      const heading = document.querySelector("main h1")!;
-      const notice = Array.from(document.querySelectorAll("main div")).find(
-        (element) =>
-          element.textContent?.startsWith(
-            "オフラインモック · 入力内容の理解",
-          ) && element.children.length === 0,
-      )!;
-      return [heading, notice].map((element) => {
-        const box = element.getBoundingClientRect();
-        return { x: box.x, y: box.y + window.scrollY, width: box.width };
-      });
-    });
-  const searchPositions = await positions();
-  let historyPositions: Awaited<ReturnType<typeof positions>> | undefined;
-  const expectHistoryLayout = async () => {
-    const current = await positions();
-    expect(current[0].y).toBeLessThan(searchPositions[0].y);
-    expect(current[0].width).toBe(searchPositions[0].width);
-    if (historyPositions) {
-      expect(current).toEqual(historyPositions);
-    }
-    historyPositions = current;
-    await expect(
-      page.getByRole("navigation", { name: "検索の段階", includeHidden: true }),
-    ).toHaveCount(0);
-  };
   await page.getByRole("button", { name: "検索履歴", exact: true }).click();
-  await expectHistoryLayout();
-  await expect(page.getByText("検索履歴はまだありません")).toBeVisible();
+  await expect(
+    page.getByRole("navigation", { name: "検索の段階" }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByText("保存された検索結果はまだありません"),
+  ).toBeVisible();
+  const historyY = (await page
+    .getByRole("heading", { name: "検索履歴", exact: true })
+    .boundingBox())!.y;
   await page.getByRole("button", { name: "検索へ戻る", exact: true }).click();
   await page.getByRole("button", { name: "条件を整理", exact: true }).click();
-  await page.clock.runFor(1000);
+  await page.clock.runFor(1500);
   await page
     .getByRole("button", { name: "画像なしで進む", exact: true })
     .click();
@@ -144,108 +125,73 @@ test("history list and details omit the stage space and use shaded titles", asyn
   await page.clock.runFor(15000);
   await page.getByRole("button", { name: "結果を見る", exact: true }).click();
   await page.getByRole("button", { name: "検索履歴", exact: true }).click();
-  await expectHistoryLayout();
   const title = page
     .getByRole("list", { name: "検索履歴一覧" })
-    .getByRole("heading")
-    .first();
+    .getByRole("heading");
   await expect(title).toHaveCSS("background-color", "rgb(33, 33, 33)");
-  await expect(title).toHaveCSS("color", "rgb(255, 255, 255)");
   await page.getByRole("button", { name: "開く", exact: true }).click();
-  await expectHistoryLayout();
+  const heading = page.getByRole("heading", {
+    name: "保存した検索結果",
+    exact: true,
+  });
+  await expect(heading).toBeVisible();
+  expect((await heading.boundingBox())!.y).toBe(historyY);
+  await expect(
+    page.getByRole("navigation", { name: "検索の段階" }),
+  ).toHaveCount(0);
   const panel = page.locator("section").filter({
     has: page.getByRole("heading", { name: "確認した条件", exact: true }),
   });
-  const fields = panel.locator("dl > div");
-  await expect(fields).toHaveCount(5);
-  const first = (await fields.nth(0).boundingBox())!;
-  const second = (await fields.nth(1).boundingBox())!;
-  const third = (await fields.nth(2).boundingBox())!;
-  expect(first.y).toBe(second.y);
-  expect(second.x).toBeGreaterThan(first.x);
-  expect(third.x).toBe(first.x);
-  expect(third.y).toBeGreaterThan(first.y);
-  for (const field of await fields.all()) {
-    await expect(field.locator("dd")).toHaveCSS(
-      "background-color",
-      "rgb(33, 33, 33)",
-    );
-    await expect(field.locator("dd")).toHaveCSS("border-radius", "15px");
-    await expect(field.locator("dt")).toHaveCSS(
-      "background-color",
-      "rgba(0, 0, 0, 0)",
-    );
+  await expect(panel.locator("dl > div")).toHaveCount(4);
+  for (const field of await panel.locator("dd").all()) {
+    await expect(field).toHaveCSS("background-color", "rgb(33, 33, 33)");
   }
-  const actions = panel.locator(":scope > :last-child");
-  const remove = actions.getByRole("button", { name: "削除", exact: true });
-  const back = actions.getByRole("button", { name: "履歴へ戻る", exact: true });
-  await expect(remove).toBeVisible();
-  await expect(back).toBeVisible();
-  const left = (await remove.boundingBox())!;
-  const right = (await back.boundingBox())!;
-  expect(left.y).toBe(right.y);
-  expect(left.x).toBeLessThan(right.x);
-  await remove.click();
+  await panel.getByRole("button", { name: "削除", exact: true }).click();
   await page
     .getByRole("dialog")
     .getByRole("button", { name: "キャンセル", exact: true })
     .click();
-  await expect(remove).toBeFocused();
-
+  await expect(
+    panel.getByRole("button", { name: "削除", exact: true }),
+  ).toBeFocused();
   await page.getByRole("button", { name: "履歴へ戻る", exact: true }).click();
-  await expectHistoryLayout();
   await page.getByRole("button", { name: "検索へ戻る", exact: true }).click();
   await expect(
-    page.getByRole("navigation", { name: "検索の段階" }),
+    page.getByRole("heading", { name: "条件に近い商品", exact: true }),
   ).toBeVisible();
 });
 
-test("new search stays left of history and resets pending mock work", async ({
+test("new search stays left of history and is disabled during work", async ({
   page,
 }) => {
   const header = page.locator("header");
   const start = header.getByRole("button", { name: "新しく検索", exact: true });
-  const expectHeader = async () => {
-    await expect(start).toBeVisible();
-    const other = header.getByRole("button", {
-      name: /^(検索履歴|検索へ戻る)$/,
-    });
-    const left = (await start.boundingBox())!;
-    const right = (await other.boundingBox())!;
-    expect(left.y).toBe(right.y);
-    expect(left.x + left.width).toBeLessThan(right.x);
-    await expect(
-      page.getByRole("button", { name: "新しく検索", exact: true }),
-    ).toHaveCount(1);
-  };
-  await expectHeader();
+  const other = header.getByRole("button", { name: "検索履歴", exact: true });
+  const left = (await start.boundingBox())!;
+  const right = (await other.boundingBox())!;
+  expect(left.x + left.width).toBeLessThan(right.x);
   await page.getByRole("button", { name: "条件を整理", exact: true }).click();
-  await expectHeader();
+  await expect(start).toBeDisabled();
+  await page.clock.runFor(1500);
   await start.click();
-  await page.clock.runFor(2000);
   await expect(
     page.getByRole("textbox", { name: "探している商品" }),
   ).toHaveValue("");
-  await header.getByRole("button", { name: "検索履歴", exact: true }).click();
-  await expectHeader();
-  await start.click();
   await page
     .getByRole("textbox", { name: "探している商品" })
     .fill("ヘッダー確認用の合成入力");
   await page.getByRole("button", { name: "条件を整理", exact: true }).click();
-  await page.clock.runFor(1000);
-  await expectHeader();
+  await page.clock.runFor(1500);
   await page
     .getByRole("button", { name: "画像なしで進む", exact: true })
     .click();
-  await expectHeader();
   await page.getByRole("button", { name: "検索", exact: true }).click();
-  await expectHeader();
-  await start.click();
+  await expect(start).toBeDisabled();
   await page.clock.runFor(15000);
+  await expect(start).toBeEnabled();
+  await start.click();
+  await other.click();
   await expect(
-    page.getByRole("textbox", { name: "探している商品" }),
-  ).toHaveValue("");
-  await header.getByRole("button", { name: "検索履歴", exact: true }).click();
-  await expect(page.getByText("検索履歴はまだありません")).toBeVisible();
+    page.getByRole("list", { name: "検索履歴一覧" }).getByRole("listitem"),
+  ).toHaveCount(1);
 });

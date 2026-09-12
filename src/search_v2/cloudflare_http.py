@@ -63,11 +63,10 @@ CLOUDFLARE_REQUEST_HEADERS: tuple[tuple[str, str], ...] = (
 
 _CLOUDFLARE_ORIGIN = "https://api.cloudflare.com"
 _CLOUDFLARE_RUN_PREFIX = f"{_CLOUDFLARE_ORIGIN}/client/v4/accounts/"
-_CLOUDFLARE_RUN_SUFFIX = f"/ai/run/{CLOUDFLARE_IMAGE_MODEL_ID}"
 _ACCOUNT_ID_PATTERN = re.compile(r"^[0-9a-f]{32}$")
 _ENDPOINT_PATTERN = re.compile(
     r"^https://api\.cloudflare\.com/client/v4/accounts/"
-    r"[0-9a-f]{32}/ai/run/@cf/black-forest-labs/flux-2-klein-4b$"
+    r"[0-9a-f]{32}/ai/run/@cf/black-forest-labs/flux-2-klein-(?:4b|9b)$"
 )
 _DIGEST_PATTERN = re.compile(r"^[0-9a-f]{64}$")
 _STREAM_CHUNK_BYTES = 65_536
@@ -255,10 +254,15 @@ class CloudflareImageSetExecution(StrictFrozenContract):
         return self
 
 
-def cloudflare_endpoint(account_id: object) -> str:
+def cloudflare_endpoint(account_id: object, *, model_id=CLOUDFLARE_IMAGE_MODEL_ID) -> str:
     if type(account_id) is not str or _ACCOUNT_ID_PATTERN.fullmatch(account_id) is None:
         _raise_invalid_execution()
-    return f"{_CLOUDFLARE_RUN_PREFIX}{account_id}{_CLOUDFLARE_RUN_SUFFIX}"
+    if model_id not in {
+        "@cf/black-forest-labs/flux-2-klein-4b",
+        "@cf/black-forest-labs/flux-2-klein-9b",
+    }:
+        _raise_invalid_execution()
+    return f"{_CLOUDFLARE_RUN_PREFIX}{account_id}/ai/run/{model_id}"
 
 
 def _validated_endpoint(value: object) -> str:

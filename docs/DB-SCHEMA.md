@@ -1,5 +1,101 @@
 # データ保存と論理スキーマ
 
+## 画像なし準備の識別（EXEC-155）
+
+CandidatePlanへ任意image_preparation=text-only-v1を追加する。未設定の旧計画ではJSONから省略してdigestを保持する。設定時は視覚Bonsaiのrequest/response hashとfocus/contrastの混在を拒否し、ローカルで保持した原文条件を日英テキスト採点にだけ使用する。画像ありへ進むには新しい準備が必要。既存のimage_mode=offの履歴契約・SQLite schema5・期限/削除を維持し、保存済み結果を再解釈/再採点しない。
+
+
+## 対比指示の出典（EXEC-153/154）
+
+準備計画のVisualCondition.contrastは任意fieldを維持し、v2/v3ではoriginとevidence（target、辞書由来の場合はdictionary_sha256・sense_ids）を保持する。対象原文の解釈と出典を条件/計画/画像要求digestへ束縛する。v3のgrammar出典はWordNetの語義IDに加えて既存JMdictのIDを許容し、辞書digestと束縛する。英名のBonsai補完はbonsai出典として辞書IDを付けない。v1ではevidenceを省略し、v1/v2の既存JSONを同じ形で読む。SQLite user_versionと保存済み履歴は変更せず、辞書変更による再採点や再生成を行わない。
+
+## 検索対象の商品名（EXEC-150）
+
+schema5のdetail_json metadataに任意の `product_name`（1〜100文字）を保存する。制御文字や不正な表示文字列は拒否する。値がない旧payloadではfieldを省略し、旧JSON/hashを維持する。candidateの画像あり/なしは準備済みの `title_comparison.product_name_ja` を渡す。新payloadのcompletion keyには `history_product_name` を含め、従来のpayloadと区別する。採点profile、SQLite user_version、既存レコードは変更しない。
+
+一覧と詳細のAPIへ任意 `productName` を投影し、元の `summary` と `history_content.source_text` は保持する。旧レコードを補完保存・再採点しない。新fieldを含むJSONを読むには対応版が必要。稼働中の旧serverは静的画面の旧API互換で一覧表示を変更し、保存/API側の新fieldは次回通常起動以降に利用する。
+
+
+## 接続画面の保存内容（EXEC-144）
+
+schema5のdetail_jsonに任意history_content（profile=history-content-v1、source_text最大2000文字、condition_labels最大32件、condition_review最大24件）を追加する。原文範囲とquoteを検証し、採点済み条件IDには名称を要求する。商品行の任意thumbnail_pngはdata URLのRGB PNG、最大192×192・128KiB/枚・180000文字以内。48商品という既存読込上限を維持し、現行検索は24商品。任意値なしはJSON fieldを省略するため旧JSON/旧hashを変更しない。
+
+新contentのcompletion keyをdomain分離し、全文/ラベル/画像をpayloadとdetailのdigestへ含める。入力/条件/商品PNGは同じdetail_jsonに格納するため、一つのtransactionで保存/rollback/削除される。既存生成画像は専有BLOB行とFK cascadeで連動する。元画像のURL再取得や旧履歴のbackfill/再採点は行わない。保持期間は完了から30日で、永続とはprocess再起動後の再表示を意味する。
+
+## 履歴削除と期限削除の実行境界（EXEC-143）
+
+既存のschema5 DELETEとforeign key cascadeをAPI/定期処理へ接続する。個別削除はowner+locator、期限削除はowner+expires_at<=server_nowで限定し、履歴行・detail JSON・専有PNG BLOBを同一transactionで削除する。secure_delete=ONで削除pageを処理するが、外部バックアップやfilesystemの残存領域の消去を保証するものではない。DB fileやschema、無関係な行、raw cacheは保持する。
+
+BrowserHistoryはGETだけmode=ro、削除だけ既存file限定mode=rwを使う。未作成file/旧schemaは作成・移行しない。purge_expiredのowner_id追加はoptionalで従来caller互換を保つが、browser経路は必ずlocal-userを指定する。複数DBの削除はDBごとにatomicで、失敗を返した場合は冪等に再試行できる。期限到達後は削除前でも読込不可、定期処理はserver稼働中60秒間隔。旧点数/画像方式の再採点は行わない。
+
+
+## 画像なし結果の保存（EXEC-142）
+
+SQLite schema5/table/user_versionを変更せず、JSON契約にcandidate-image-free-v1とimage-free-v1を追加する。この対に限りimage_mode=off、reference_images=0件、condition_set_sha256/reference_set_sha256/runtime_sha256=null、image_weightなし、商品image_component_status=not_used/image_score=nullを要求する。画像ありprofileには従来の2〜4画像と画像hashを要求し、not_usedや空の商品集合を混ぜない。image_modeなしの旧serializerは追加fieldを省略する。
+
+画像なし順位は否定>タイトル>優先>希望>レビューで、同点は取得順。total_scoreはタイトル点のみを記録し、画面では合成点として表示しない。ranking hashとcompletion keyを新profileへ結び付け、保存時のsource/order/scoreを再検証する。画像なしだけ商品0件を保存でき、一覧件数は0となる。旧行は移行・再採点しない。
+
+
+## 条件解析の計画識別（EXEC-140）
+
+新規CandidatePlanはoptionalな `condition_language_profile=condition-language-v1` と `condition_language_sha256` を対で持つ。digestは解析profileと正規化原文範囲/quote/照合target/strength/reasonを含む共通解析から作り、計画digestへ含める。構文提案がある場合はその条件fragmentを用いる。旧fieldなしのJSONは両fieldを省略して旧digestと旧解析を保持する。再実行時は保存された方式を選び、新方式では解析digestも再照合する。
+
+neutralは共通解析と確認APIだけの分類で、採点用strengthはrequired/preferred/excludedの3値を維持する。確認APIのconditionReviewは原入力の文字位置とquote、照合target、strength、固定reason、conditionIssuesは位置/quote/固定codeを持つ。修正表示は元のUnicode文字列へ位置を戻す。本文をログ/diagnosticへ出力しない。SQLite schema5・既存行・保存結果の再採点/変換は変更しない。
+
+EXEC-139の新規candidate最終ranking/schema5履歴はsort_profile_id=excluded-title-conditions-image-review-v1。否定条件の負方向、タイトル、優先、希望、画像、レビュー、取得順で検証し、旧title-image-conditions-v1を別の復元契約として保持する。商品へreview_rating（0〜5/null）を追加し、nullではJSON fieldを省略して旧digestを維持する。新規profileの保存時だけ取得済みratingを投影し、旧profileの再保存に新値を混ぜない。SQL table/user_version/旧行は変更しない。
+
+EXEC-138の履歴閲覧は既存schema5をread-onlyで開き、schema変更やデータ移行をしない。owner/local-user、30日の失効条件と保存digestを既存repositoryで検証する。表示APIへ要約・日時・件数・商品/採点・生成画像を投影し、未保存の元入力全文/個別条件名/商品サムネイルを追加生成しない。読み取りでは期限切れを一覧/詳細から除外する。物理削除は後続のEXEC-143で接続した。
+
+EXEC-137の接続APIは表示用PNGサムネイルと画像点・参考合成点を追加する。点数は既存の保存fieldから投影し、商品サムネイルは評価済み画像からprocess内で作る。商品画像をDBへ追加保存せず、SQLite schemaと旧履歴は変更しない。
+
+## 日英条件採点と英語詳細の保存（EXEC-133）
+
+新規CandidatePlanの任意 `condition_terms` はcondition-terms-v1、source/dictionary/translator/sense-model SHA256と条件ID・強さ・原文/英訳・同義語・語義ID・visual区分を保持する。最大64条件、各言語最大32語句。元の条件との対応とsource hashを検証し、plan digestに含める。価格は共通の観測値を使うため展開語句なし。
+
+新規CandidateRankingはcandidate-confirmed-lexical-v5、text_scoreはcandidate-text-bilingual-v2と専用digest。title_scoresにscore_ja/score_en/最大score、条件行に同じ3点とselected_languageを保存する。英語未取得はnull。同点はjaを選択し、sourceはevidence/description/missingにproduct_textを加える。復元時に語句bundleと元の条件、商品観測値から日英点・最大値・順序を再検証する。画像完成結果も新text profile/digestを引き継ぐ。schema5表示履歴と接続APIに日英の数値内訳を投影するが、本文抜粋は複製しない。旧fieldなしのplan/result/historyは追加nullを出力せず旧方式で復元し、既存SQLiteの列・user_version・行を変更しない。
+
+NormalizedProductCandidateに任意details_enとdetails_en_status（available/unavailable）を追加する。details_enはdescription最大4000文字、features最大20件/各200文字、color/material最大200文字。切り詰めをtruncated_fieldsで識別する。availableとdetailsの存在を対応させ、英語タイトルの欠損とは別に扱う。新要求のenglish_details=trueはenglish_titles=trueを必須とし、要求digestに含める。旧要求は両flagの省略状態を維持する。
+
+CLI raw keyは取得版3と英語詳細flagを含め、raw/normalized/scoredをplaywright-v3へ分離する。CLIの正規化結果にも英語説明・特徴・詳細状態を保持するが、旧CLIの採点式は変更しない。旧playwright-v1/v2とOutscraper cacheの自動読替え・削除・変換はしない。
+
+## 商品の英語タイトル保存（EXEC-131）
+
+正規化商品とschema5表示履歴に任意field `title_en`（最大500文字）・`title_en_status`（available/unavailable）を加える。availableなら非空タイトルが必須、unavailableならnullとし、不整合をstrict復元時に拒否する。旧fieldなしのJSONは再出力でも両fieldを省略し、既存digestを保持する。主title、SQLite table/user_version、旧保存結果を変更しない。
+
+新規Playwright要求の `english_titles=true` を要求digestへ結び付け、旧fieldなしの要求と分離する。旧要求の再構築は省略状態を維持する。CLI raw keyには取得版2と英語取得flagを加え、raw/normalized/scoredをplaywright-v2 namespaceへ保存する。旧playwright-v1とOutscraper cacheの自動読替え・変換・削除は行わない。CLI商品/採点結果も任意英語fieldを保持する。
+
+## タイトル・画像優先の順位識別（EXEC-129）
+
+EXEC-129時点のcandidate最終rankingとschema5表示履歴へ `sort_profile_id=title-image-conditions-v1` を追加した。以下は旧方式の保存/復元契約で、新規実行はEXEC-139を使う。タイトル、画像、否定条件、優先条件、希望条件、取得順で順序を検証し、既存の画像/text/係数digestにsort_profile_idを結合する。この方式はimage_weight=0.5を要求するが、合成点は順位keyに使わない。
+
+fieldなし/nullの旧結果は従来の条件優先として読み、JSON再出力からfieldを省略する。直前の50:50方式も、その前の80:20方式も旧順位/点数/digestを保持する。SQLite table/user_versionや既存行を変更しない。画像評価前のCandidateRankingの旧内部順序はそのまま検証する。
+
+## タイトル・画像の等重み合成（EXEC-128）
+
+新規candidateの最終ranking、各商品row、schema5履歴のmetadataに `image_weight=0.5` を記録する。タイトルと画像の合成は各50%、画像不明時はタイトル点だけとする。親rankingと商品rowの係数が不一致なら拒否し、合成点も再計算して検証する。新しいranking_profile_sha256は既存画像/text digestにimage_weightを結合するため、同じ画像モデルでも旧80:20とcompletion keyを共有しない。
+
+fieldなし/nullは旧candidateの80:20として読み、JSON再出力ではfieldを省略して旧digestを保持する。SQLiteのtable/user_versionは変更せず、旧行を更新・削除・再採点しない。旧semantic/typedの別採点方式へこのfieldを設定することは拒否する。現行式は [BACKEND.md](BACKEND.md#candidateの説明文タイトル採点exec-125) を参照。
+
+## Playwright取得元と旧cacheの互換（EXEC-126）
+
+新規CandidatePlanのrequestはprovider=playwright/schema1.0で、旧Outscraper2.0/2.1とのunionとして読む。要求digestは別domainで計算するため、同じ語句の旧要求や承認を新要求として使えない。保存済みplanから明示的に再実行する入口では、元bundle/approval receiptを検証した後にPlaywright要求を新規構築し、元計画と新計画の識別を保つ。
+
+正規化batchと商品provenanceにproviderを加える。新規取得はplaywright、旧JSONの省略時はoutscraper。旧providerでは追加fieldを再serialize時にも省略して旧digestを保持する。既存の `outscraper_request_sha256` という保存field名は互換のため残すが、Playwright時の値は新providerの要求digestである。旧task adapterはplaywright接頭辞の実行IDで取得元を識別する。batch内の取得元不一致は拒否する。
+
+SQLiteの列/schemaは変更せず、旧表示履歴や点数を更新しない。新規candidateの表示履歴JSONには `retrieval_provider=playwright` を保存し、read-backで保持する。旧履歴ではこのfieldを省略する。EXEC-126時点のCLIはraw/normalized/scoredを `playwright-v1/` namespaceへ保存し、raw keyにもprovider/取得版/日本語/配送先既定/上限を含める。旧outscraper cacheはそのまま保持し、自動読替え・変換・削除を行わない。
+
+## candidateの説明文タイトル比較の保存（EXEC-125）
+
+以下はEXEC-125で導入したv4保存の契約であり、EXEC-133の条件展開あり構成では上節のv5・言語別点数を追加する。
+
+新規CandidatePlanの `title_comparison` に採点profile/digest、元語の日英商品表現、日英カテゴリ、明示ブランド/型番、最大3件の同義語対を固定し、plan digestと既存承認に結び付ける。未取得項目はnull。旧planはこのfieldを省略し、再保存時も不要なnullを加えず旧digestを保持する。
+
+新規CandidateRankingは `candidate-confirmed-lexical-v4`。各商品に `text_score` を持ち、`candidate-text-v1` と固定digest、required_ratio/preferred_ratio/excluded_ratio、条件ごとのID・強さ・source・0〜1の一致度を記録する。sourceは既存観測を使ったevidence、説明文を使ったdescription、欠損missing。条件本文や一致した説明文の抜粋はこの内訳へ複製しない。復元時は商品・条件から点数と順序を再検証し、v4と旧plan/旧点数の混在を拒否する。
+
+最終画像結果とschema5表示履歴には `text_profile_id=candidate-text-v1` を追加する。画像方式の既存ranking_profile_id/runtimeは維持し、ranking_profile_sha256は既存画像ranking digestと新text digestを合成して旧採点から分離する。SQLiteの列・user_versionは変更せず、payload JSONにtext_profile_idだけを追加する。表示履歴には条件スコア内訳やtitle_comparisonを複製しない。旧履歴はfieldなし・旧点数・旧digestで読み、既存行を更新・再採点しない。
+
+計算式と抽出範囲は [BACKEND.md](BACKEND.md#candidateの説明文タイトル採点exec-125)、検証結果は [EXEC-125](GOAL.md#exec-125-説明文の条件一致とタイトル比較の拡張) を参照する。
+
 ## 1. 現在の永続化方式
 
 現行の `run_product_search()` はRDBを採用せず、処理途中と最終結果をローカルファイルシステム上のJSONキャッシュへ保存する。次期検索には、これとは分離したPython標準SQLiteのローカル単一fileとして、履歴用schema version 2とjob metadata用schema version 1がある。データベースサーバー、ORM、運用migrationはない。履歴は次期offline検索結果の保存境界へ接続済み、jobは注入callback用executorへ接続済みだが、どちらもlegacy現行pipelineからは未参照である。
@@ -587,6 +683,8 @@ source_typed_ranked_product_batch_sha256は互換field名を保持するが、�
 
 CandidatePlanは任意のquery_expansionと最大8件のquery_options、selected_query_indexを保持する。query_expansionはbonsai-query-terms-v2、原文/要求/応答digest、ready/unavailable、original_enと最大3件のsynonyms（ja/enの対）を持つ。各enは1文字列またはnullであり、対応のない英訳リストを許さない。失敗時はterms=nullであり、本文や例外を診断へ保存しない。候補の正規化・状態と値の対応、原文digest、選択indexと実行queryを検証する。Outscraper requestはquery plan digestだけでなく、選択queryから再構成した要求全体との一致を必要とする。
 
+EXEC-124のブラウザ接続試験では、serverが `plan_lifetime=None` を指定した計画に限り `CandidatePlan.expires_at=null` とし、全体期限を持たない。この値もplan digestに含める。既存の診断入口は既定15分であり、保存planだけを再開権限にしない。画像のsingle-use承認期限と履歴DB schema 5は変更しない。
+
 候補はBonsai商品評価の復活ではなく、確認用の検索語だけである。画像・採点のintentには入れない。候補選択を含む計画digestが旧承認の流用を防ぐ。元queryを含む候補から1本/24件だけを実行する。旧候補なしの中間計画JSONとbonsai-query-terms-v1を暗黙移行せず、新計画の作成を必要とする。表示履歴のschema/tableは変更しない。
 
 
@@ -605,7 +703,7 @@ EXEC-103の文脈選択追加では、ローカル辞書SQLiteのversion 2に語
 CandidatePlan.product_reviewはProductPhraseReviewまたはnull。原文hash、ProductStructure、product_name、product-query-terms-v1のQueryExpansionを保持し、planのsource/structure/expansionと一致を検証する。原文上の商品句と検索用候補を同一fieldへ上書きしない。未確認生成名はresolution_method=bonsai_proposal、辞書0件からの直接推論はbonsai_inferenceとし、どちらもselected_sense_id=nullで辞書選択と分離する。bonsai_inferenceはproduct-query-terms-v1だけで許容し、model/request/response hashを必須とする。原文上の対象と異なる語尾の生成名も候補として保持するが、元の構造は維持し、候補とQueryTermsの対応を検証する。辞書再照会で確定した見出しにはそのIDを残すが、原文との意味適合や商品性能の保証ではない。辞書DB/manifestと既存表示履歴DBのschemaは変更しない。新しいplanはdigestが変わるため再確認が必要で、古い承認を流用しない。
 
 
-2026-09-10追加: 商品句候補のQueryExpansion.translationは省略可能で、OPUS-MTのprovider識別子、モデル/要求/応答SHA-256、ready/unavailableを保持する。辞書候補0件のbonsai_inferenceだけで使用でき、unavailable時に英訳を持つJSONは拒否する。省略された旧JSONはtranslation=nullで復元する。SQL schema変更や既存履歴の移行はなく、候補要求hashにtranslator識別子を含めて旧構成の承認/cacheを分離する。
+商品句候補のQueryExpansion.translationは省略可能で、OPUS-MTのprovider識別子、モデル/要求/応答SHA-256、ready/unavailableを保持する。EXEC-134以降は辞書候補0件のbonsai_inferenceと、候補ありからの未収録提案bonsai_proposalで使用できる。辞書選択や別profileへMT出典を付けること、unavailable時に英訳を持つJSONは拒否する。省略された旧JSONはtranslation=nullで復元する。SQL schema変更や既存履歴の移行はなく、OPUS-MT設定時の要求識別product-phrase-local-mt-v3とtranslator識別子をhashに含めて旧構成の承認/cacheを分離する。商品取得cacheの版は変更しない。
 
 
 ### Candidate相対順位profile（2026-09-10）

@@ -57,6 +57,7 @@ export type Action =
   | { type: "APPROVE_REFERENCE"; now: number }
   | { type: "COMPARISONS_READY"; revision?: number }
   | { type: "REGENERATE"; now: number }
+  | { type: "REGENERATE_COMPARISONS"; now: number }
   | { type: "WITHOUT_IMAGES"; now: number }
   | { type: "FINALIZE"; now: number }
   | { type: "SEARCH"; now: number }
@@ -257,6 +258,18 @@ export function reducer(state: State, action: Action): State {
         return state;
       }
       return { ...state, screen: "comparisonReview" };
+    case "REGENERATE_COMPARISONS":
+      if (
+        state.screen !== "comparisonReview" ||
+        !state.useImages ||
+        state.attempts >= 2
+      )
+        return state;
+      return {
+        ...clearApprovals(state),
+        screen: "comparisonGenerating",
+        attempts: state.attempts + 1,
+      };
     case "REGENERATE":
       if (
         !["referenceReview", "comparisonReview"].includes(state.screen) ||

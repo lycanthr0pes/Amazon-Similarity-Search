@@ -287,7 +287,7 @@ def test_production_transport_accepts_only_the_exact_cloudflare_endpoint(monkeyp
 
     def request_without_network(self, **kwargs):
         del self
-        assert kwargs["url"].endswith("/@cf/black-forest-labs/flux-2-klein-4b")
+        assert kwargs["url"].endswith("/@cf/black-forest-labs/flux-2-klein-9b")
         return requests.Response()
 
     monkeypatch.setattr(requests.Session, "request", request_without_network)
@@ -300,7 +300,7 @@ def test_production_transport_accepts_only_the_exact_cloudflare_endpoint(monkeyp
         request=request,
         url=(
             "https://api.cloudflare.com/client/v4/accounts/"
-            f"{ACCOUNT_ID}/ai/run/@cf/black-forest-labs/flux-2-klein-4b"
+            f"{ACCOUNT_ID}/ai/run/@cf/black-forest-labs/flux-2-klein-9b"
         ),
         api_token=API_TOKEN,
         timeout_seconds=120,

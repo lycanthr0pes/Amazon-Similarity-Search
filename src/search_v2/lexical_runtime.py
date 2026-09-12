@@ -9,7 +9,7 @@ import numpy as np
 
 from src.search_v2.lexical_selection import MAX_SENSES
 from src.search_v2.lexical_structure import ProductStructure, TextSpan, validate_structure
-from src.search_v2.source_constraints import _clauses, _name_is_explicit, _source_facts, _STRENGTH
+from src.search_v2.source_constraints import _clauses, _name_is_explicit, _source_facts
 from src.search_v2.tokenizer import _analyze_japanese_source
 
 
@@ -41,11 +41,16 @@ class GinzaProductParser:
         import spacy
 
         self._nlp = spacy.load("ja_ginza", disable=["ner"])
-        self.parser_id = f"ginza:{version('ginza')}/ja_ginza:{version('ja-ginza')}"
+        self.parser_id = (
+            f"condition-language-v1/ginza:{version('ginza')}/ja_ginza:{version('ja-ginza')}"
+        )
 
     def analyze(self, source):
         if type(source) is not str or not 0 < len(source) <= 2000:
             raise ValueError("Invalid syntax input")
+        from src.search_v2.condition_language import analyze_conditions, interpret_clause
+
+        analyze_conditions(source)
         original_source = source
         source = _analyze_japanese_source(source).text
         doc = self._nlp(source)
@@ -76,14 +81,14 @@ class GinzaProductParser:
             target = targets[0]
             product = product_span(doc, target)
         else:
-            facts, uncertain = _source_facts(source)
+            facts, uncertain = _source_facts(source, natural=True)
             if uncertain:
                 raise ValueError("Unresolved source relation")
             candidates = [
                 TextSpan(start + len(text) - len(text.lstrip()), start + len(text.rstrip()))
                 for start, text in _clauses(source)
                 if _name_is_explicit(text.strip())
-                and not _STRENGTH.search(text.strip())
+                and interpret_clause(text.strip()).reason == "explicit_condition"
                 and not any(f.quote in text for f in facts)
                 and not re.search(r"[0-9]", text)
             ]

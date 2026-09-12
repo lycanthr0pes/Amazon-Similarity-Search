@@ -1,6 +1,6 @@
 # pydanticによって配列をBaseModel型にすることで, 変数の型をチェックし, デフォルト値を設定する
 
-from typing import Any
+from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 
@@ -44,6 +44,8 @@ class NormalizedAmazonProduct(BaseModel):
     source: str = "amazon"
     asin: str | None = None
     title: str
+    title_en: str | None = None
+    title_en_status: Literal["available", "unavailable"] | None = None
     brand_or_store: str | None = None
     price_jpy: int | None = None
     list_price_jpy: int | None = None
@@ -61,12 +63,17 @@ class NormalizedAmazonProduct(BaseModel):
     source_query: str | None = None
     position: int | None = None
     description: str | None = None
+    description_en: str | None = None
+    features_en: list[str] = string_list()
+    details_en_status: Literal["available", "unavailable"] | None = None
 
 
 # スコア計算の変数
 class ProductScore(BaseModel):
     asin: str | None = None
     title: str
+    title_en: str | None = None
+    title_en_status: Literal["available", "unavailable"] | None = None
     price_jpy: int | None = None
     rating: float | None = None
     review_count: int | None = None

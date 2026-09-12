@@ -44,7 +44,7 @@ from src.search_v2.intent import SearchIntentDraft
 from src.search_v2.intent import build_intent_provenance
 from src.search_v2.intent import normalize_search_intent
 from src.search_v2.outscraper_http import OutscraperRequestTransport
-from src.search_v2.outscraper_http import RequestsOutscraperTransport
+from src.search_v2.playwright_compat import PlaywrightTaskTransport
 from src.search_v2.outscraper_http import execute_outscraper_request
 from src.search_v2.outscraper_request import authorize_outscraper_request
 from src.search_v2.outscraper_request import build_outscraper_request
@@ -212,12 +212,12 @@ class ReferencePreparationLiveE2EConfig:
 
 @dataclass(frozen=True, slots=True, repr=False)
 class ProductSearchLiveE2EConfig:
-    api_key: SecretStr
     asset_root: Path
+    api_key: SecretStr | None = None
 
     def __post_init__(self) -> None:
         if (
-            not _valid_secret(self.api_key)
+            (self.api_key is not None and not _valid_secret(self.api_key))
             or not isinstance(self.asset_root, Path)
             or not self.asset_root.is_absolute()
             or not self.asset_root.is_dir()
@@ -911,13 +911,13 @@ def approve_reference_and_run(
             now=current_time,
         )
         counting_transport = _CountingOutscraperTransport(
-            outscraper_transport or RequestsOutscraperTransport()
+            outscraper_transport or PlaywrightTaskTransport()
         )
         execution = execute_outscraper_request(
             permit,
             usage_ledger=usage_ledger,
             usage_reservation=reservation,
-            api_key=config.api_key.get_secret_value(),
+            api_key=config.api_key.get_secret_value() if config.api_key is not None else "",
             transport=counting_transport,
             now=now,
             sleep=sleep,

@@ -29,6 +29,7 @@ class CandidateFailureDiagnostic(BaseModel):
         "draft_shape",
         "draft_validation",
         "condition_binding",
+        "contrast_proposal",
         "clause_scope",
         "condition_strength",
         "product_scope",

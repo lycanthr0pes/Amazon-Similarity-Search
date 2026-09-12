@@ -450,9 +450,19 @@ def block_network_access(
         _restore_network_functions()
     else:
         _install_network_guard()
+    from src.search_v2 import playwright_products
+
+    original_worker = playwright_products.run_product_worker
+    if not live_opted_in:
+
+        def blocked_browser_worker(*_args, **_kwargs):
+            raise RuntimeError("Live Playwright retrieval is disabled in offline tests")
+
+        playwright_products.run_product_worker = blocked_browser_worker
     try:
         yield
     finally:
+        playwright_products.run_product_worker = original_worker
         _install_network_guard()
 
 

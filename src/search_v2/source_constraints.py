@@ -65,7 +65,7 @@ def _name_is_explicit(label):
     )
 
 
-def _source_facts(source):
+def _legacy_source_facts(source):
     analyzed = _analyze_japanese_source(source)
     facts = []
     unparsed = []
@@ -467,3 +467,74 @@ def validate_source_response(source, response):
                 fact.label is not None and definition != fact.definition()
             ):
                 raise ValueError("Changed source definition")
+
+
+def _source_facts(source, *, natural=False):
+    if not natural:
+        return _legacy_source_facts(source)
+    from src.search_v2.condition_language import analyze_conditions, ConditionLanguageError
+
+    expressions = analyze_conditions(source)
+    facts, uncertain = [], False
+    required_booleans = {}
+    for expression in expressions:
+        if expression.strength == "neutral":
+            continue
+        suffix = {"required": "", "preferred": "を希望", "excluded": "を除外"}[expression.strength]
+        target = expression.target
+        target = re.sub(r"(?P<label>[^0-9]+?)[はが](?=-?[0-9])", r"\g<label>", target)
+        selected, ambiguous = _legacy_source_facts(target + suffix)
+        uncertain |= ambiguous
+        if selected:
+            remaining = target + suffix
+            for fact in selected:
+                remaining = remaining.replace(fact.quote, "")
+            remaining = _STRENGTH.sub("", remaining)
+            if any(f.key == "form.shape" for f in selected):
+                remaining = re.sub(r"形状|形", "", remaining)
+            if not re.fullmatch(r"[いのではがとを\s]*", remaining):
+                uncertain = True
+        for fact in selected:
+            if expression.strength == "required" and fact.target["value_type"] == "boolean":
+                key = (fact.key, fact.label)
+                previous = required_booleans.get(key)
+                if previous and previous[0] != fact.target["value"]:
+                    raise ConditionLanguageError(
+                        [
+                            {"start": row.start, "end": row.end, "code": "conflicting_conditions"}
+                            for row in (previous[1], expression)
+                        ]
+                    )
+                required_booleans[key] = (fact.target["value"], expression)
+            facts.append(
+                _Fact(
+                    expression.quote,
+                    fact.label,
+                    fact.target,
+                    fact.operator,
+                    expression.strength,
+                    fact.key,
+                )
+            )
+        if (
+            not selected
+            and expression.strength == "excluded"
+            and expression.reason == "avoidance"
+            and re.search(
+                r"(?:不要|いらない|要らない|いりません|要りません|なし|無し)(?:です)?$",
+                expression.quote,
+            )
+            and _name_is_explicit(target)
+        ):
+            facts.append(
+                _Fact(
+                    expression.quote,
+                    target,
+                    {"value_type": "boolean", "value": True},
+                    "equals",
+                    "excluded",
+                )
+            )
+    if len(facts) > _MAX_CONDITIONS or len({f.quote for f in facts}) != len(facts):
+        uncertain = True
+    return tuple(facts), uncertain

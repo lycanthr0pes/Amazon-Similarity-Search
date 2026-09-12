@@ -18,6 +18,12 @@ from src.search_v2.query_planner import SearchQueryPlan, build_search_query_plan
 from src.search_v2.source_constraints import _Fact, _common_facts, _source_facts
 from src.search_v2.tokenizer import _analyze_japanese_source, tokenize_search_text
 from src.search_v2.typed_requirements import DEFAULT_ATTRIBUTE_REGISTRY
+from src.search_v2.candidate_title import title_metadata
+from src.search_v2.condition_language import (
+    PROFILE as LANGUAGE_PROFILE,
+    analyze_conditions,
+    ConditionLanguageError,
+)
 
 
 @dataclass(frozen=True, repr=False)
@@ -26,18 +32,31 @@ class CandidateQueries:
     query_plan: SearchQueryPlan
     facts: tuple[_Fact, ...]
     image_prompt: str
+    price_strength: str = "required"
+    price_quote: str | None = None
 
 
 def build_candidate_queries(
-    source: str, *, visual_conditions: VisualConditionSet | None = None, structure=None
+    source: str,
+    *,
+    visual_conditions: VisualConditionSet | None = None,
+    structure=None,
+    language_profile=LANGUAGE_PROFILE,
 ) -> CandidateQueries:
     if type(source) is not str or not 0 < len(source) <= 2000:
         raise ValueError("Invalid candidate source")
     analyzed = _analyze_japanese_source(source)
+    expressions = analyze_conditions(source, structure=structure) if language_profile else ()
+    neutral = [e.quote for e in expressions if e.strength == "neutral"]
     remaining_source = analyzed.text
+    for quote in neutral:
+        remaining_source = remaining_source.replace(quote, " " * len(quote))
+    _, metadata_quotes = title_metadata(analyzed.text)
+    for quote in metadata_quotes:
+        remaining_source = remaining_source.replace(quote, " " * len(quote))
     if visual_conditions is not None:
         visual_conditions = validate_visual_conditions(
-            source, visual_conditions, structure=structure
+            source, visual_conditions, structure=structure, natural=bool(language_profile)
         )
         for condition in reversed(
             sorted(visual_conditions.conditions, key=lambda c: c.source_start)
@@ -49,19 +68,55 @@ def build_candidate_queries(
             )
     if structure is not None:
         validate_structure(source, structure)
-        fact_source = "。".join(span.text(remaining_source).strip() for span in structure.fragments)
+        pieces, fact_positions = [], []
+        for span in structure.fragments:
+            original = span.text(remaining_source)
+            quote = original.strip()
+            start = span.start + len(original) - len(original.lstrip())
+            if pieces:
+                fact_positions.append(span.start)
+            pieces.append(quote)
+            fact_positions.extend(range(start, start + len(quote)))
+        fact_source = "。".join(pieces)
     else:
         fact_source = remaining_source
-    facts, uncertain = _source_facts(fact_source)
-    if visual_conditions is not None:
+    try:
+        facts, uncertain = _source_facts(fact_source, natural=bool(language_profile))
+    except ConditionLanguageError as error:
+        if structure is None:
+            raise
+        raise ConditionLanguageError(
+            [
+                {
+                    **issue,
+                    "start": fact_positions[issue["start"]],
+                    "end": fact_positions[issue["end"] - 1] + 1,
+                }
+                for issue in error.issues
+            ]
+        ) from None
+    if visual_conditions is not None and not language_profile:
         # Common color/material facts retain their deterministic typed evidence;
         # the LLM proposal only owns the additional visual interpretation.
         common, ambiguous = _common_facts(analyzed, facts)
         facts = (*facts, *(f for f in common if f not in facts))
         uncertain |= ambiguous
+    if visual_conditions is not None and language_profile:
+        common, _ = _source_facts(analyzed.text, natural=True)
+        facts = (*facts, *(f for f in common if f.key != "custom" and f not in facts))
     if uncertain:
         raise ValueError("Source relations require clarification before candidate retrieval")
+    prices = [
+        e for e in expressions if e.strength != "neutral" and re.search(r"[0-9].*円", e.target)
+    ]
+    price_strength = prices[0].strength if prices else "required"
+    if len({p.strength for p in prices}) > 1:
+        raise ConditionLanguageError(
+            [{"start": p.start, "end": p.end, "code": "conflicting_conditions"} for p in prices]
+        )
     remainder = remaining_source
+    for price_clause in prices:
+        remainder = remainder.replace(price_clause.quote, " ")
     for fact in facts:
         remainder = remainder.replace(fact.quote, " ")
     remainder = re.sub(r"[0-9]+(?:\.[0-9]+)?\s*(?:万|千)?円(?:以上|以下|以内)?", " ", remainder)
@@ -74,6 +129,9 @@ def build_candidate_queries(
             source,
             structure,
             [f.quote for f in facts]
+            + neutral
+            + [p.quote for p in prices]
+            + list(metadata_quotes)
             + (
                 [c.source_phrase for c in visual_conditions.conditions] if visual_conditions else []
             ),
@@ -109,13 +167,19 @@ def build_candidate_queries(
     draft = BonsaiCompactSearchIntentDraft.model_validate(
         {"product_name_ja": product, "required_terms_ja": terms, "typed_conditions": conditions}
     ).to_search_intent_draft()
-    price = _explicit_source_price(analyzed)
+    price_source = analyzed.text
+    for expression in expressions:
+        replacement = " " if expression.strength == "neutral" else expression.target
+        price_source = price_source.replace(expression.quote, replacement)
+    price = _explicit_source_price(_analyze_japanese_source(price_source))
     if price is not None:
         draft.price = price
     response = json.dumps(draft.model_dump(mode="json"), ensure_ascii=False).encode()
     provenance = build_intent_provenance(
         source_input=source,
-        prompt=b"sudachi-candidate-projection-v1",
+        prompt=b"sudachi-candidate-projection-v2:condition-language-v1"
+        if language_profile
+        else b"sudachi-candidate-projection-v1",
         schema=b"source-facts-v1",
         response=response,
     )
@@ -128,7 +192,14 @@ def build_candidate_queries(
             c.source_phrase for c in visual_conditions.conditions
         )
     image += "。文字や性能値を描かない。"
-    return CandidateQueries(intent, build_search_query_plan(intent), facts, image)
+    return CandidateQueries(
+        intent,
+        build_search_query_plan(intent),
+        facts,
+        image,
+        price_strength,
+        prices[0].quote if prices else None,
+    )
 
 
 def candidate_source_sha256(source: str) -> str:

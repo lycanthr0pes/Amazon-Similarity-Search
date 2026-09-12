@@ -13,10 +13,23 @@ import re
 from threading import RLock
 from typing import Literal, Protocol
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationInfo,
+    field_validator,
+    model_validator,
+    model_serializer,
+)
 
 from src.search_v2.lexical_structure import ProductStructure, validate_structure
 from src.search_v2.product_phrase import ProductPhraseReview
+from src.search_v2.condition_language import (
+    PROFILE as LANGUAGE_PROFILE,
+    analyze_conditions,
+    language_digest,
+)
 from src.search_v2.candidate_queries import build_candidate_queries, candidate_source_sha256
 from src.search_v2.candidate_diagnostics import CandidateEvaluationError, CandidatePreparationError
 from src.search_v2.bonsai_visual_conditions import build_visual_request, parse_visual_response
@@ -27,7 +40,7 @@ from src.search_v2.bonsai_query_terms import (
     query_options,
 )
 from src.search_v2.counterfactual_image import VisualConditionSet
-from src.search_v2.dynamic_attributes import _unit_key, _unit_spellings
+from src.search_v2.dynamic_attributes import _identity, _unit_key, _unit_spellings
 from src.search_v2.dynamic_product_evidence import _UNITS
 from src.search_v2.observed_attributes import (
     ObservedSpecification,
@@ -36,9 +49,13 @@ from src.search_v2.observed_attributes import (
     product_fields,
 )
 from src.search_v2.outscraper_contract import (
-    OutscraperAmazonProductsRequest,
     build_outscraper_request,
-    outscraper_request_sha256,
+)
+from src.search_v2.product_request import (
+    ProductSearchRequest,
+    build_product_request,
+    rebuild_product_request,
+    product_request_sha256,
 )
 from src.search_v2.product_evidence import (
     build_product_evidence,
@@ -53,12 +70,20 @@ from src.search_v2.product_normalization import (
 )
 from src.search_v2.query_planner import SearchQuery, SearchQueryPlan
 from src.search_v2.ranking import _title_score
+from src.search_v2.candidate_title import TitleComparison, build_title_comparison, score_title
+from src.search_v2.condition_terms import ConditionTermBundle
+from src.search_v2.candidate_bilingual import (
+    BilingualTextScore,
+    BilingualTitleScore,
+    score_bilingual,
+    title_scores,
+)
+from src.search_v2.candidate_text import CandidateTextScore, score_conditions, candidate_sort_key
 from src.search_v2.requirement_evaluation import (
     TypedProductEvaluation,
     adjudicate_requirement,
     build_evidence_observation,
     evaluate_typed_product,
-    typed_product_sort_key,
 )
 from src.search_v2.typed_intent_adapter import build_typed_requirement_proposal
 from src.search_v2.typed_requirements import (
@@ -112,12 +137,13 @@ class CandidatePlan(_Frozen):
     session_id: str
     source_sha256: str
     query_plan: SearchQueryPlan = Field(repr=False)
-    request: OutscraperAmazonProductsRequest = Field(repr=False)
+    request: ProductSearchRequest = Field(repr=False)
     pending_quotes: tuple[str, ...] = Field(repr=False)
     image_prompt: str = Field(repr=False)
     visual_conditions: VisualConditionSet | None = Field(default=None, repr=False)
     source_structure: ProductStructure | None = Field(default=None, repr=False)
     product_review: ProductPhraseReview | None = Field(default=None, repr=False)
+    image_preparation: Literal["text-only-v1"] | None = None
     visual_request_sha256: str | None = None
     visual_response_sha256: str | None = None
     query_expansion: QueryExpansion | None = Field(default=None, repr=False)
@@ -125,12 +151,49 @@ class CandidatePlan(_Frozen):
         default=(), repr=False, max_length=MAX_QUERY_OPTIONS
     )
     selected_query_index: int = Field(default=0, ge=0, le=MAX_QUERY_OPTIONS - 1)
+    title_comparison: TitleComparison | None = Field(default=None, repr=False)
+    condition_terms: ConditionTermBundle | None = Field(default=None, repr=False)
+    condition_language_profile: Literal["condition-language-v1"] | None = None
+    condition_language_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     normalization_profile_sha256: str
     created_at: datetime
-    expires_at: datetime
+    expires_at: datetime | None
+
+    @model_serializer(mode="wrap")
+    def serialize_compatible(self, handler):
+        data = handler(self)
+        if self.image_preparation is None:
+            data.pop("image_preparation", None)
+        if self.condition_language_profile is None:
+            data.pop("condition_language_profile", None)
+            data.pop("condition_language_sha256", None)
+        if self.title_comparison is None:
+            data.pop("title_comparison", None)
+        if self.condition_terms is None:
+            data.pop("condition_terms", None)
+        return data
 
     @model_validator(mode="after")
     def validate_query_selection(self):
+        if self.image_preparation == "text-only-v1" and (
+            self.visual_request_sha256 is not None
+            or self.visual_response_sha256 is not None
+            or (
+                self.visual_conditions is not None
+                and any(
+                    c.contrast is not None or c.focus is not None
+                    for c in self.visual_conditions.conditions
+                )
+            )
+        ):
+            raise ValueError("Text-only preparation contains image inference")
+        if (self.condition_language_profile is None) != (self.condition_language_sha256 is None):
+            raise ValueError("Condition language binding is incomplete")
+        if self.condition_terms is not None and (
+            self.title_comparison is None
+            or self.condition_terms.source_sha256 != self.source_sha256
+        ):
+            raise ValueError("Condition terms belong to another source")
         if (
             self.query_expansion is not None
             and self.query_expansion.profile_id == "product-query-terms-v1"
@@ -158,8 +221,7 @@ class CandidatePlan(_Frozen):
             or self.selected_query_index >= len(self.query_options)
             or self.query_options != query_options(self.query_options[0], self.query_expansion)
             or self.query_plan.queries != [self.query_options[self.selected_query_index]]
-            or self.request
-            != build_outscraper_request(self.query_plan, postal_code=self.request.postal_code)
+            or self.request != rebuild_product_request(self.request, self.query_plan)
         ):
             raise ValueError("Query selection and request are inconsistent")
         return self
@@ -173,7 +235,7 @@ class FetchedCandidates:
 
 
 class CandidateTransport(Protocol):
-    def fetch(self, request: OutscraperAmazonProductsRequest) -> FetchedCandidates: ...
+    def fetch(self, request: ProductSearchRequest) -> FetchedCandidates: ...
 
 
 class BonsaiEvaluator(Protocol):
@@ -201,12 +263,26 @@ class CandidateRankedProduct(_Frozen):
     product: NormalizedProductCandidate = Field(repr=False)
     evaluation: TypedProductEvaluation
     lexical_score: float = Field(ge=0.0, le=1.0)
+    text_score: BilingualTextScore | CandidateTextScore | None = None
+    title_scores: BilingualTitleScore | None = None
+
+    @model_serializer(mode="wrap")
+    def serialize_compatible(self, handler):
+        data = handler(self)
+        if self.text_score is None:
+            data.pop("text_score", None)
+        if self.title_scores is None:
+            data.pop("title_scores", None)
+        return data
 
 
 class CandidateRanking(_Frozen):
-    profile_id: Literal["candidate-confirmed-lexical-v2", "candidate-confirmed-lexical-v3"] = (
-        "candidate-confirmed-lexical-v3"
-    )
+    profile_id: Literal[
+        "candidate-confirmed-lexical-v2",
+        "candidate-confirmed-lexical-v3",
+        "candidate-confirmed-lexical-v4",
+        "candidate-confirmed-lexical-v5",
+    ] = "candidate-confirmed-lexical-v3"
     retrieval_plan_sha256: str
     review_sha256: str
     confirmation_sha256: str
@@ -218,6 +294,64 @@ class CandidateRanking(_Frozen):
     product_batch: NormalizedProductBatch = Field(repr=False)
     products: tuple[CandidateRankedProduct, ...]
     visual_evaluation_status: Literal["not_requested", "pending"]
+
+    @model_validator(mode="after")
+    def validate_text_scoring(self):
+        comparison = self.retrieval_plan.title_comparison
+        if (
+            self.profile_id in {"candidate-confirmed-lexical-v4", "candidate-confirmed-lexical-v5"}
+        ) != (comparison is not None):
+            raise ValueError("Candidate text profile does not match its plan")
+        bundle = self.retrieval_plan.condition_terms
+        if (self.profile_id == "candidate-confirmed-lexical-v5") != (bundle is not None):
+            raise ValueError("Bilingual profile does not match its terms")
+        if bundle:
+            bound = {
+                c["condition_id"]: (c["source_quote"], c["strength"], False)
+                for c in self.attribute_review.conditions
+            }
+            if self.retrieval_plan.visual_conditions:
+                bound.update(
+                    {
+                        v.condition_id: (v.source_phrase, v.strength, True)
+                        for v in self.retrieval_plan.visual_conditions.conditions
+                    }
+                )
+            actual = {
+                c.condition_id: (c.source_ja, c.strength, c.visual) for c in bundle.conditions
+            }
+            if actual != bound:
+                raise ValueError("Condition terms do not match source conditions")
+        labels = {c["condition_id"]: c["label"] for c in self.attribute_review.conditions}
+        options = {o.option_id: o.label for o in self.attribute_review.options}
+        labels.update({cid: options[oid] for cid, oid in self.confirmed_selections})
+        for row in self.products:
+            if comparison is None:
+                if row.text_score is not None:
+                    raise ValueError("Legacy candidate cannot contain new text scores")
+                continue
+            expected = (
+                score_bilingual(
+                    row.product, self.requirements, self.registry, row.evaluation, labels, bundle
+                )
+                if bundle
+                else score_conditions(
+                    row.product, self.requirements, self.registry, row.evaluation, labels
+                )
+            )
+            title = title_scores(comparison, row.product) if bundle else None
+            if (
+                row.title_scores != title
+                or row.text_score != expected
+                or row.lexical_score
+                != (title.score if title else score_title(comparison, row.product.title))
+            ):
+                raise ValueError("Candidate text score does not match its evidence")
+        if comparison is not None and list(self.products) != sorted(
+            self.products, key=lambda row: candidate_sort_key(row, row.lexical_score)
+        ):
+            raise ValueError("Candidate text order is invalid")
+        return self
 
     @field_validator("requirements", mode="before")
     @classmethod
@@ -301,8 +435,18 @@ class CandidateSearch:
         visual_extractor: BonsaiEvaluator | None = None,
         query_expander: BonsaiEvaluator | None = None,
         lexical_expander=None,
+        condition_expander=None,
+        contrast_resolver=None,
         source_parser=None,
+        plan_lifetime=timedelta(minutes=15),
+        japanese_search_urls=False,
+        allow_empty_visual=False,
+        image_mode="on",
     ):
+        if plan_lifetime is not None and (
+            type(plan_lifetime) is not timedelta or plan_lifetime <= timedelta(0)
+        ):
+            raise ValueError("Invalid candidate plan lifetime")
         for value in (owner_id, session_id):
             if type(value) is not str or not 0 < len(value) <= 128 or value.strip() != value:
                 raise ValueError("Invalid candidate owner or session")
@@ -310,10 +454,13 @@ class CandidateSearch:
         _time(now)
         if query_expander is not None and lexical_expander is not None:
             raise ValueError("Choose one query suggestion provider")
+        analyze_conditions(source)
         structure = None
         if source_parser is not None:
             try:
                 structure = validate_structure(source, source_parser.analyze(source))
+            except CandidatePreparationError:
+                raise
             except Exception:
                 raise CandidatePreparationError("product_scope") from None
         product_review = None
@@ -322,9 +469,44 @@ class CandidateSearch:
                 lexical_expander.prepare(source, structure)
             )
         conditions, request_hash, response_hash = None, None, None
+        if image_mode not in {"on", "off"}:
+            raise ValueError("Invalid preparation image mode")
+        if image_mode == "off":
+            from src.search_v2.bonsai_visual_conditions import _visual_clauses
+            from src.search_v2.condition_language import interpret_clause
+            from src.search_v2.counterfactual_image import (
+                VisualConditionDraft,
+                build_visual_condition_set,
+            )
+
+            # Retain source-owned appearance phrases for text scoring without generating contrasts.
+            clauses = _visual_clauses(source, structure)
+            if clauses:
+                conditions = build_visual_condition_set(
+                    source_input=source,
+                    drafts=tuple(
+                        VisualConditionDraft(
+                            source_phrase=phrase, strength=interpret_clause(phrase).strength
+                        )
+                        for phrase in clauses
+                    ),
+                )
+            visual_extractor = None
+        if visual_extractor is not None and allow_empty_visual:
+            from src.search_v2.bonsai_visual_conditions import _visual_clauses
+
+            if not _visual_clauses(source, structure):
+                visual_extractor = None
         if visual_extractor is not None:
             try:
-                request = build_visual_request(source, structure=structure)
+                request = build_visual_request(
+                    source, structure=structure, contrast_resolver=contrast_resolver
+                )
+                if any(e.strength == "neutral" for e in analyze_conditions(source)):
+                    import json
+
+                    if not json.loads(json.loads(request)["messages"][1]["content"])["clauses"]:
+                        raise CandidatePreparationError("empty_conditions")
             except CandidatePreparationError as error:
                 error.product_review = product_review
                 raise
@@ -334,7 +516,13 @@ class CandidateSearch:
                 ) from None
             try:
                 response = visual_extractor.evaluate(request)
-                conditions = parse_visual_response(source, response, structure=structure)
+                conditions = parse_visual_response(
+                    source,
+                    response,
+                    structure=structure,
+                    require_contrast=True,
+                    contrast_resolver=contrast_resolver,
+                )
             except CandidatePreparationError as error:
                 error.product_review = product_review
                 raise
@@ -379,24 +567,48 @@ class CandidateSearch:
             owner_id=owner_id,
             session_id=session_id,
             source_sha256=candidate_source_sha256(source),
+            condition_language_profile=LANGUAGE_PROFILE,
+            condition_language_sha256=language_digest(source, structure=structure),
             query_plan=self._queries.query_plan,
-            request=build_outscraper_request(self._queries.query_plan, postal_code=postal_code),
+            request=(
+                build_outscraper_request(
+                    self._queries.query_plan, postal_code=postal_code, japanese_search_urls=True
+                )
+                if japanese_search_urls
+                else build_product_request(self._queries.query_plan, postal_code=postal_code)
+            ),
             pending_quotes=tuple(
                 f.quote for f in self._queries.facts if f.key == "custom" and f.label is None
             ),
             image_prompt=self._queries.image_prompt,
             visual_conditions=conditions,
+            image_preparation="text-only-v1" if image_mode == "off" else None,
             source_structure=structure,
             product_review=product_review,
             visual_request_sha256=request_hash,
             visual_response_sha256=response_hash,
             query_expansion=expansion,
             query_options=query_options(self._queries.query_plan.queries[0], expansion),
+            title_comparison=build_title_comparison(
+                source, self._queries.retrieval_intent, expansion
+            ),
             normalization_profile_sha256=_digest(self._normalization),
             created_at=_time(now),
-            expires_at=now + timedelta(minutes=15),
+            expires_at=None if plan_lifetime is None else now + plan_lifetime,
         )
         self._initialize_evaluation()
+        expand_conditions = (
+            condition_expander.prepare
+            if condition_expander is not None
+            else getattr(lexical_expander, "prepare_conditions", None)
+        )
+        if callable(expand_conditions):
+            bundle = ConditionTermBundle.model_validate(
+                expand_conditions(source, self._conditions, conditions)
+            )
+            self._plan = CandidatePlan.model_validate(
+                self._plan.model_copy(update={"condition_terms": bundle})
+            )
 
     @classmethod
     def from_approved_plan(
@@ -409,6 +621,7 @@ class CandidateSearch:
         human_confirmed,
         normalization_profile,
         now,
+        use_playwright=False,
     ):
         """Prepare a new authorized retrieval, retaining saved inference provenance."""
         plan = CandidatePlan.model_validate(plan)
@@ -424,14 +637,28 @@ class CandidateSearch:
         ):
             raise ValueError("Saved search requires a new bound human authorization")
         queries = build_candidate_queries(
-            source, visual_conditions=plan.visual_conditions, structure=plan.source_structure
+            source,
+            visual_conditions=plan.visual_conditions,
+            structure=plan.source_structure,
+            language_profile=plan.condition_language_profile,
         )
+        if (
+            plan.condition_language_profile
+            and language_digest(source, structure=plan.source_structure)
+            != plan.condition_language_sha256
+        ):
+            raise ValueError("Saved condition language changed")
         pending = tuple(f.quote for f in queries.facts if f.key == "custom" and f.label is None)
         if (
             queries.query_plan.intent_sha256 != plan.query_plan.intent_sha256
             or queries.query_plan.queries[0] != plan.query_options[0]
             or queries.image_prompt != plan.image_prompt
             or pending != plan.pending_quotes
+            or (
+                plan.title_comparison is not None
+                and plan.title_comparison
+                != build_title_comparison(source, queries.retrieval_intent, plan.query_expansion)
+            )
         ):
             raise ValueError("Saved search no longer matches its original conditions")
         instance = cls.__new__(cls)
@@ -440,7 +667,12 @@ class CandidateSearch:
             plan.model_copy(
                 update={
                     "created_at": now,
-                    "expires_at": now + timedelta(minutes=15),
+                    "expires_at": None if use_playwright else now + timedelta(minutes=15),
+                    "request": build_product_request(
+                        plan.query_plan, postal_code=plan.request.postal_code
+                    )
+                    if use_playwright
+                    else plan.request,
                 }
             )
         )
@@ -456,7 +688,7 @@ class CandidateSearch:
             self._conditions += (
                 {
                     "condition_id": "condition-price",
-                    "source_quote": self._source,
+                    "source_quote": self._queries.price_quote or self._source,
                     "label": "価格",
                     "target": {
                         "value_type": "decimal",
@@ -469,7 +701,7 @@ class CandidateSearch:
                     else "at_least"
                     if minimum is not None
                     else "at_most",
-                    "strength": "required",
+                    "strength": self._queries.price_strength,
                     "attribute_key": "custom",
                 },
             )
@@ -490,7 +722,8 @@ class CandidateSearch:
     def _check(self, owner_id, now, expected_state):
         if (
             owner_id != self._plan.owner_id
-            or not self._plan.created_at <= _time(now) < self._plan.expires_at
+            or _time(now) < self._plan.created_at
+            or (self._plan.expires_at is not None and now >= self._plan.expires_at)
             or self._state != expected_state
         ):
             raise ValueError("Candidate operation does not match owner, lifetime, or state")
@@ -514,9 +747,7 @@ class CandidateSearch:
                     update={
                         "query_plan": query_plan,
                         "selected_query_index": index,
-                        "request": build_outscraper_request(
-                            query_plan, postal_code=self._plan.request.postal_code
-                        ),
+                        "request": rebuild_product_request(self._plan.request, query_plan),
                     }
                 )
             )
@@ -541,7 +772,7 @@ class CandidateSearch:
             result = transport.fetch(self._plan.request.model_copy(deep=True))
             if type(
                 result
-            ) is not FetchedCandidates or result.request_sha256 != outscraper_request_sha256(
+            ) is not FetchedCandidates or result.request_sha256 != product_request_sha256(
                 self._plan.request
             ):
                 raise ValueError("Candidate response belongs to another request")
@@ -746,6 +977,19 @@ class CandidateSearch:
                 and s.label == label
                 and _factor(s.unit, unit) is not None
             ]
+            if self._plan.title_comparison is not None:
+                kinds = {field.field_id: field.kind for field in self._fields}
+
+                def priority(spec):
+                    kind = kinds[spec.field_id]
+                    return 0 if kind.startswith("features-") else 1 if kind == "title" else 2
+
+                structured = any(
+                    _identity(feature).partition(":")[0].strip() == _identity(label)
+                    for feature in product.attributes.features
+                )
+                preferred = 0 if structured else min((priority(spec) for spec in specs), default=0)
+                specs = [spec for spec in specs if priority(spec) == preferred]
             values = []
             for spec in specs:
                 number = spec.number * _factor(spec.unit, unit)
@@ -816,23 +1060,43 @@ class CandidateSearch:
                         "product_name_en": expansion.terms.original_en,
                     }
                 )
-            products = [
-                CandidateRankedProduct(
-                    product=p,
-                    evaluation=self._evaluate(p, requirements, registry, labels),
-                    lexical_score=_title_score(scoring_intent, p)[0].score or 0.0,
+            products = []
+            comparison = self._plan.title_comparison
+            condition_labels = {c["condition_id"]: c["label"] for c in self._conditions}
+            condition_labels.update({cid: label for cid, (label, _) in labels.items()})
+            bundle = self._plan.condition_terms
+            for p in self._batch.products:
+                bilingual_title = title_scores(comparison, p) if bundle else None
+                evaluation = self._evaluate(p, requirements, registry, labels)
+                products.append(
+                    CandidateRankedProduct(
+                        product=p,
+                        evaluation=evaluation,
+                        title_scores=bilingual_title,
+                        lexical_score=bilingual_title.score
+                        if bilingual_title
+                        else score_title(comparison, p.title)
+                        if comparison
+                        else _title_score(scoring_intent, p)[0].score or 0.0,
+                        text_score=score_bilingual(
+                            p, requirements, registry, evaluation, condition_labels, bundle
+                        )
+                        if bundle
+                        else score_conditions(
+                            p, requirements, registry, evaluation, condition_labels
+                        )
+                        if comparison
+                        else None,
+                    )
                 )
-                for p in self._batch.products
-            ]
-            products.sort(
-                key=lambda p: typed_product_sort_key(
-                    p.evaluation,
-                    overall_score=p.lexical_score,
-                    response_index=p.product.provenance.response_index,
-                )
-            )
+            products.sort(key=lambda p: candidate_sort_key(p, p.lexical_score))
             stage = "ranking_contract"
             result = CandidateRanking(
+                profile_id="candidate-confirmed-lexical-v5"
+                if bundle
+                else "candidate-confirmed-lexical-v4"
+                if comparison
+                else "candidate-confirmed-lexical-v3",
                 retrieval_plan_sha256=self.plan_sha256,
                 review_sha256=self._review.sha256,
                 confirmation_sha256=self._confirmation,
@@ -869,7 +1133,13 @@ def prepare_candidate_search(
     visual_extractor: BonsaiEvaluator | None = None,
     query_expander: BonsaiEvaluator | None = None,
     lexical_expander=None,
+    condition_expander=None,
+    contrast_resolver=None,
     source_parser=None,
+    plan_lifetime=timedelta(minutes=15),
+    japanese_search_urls=False,
+    allow_empty_visual=False,
+    image_mode="on",
 ):
     if review is not None:
         from src.search_v2.orchestrator import BlockingIntentReview, IntentReview
@@ -895,5 +1165,11 @@ def prepare_candidate_search(
         visual_extractor=visual_extractor,
         query_expander=query_expander,
         lexical_expander=lexical_expander,
+        condition_expander=condition_expander,
+        contrast_resolver=contrast_resolver,
         source_parser=source_parser,
+        plan_lifetime=plan_lifetime,
+        japanese_search_urls=japanese_search_urls,
+        allow_empty_visual=allow_empty_visual,
+        image_mode=image_mode,
     )

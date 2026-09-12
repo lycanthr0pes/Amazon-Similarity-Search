@@ -46,7 +46,7 @@ def test_real_lexical_components_connect_to_fixture_images_clip_and_history(
     saved = json.loads((config.output_dir / "plan.json").read_bytes())
     assert saved["query_expansion"]["profile_id"] == "dictionary-query-terms-v1"
     assert saved["request"]["queries"][0]["value"] == "mug"
-    assert saved["source_structure"]["parser_id"].startswith("ginza:")
+    assert saved["source_structure"]["parser_id"].startswith("condition-language-v1/ginza:")
 
 
 def test_real_parser_keeps_compound_and_inline_price(lexical):

@@ -4,7 +4,7 @@ from dataclasses import dataclass
 import hashlib
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator, model_serializer
 
 from src.search_v2.attribute_image_ranking import (
     AttributeImageBatch,
@@ -13,6 +13,7 @@ from src.search_v2.attribute_image_ranking import (
     FEATURE_PROFILE_SHA256 as FEATURE_IMAGE_SHA256,
 )
 from src.search_v2.candidate_search import CandidateRanking, CandidateRankedProduct, _digest
+from src.search_v2.candidate_image_free import ImageFreeRanking
 from src.search_v2.counterfactual_image import (
     counterfactual_reference_set_sha256,
     visual_condition_set_sha256,
@@ -31,7 +32,11 @@ from src.search_v2.provisional_history_repository import (
     ProvisionalHistoryWrite,
 )
 from src.search_v2.provisional_history_snapshot import _clean_source_text, _png, _safe_product_url
-from src.search_v2.requirement_evaluation import typed_product_sort_key
+from src.search_v2.candidate_text import TEXT_PROFILE_ID, TEXT_PROFILE_SHA256, candidate_sort_key
+from src.search_v2.candidate_bilingual import (
+    PROFILE_ID as BILINGUAL_PROFILE_ID,
+    PROFILE_SHA256 as BILINGUAL_PROFILE_SHA256,
+)
 from src.search_v2.relative_image_ranking import (
     AppearanceImageBatch,
     Siglip2AppearanceImageBatch,
@@ -43,11 +48,13 @@ from src.search_v2.relative_image_ranking import (
 
 
 PROFILE_ID = "candidate-lexical-clip-v3"
-IMAGE_WEIGHT = 0.2
+IMAGE_WEIGHT = 0.5
+LEGACY_IMAGE_WEIGHT = 0.2
+SORT_PROFILE_ID = "excluded-title-conditions-image-review-v1"
 PROFILE_SHA256 = _digest(
     {
         "profile": PROFILE_ID,
-        "image_weight": IMAGE_WEIGHT,
+        "image_weight": LEGACY_IMAGE_WEIGHT,
         "missing_image": "lexical_only",
         "lexical": "sudachi-original-bilingual-title-v2",
         "image": "relative-image-v1",
@@ -60,7 +67,7 @@ ATTRIBUTE_PROFILE_ID = "candidate-attribute-image-v1"
 ATTRIBUTE_PROFILE_SHA256 = _digest(
     {
         "profile": ATTRIBUTE_PROFILE_ID,
-        "image_weight": IMAGE_WEIGHT,
+        "image_weight": LEGACY_IMAGE_WEIGHT,
         "image": ATTRIBUTE_IMAGE_SHA256,
         "visual_availability": "observed-first-within-qualification",
         "required_conditions": "first",
@@ -101,7 +108,7 @@ SIGLIP2_RANKING_SHA256 = _digest(
 LEGACY_PROFILE_SHA256 = _digest(
     {
         "profile": "candidate-lexical-clip-v2",
-        "image_weight": IMAGE_WEIGHT,
+        "image_weight": LEGACY_IMAGE_WEIGHT,
         "missing_image": "lexical_only",
         "lexical": "sudachi-title-token-coverage-v1",
         "required_conditions": "first",
@@ -109,12 +116,13 @@ LEGACY_PROFILE_SHA256 = _digest(
 )
 
 
-def _total(candidate, image):
+def _total(candidate, image, image_weight=None):
     lexical = candidate.lexical_score
+    weight = LEGACY_IMAGE_WEIGHT if image_weight is None else image_weight
     return (
         lexical
         if image.image_score is None
-        else (1 - IMAGE_WEIGHT) * lexical + IMAGE_WEIGHT * image.image_score
+        else (1 - weight) * lexical + weight * image.image_score
     )
 
 
@@ -125,26 +133,78 @@ class CandidateVisualProduct(BaseModel):
     candidate: CandidateRankedProduct = Field(repr=False)
     image: ProvisionalImageComponent | RelativeImageComponent | AttributeImageComponent
     total_score: float = Field(ge=0.0, le=1.0)
+    image_weight: Literal[0.5] | None = None
+
+    @model_serializer(mode="wrap")
+    def serialize_compatible(self, handler):
+        data = handler(self)
+        if self.image_weight is None:
+            data.pop("image_weight", None)
+        return data
 
     @model_validator(mode="after")
     def validate_score(self):
         if self.image.normalized_product_sha256 != normalized_product_candidate_sha256(
             self.candidate.product
-        ) or self.total_score != _total(self.candidate, self.image):
+        ) or self.total_score != _total(self.candidate, self.image, self.image_weight):
             raise ValueError("Candidate visual score does not match its product")
         return self
 
 
 def _sort_key(row):
-    key = typed_product_sort_key(
-        row.candidate.evaluation,
-        overall_score=row.total_score,
-        response_index=row.candidate.product.provenance.response_index,
-    )
+    key = candidate_sort_key(row.candidate, row.total_score)
 
     if isinstance(row.image, AttributeImageComponent):
         return (*key[:3], row.image.image_score is None, *key[3:])
     return key
+
+
+def _observed_excluded_ratio(candidate, source):
+    excluded = [r for r in source.requirements if r.strength == "excluded"]
+    weights = {d.attribute_key: d.default_weight for d in source.registry.definitions}
+    decisions = {d.requirement_id: d.state for d in candidate.evaluation.decisions}
+    total = sum(weights[r.attribute_key] for r in excluded)
+    return (
+        round(
+            sum(
+                weights[r.attribute_key] for r in excluded if decisions[r.requirement_id] == "match"
+            )
+            / total,
+            6,
+        )
+        if total
+        else 0.0
+    )
+
+
+def _title_image_sort_key(row, source):
+    candidate = row.candidate
+    text = candidate.text_score
+    image = row.image.image_score
+    return (
+        -candidate.lexical_score,
+        -(image if image is not None else -1.0),
+        text.excluded_ratio if text else _observed_excluded_ratio(candidate, source),
+        -(text.required_ratio if text else candidate.evaluation.required_match_ratio),
+        -(text.preferred_ratio if text else candidate.evaluation.preferred_match_ratio),
+        candidate.product.provenance.response_index,
+    )
+
+
+def _priority_sort_key(row, source):
+    candidate = row.candidate
+    text = candidate.text_score
+    image = row.image.image_score
+    rating = candidate.product.rating
+    return (
+        text.excluded_ratio if text else _observed_excluded_ratio(candidate, source),
+        -candidate.lexical_score,
+        -(text.required_ratio if text else candidate.evaluation.required_match_ratio),
+        -(text.preferred_ratio if text else candidate.evaluation.preferred_match_ratio),
+        -(image if image is not None else -1.0),
+        -(rating if rating is not None else -1.0),
+        candidate.product.provenance.response_index,
+    )
 
 
 class CandidateVisualRanking(BaseModel):
@@ -170,10 +230,39 @@ class CandidateVisualRanking(BaseModel):
     products: tuple[CandidateVisualProduct, ...] = Field(repr=False)
     approval_receipt_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     visual_evaluation_status: Literal["evaluated"] = "evaluated"
+    text_profile_id: Literal["candidate-text-v1", "candidate-text-bilingual-v2"] | None = None
+    image_weight: Literal[0.5] | None = None
+    sort_profile_id: (
+        Literal["title-image-conditions-v1", "excluded-title-conditions-image-review-v1"] | None
+    ) = None
+
+    @model_serializer(mode="wrap")
+    def serialize_compatible(self, handler):
+        data = handler(self)
+        if self.text_profile_id is None:
+            data.pop("text_profile_id", None)
+        if self.image_weight is None:
+            data.pop("image_weight", None)
+        if self.sort_profile_id is None:
+            data.pop("sort_profile_id", None)
+        return data
 
     @model_validator(mode="after")
     def validate_bindings(self):
         source = self.source
+        if self.sort_profile_id is not None and self.image_weight != IMAGE_WEIGHT:
+            raise ValueError("Candidate sort profile requires current score weighting")
+        if any(row.image_weight != self.image_weight for row in self.products):
+            raise ValueError("Candidate image weight is inconsistent")
+        if (self.text_profile_id is not None) != (
+            source.profile_id
+            in {"candidate-confirmed-lexical-v4", "candidate-confirmed-lexical-v5"}
+        ):
+            raise ValueError("Candidate visual text profile is inconsistent")
+        if self.text_profile_id and self.text_profile_id != (
+            BILINGUAL_PROFILE_ID if source.retrieval_plan.condition_terms else TEXT_PROFILE_ID
+        ):
+            raise ValueError("Candidate visual language profile is inconsistent")
         if (self.profile_id == SIGLIP2_PROFILE_ID) != isinstance(
             self.image_batch, Siglip2AppearanceImageBatch
         ):
@@ -184,7 +273,14 @@ class CandidateVisualRanking(BaseModel):
             raise ValueError("Candidate appearance scope does not match its ranking method")
         relative = self.profile_id != "candidate-lexical-clip-v2"
         attribute = self.profile_id in {ATTRIBUTE_PROFILE_ID, FEATURE_PROFILE_ID}
-        if relative != (source.profile_id == "candidate-confirmed-lexical-v3"):
+        if relative != (
+            source.profile_id
+            in {
+                "candidate-confirmed-lexical-v3",
+                "candidate-confirmed-lexical-v4",
+                "candidate-confirmed-lexical-v5",
+            }
+        ):
             raise ValueError("Candidate text profile does not match its ranking method")
         batch_type = (
             AttributeImageBatch
@@ -235,7 +331,17 @@ class CandidateVisualRanking(BaseModel):
         if (
             len(self.products) != len(source.products)
             or len(self.image_batch.candidates) != len(source.products)
-            or sorted(self.products, key=_sort_key) != list(self.products)
+            or sorted(
+                self.products,
+                key=lambda row: (
+                    _priority_sort_key(row, source)
+                    if self.sort_profile_id == SORT_PROFILE_ID
+                    else _title_image_sort_key(row, source)
+                    if self.sort_profile_id == "title-image-conditions-v1"
+                    else _sort_key(row)
+                ),
+            )
+            != list(self.products)
         ):
             raise ValueError("Candidate visual ordering or count is invalid")
         original = {normalized_product_candidate_sha256(p.product): p for p in source.products}
@@ -255,7 +361,7 @@ class CandidateVisualRanking(BaseModel):
 
 @dataclass(frozen=True, repr=False)
 class CandidateCompletion:
-    ranking: CandidateVisualRanking
+    ranking: CandidateVisualRanking | ImageFreeRanking
     history: ProvisionalHistoryDetail
 
 
@@ -276,6 +382,7 @@ def complete_candidate_ranking(
     plan = source.retrieval_plan
     if (
         plan.visual_conditions is None
+        or plan.image_preparation == "text-only-v1"
         or approved.owner_id != plan.owner_id
         or approved.session_id != plan.session_id
         or approved.condition_set_sha256 != visual_condition_set_sha256(plan.visual_conditions)
@@ -298,10 +405,20 @@ def complete_candidate_ranking(
         image = by_product[normalized_product_candidate_sha256(candidate.product)]
         rows.append(
             CandidateVisualProduct(
-                candidate=candidate, image=image, total_score=_total(candidate, image)
+                candidate=candidate,
+                image=image,
+                image_weight=IMAGE_WEIGHT,
+                total_score=_total(candidate, image, IMAGE_WEIGHT),
             )
         )
     return CandidateVisualRanking(
+        image_weight=IMAGE_WEIGHT,
+        sort_profile_id=SORT_PROFILE_ID,
+        text_profile_id=BILINGUAL_PROFILE_ID
+        if source.retrieval_plan.condition_terms
+        else TEXT_PROFILE_ID
+        if source.profile_id == "candidate-confirmed-lexical-v4"
+        else None,
         profile_id=(
             SIGLIP2_PROFILE_ID
             if isinstance(images, Siglip2AppearanceImageBatch)
@@ -315,7 +432,7 @@ def complete_candidate_ranking(
         ),
         source=source,
         image_batch=images,
-        products=tuple(sorted(rows, key=_sort_key)),
+        products=tuple(sorted(rows, key=lambda row: _priority_sort_key(row, source))),
         approval_receipt_sha256=approved.approval_receipt_sha256,
     )
 
@@ -356,6 +473,15 @@ def candidate_history_snapshot(ranking, approved, *, source_text, completed_at):
             schema_version="5.0",
             rank=index,
             title=row.candidate.product.title,
+            review_rating=row.candidate.product.rating
+            if ranking.sort_profile_id == SORT_PROFILE_ID
+            else None,
+            title_en=row.candidate.product.title_en,
+            title_en_status=row.candidate.product.title_en_status,
+            title_scores=row.candidate.title_scores,
+            condition_scores=row.candidate.text_score.conditions
+            if row.candidate.title_scores is not None
+            else None,
             price_jpy=row.candidate.product.price_jpy,
             product_url=_safe_product_url(row.candidate.product.product_url),
             required_status=row.candidate.evaluation.required_status,
@@ -366,11 +492,28 @@ def candidate_history_snapshot(ranking, approved, *, source_text, completed_at):
         for index, row in enumerate(ranking.products, 1)
     )
     return ProvisionalHistoryWrite(
+        image_weight=ranking.image_weight,
+        sort_profile_id=ranking.sort_profile_id,
+        text_profile_id=ranking.text_profile_id,
+        retrieval_provider="playwright"
+        if ranking.source.product_batch.provider == "playwright"
+        else None,
         schema_version="5.0",
         owner_id=plan.owner_id,
-        completion_key=_digest({"profile": ranking.profile_id, "ranking": _digest(ranking)}),
+        completion_key=_digest(
+            {
+                "profile": ranking.profile_id,
+                "ranking": _digest(ranking),
+                **(
+                    {"history_product_name": plan.title_comparison.product_name_ja}
+                    if plan.title_comparison
+                    else {}
+                ),
+            }
+        ),
         completed_at=completed_at,
         summary=summary,
+        product_name=plan.title_comparison.product_name_ja if plan.title_comparison else None,
         provisional_profile_id=(
             "counterfactual-siglip2-appearance-v1"
             if ranking.profile_id == SIGLIP2_PROFILE_ID
@@ -386,23 +529,49 @@ def candidate_history_snapshot(ranking, approved, *, source_text, completed_at):
         ),
         known_holdout_accuracy=None,
         ranking_profile_id=ranking.profile_id,
-        ranking_profile_sha256=(
-            SIGLIP2_RANKING_SHA256
-            if ranking.profile_id == SIGLIP2_PROFILE_ID
-            else APPEARANCE_RANKING_SHA256
-            if ranking.profile_id == APPEARANCE_PROFILE_ID
-            else FEATURE_PROFILE_SHA256
-            if ranking.profile_id == FEATURE_PROFILE_ID
-            else ATTRIBUTE_PROFILE_SHA256
-            if ranking.profile_id == ATTRIBUTE_PROFILE_ID
-            else PROFILE_SHA256
-            if ranking.profile_id == PROFILE_ID
-            else LEGACY_PROFILE_SHA256
-        ),
+        ranking_profile_sha256=_history_profile_digest(ranking),
         source_typed_ranked_product_batch_sha256=_digest(ranking.source),
         condition_set_sha256=approved.condition_set_sha256,
         reference_set_sha256=reference_hash,
         runtime_sha256=ranking.image_batch.runtime_sha256,
         reference_images=tuple(references),
         products=products,
+    )
+
+
+def _history_profile_digest(ranking):
+    base = (
+        SIGLIP2_RANKING_SHA256
+        if ranking.profile_id == SIGLIP2_PROFILE_ID
+        else APPEARANCE_RANKING_SHA256
+        if ranking.profile_id == APPEARANCE_PROFILE_ID
+        else FEATURE_PROFILE_SHA256
+        if ranking.profile_id == FEATURE_PROFILE_ID
+        else ATTRIBUTE_PROFILE_SHA256
+        if ranking.profile_id == ATTRIBUTE_PROFILE_ID
+        else PROFILE_SHA256
+        if ranking.profile_id == PROFILE_ID
+        else LEGACY_PROFILE_SHA256
+    )
+    digest = (
+        _digest(
+            {
+                "image_ranking": base,
+                "text": BILINGUAL_PROFILE_SHA256
+                if ranking.text_profile_id == BILINGUAL_PROFILE_ID
+                else TEXT_PROFILE_SHA256,
+            }
+        )
+        if ranking.text_profile_id
+        else base
+    )
+    digest = (
+        _digest({"base": digest, "image_weight": ranking.image_weight})
+        if ranking.image_weight is not None
+        else digest
+    )
+    return (
+        _digest({"base": digest, "sort_profile_id": ranking.sort_profile_id})
+        if ranking.sort_profile_id is not None
+        else digest
     )

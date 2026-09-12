@@ -119,6 +119,7 @@ class BackendE2EServices:
     now: Callable
     sleep: Callable
     confirm: Callable
+    product_transport_factory: Callable | None = None
 
 
 def _digest(value: str) -> str:

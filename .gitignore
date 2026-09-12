@@ -53,3 +53,6 @@ Thumbs.db
 /tests/csv/
 /tests/img/case2/case2.xlsx
 /tests/img/case3/case3.xlsx
+
+# Local retired files and inspection output
+/bin/

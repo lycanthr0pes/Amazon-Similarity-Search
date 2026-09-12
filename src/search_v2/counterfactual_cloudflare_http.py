@@ -328,7 +328,7 @@ class RequestsCounterfactualCloudflareTransport:
             if not url.startswith(prefix) or not url.endswith(suffix):
                 raise ValueError("transport endpoint does not match")
             account_id = url[len(prefix) : -len(suffix)]
-            expected_url = cloudflare_endpoint(account_id)
+            expected_url = cloudflare_endpoint(account_id, model_id=validated_request.model_id)
             validated_token = _validated_api_token(api_token)
             if (
                 url != expected_url
@@ -620,7 +620,7 @@ def execute_counterfactual_desired_image(
         validated = CounterfactualCloudflareRequest.model_validate(request)
         if validated.target != "desired":
             raise ValueError("initial reference must use the desired request")
-        endpoint = cloudflare_endpoint(account_id)
+        endpoint = cloudflare_endpoint(account_id, model_id=validated.model_id)
         token = _validated_api_token(api_token)
         if not callable(getattr(transport, "post_multipart", None)):
             raise TypeError("counterfactual transport is invalid")
@@ -645,6 +645,9 @@ def execute_counterfactual_derived_images(
     api_token: str,
     transport: CounterfactualCloudflareTransport,
     now: Callable[[], datetime],
+    reference_prompt: str | None = None,
+    comparison_prompts: dict[str, str] | None = None,
+    comparison_nonce: str | None = None,
 ) -> CounterfactualCloudflareDerivedExecution:
     """Reuse the approved reference and generate only one image per visual condition."""
     validated_intent, conditions, ledger, reservation = _validate_context(
@@ -664,6 +667,7 @@ def execute_counterfactual_derived_images(
             intent=validated_intent,
             condition_set=conditions,
             preimage_plan_sha256=preimage_plan_sha256,
+            prompt=reference_prompt,
         )
         if (
             validated_request != expected_request
@@ -679,6 +683,9 @@ def execute_counterfactual_derived_images(
             condition_set=conditions,
             preimage_plan_sha256=preimage_plan_sha256,
             desired_reference_png=_desired_reference_png(validated_desired),
+            reference_prompt=reference_prompt,
+            comparison_prompts=comparison_prompts,
+            comparison_nonce=comparison_nonce,
         )
         if request_set.requests[0] != validated_request:
             raise CounterfactualCloudflareExecutionError(_INVALID_EXECUTION_MESSAGE)

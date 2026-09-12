@@ -8,7 +8,6 @@ import hashlib
 from io import BytesIO
 import json
 from pathlib import Path
-import signal
 import sys
 import time
 
@@ -170,8 +169,11 @@ class CandidateProducts:
             raise ValueError("Candidate live product request is not approved")
         self.used = True
         key = _validated_api_key(self.load_key().get_secret_value())
+        legacy_request = (
+            request.compatibility_request() if request.provider == "playwright" else request
+        )
         request_id, data, _ = _execute_task(
-            request, api_key=key, transport=self.transport, sleep=self.sleep
+            legacy_request, api_key=key, transport=self.transport, sleep=self.sleep
         )
         return FetchedCandidates(outscraper_request_sha256(request), request_id, {"data": data})
 
@@ -204,8 +206,10 @@ def _history_output(config, result, flow, now):
     )
     return {
         "product_count": len(detail.products),
+        "retrieval_provider": detail.retrieval_provider,
         "history_images_verified": len(detail.reference_images),
         "ranking_profile_id": detail.ranking_profile_id,
+        "text_profile_id": detail.text_profile_id,
         "lexical_scored_products": len(result.ranking.products),
         "image_evaluated": sum(p.image_score is not None for p in detail.products),
     }
@@ -230,6 +234,7 @@ def run_candidate_e2e(
     *,
     select_query=None,
     lexical_expander=None,
+    contrast_resolver=None,
     source_parser=None,
     sense_resolver_factory=None,
     region_extractor=None,
@@ -280,9 +285,11 @@ def run_candidate_e2e(
                 now=services.now,
                 visual_extractor=bonsai,
                 lexical_expander=expander,
+                contrast_resolver=contrast_resolver,
                 source_parser=source_parser,
                 reference_region_extractor=region_extractor,
                 image_score_mode=image_score_mode,
+                plan_lifetime=None,
             )
             if (
                 len(flow.plan.visual_conditions.conditions) != 1
@@ -349,7 +356,9 @@ def run_candidate_e2e(
                     review = flow.approve_and_fetch(
                         owner_id=OWNER,
                         plan_sha256=flow.plan_sha256,
-                        transport=CandidateProducts(
+                        transport=services.product_transport_factory(flow.plan.request)
+                        if services.product_transport_factory
+                        else CandidateProducts(
                             flow.plan.request,
                             services.load_outscraper_api_key,
                             products,
@@ -432,6 +441,12 @@ def main():
     parser.add_argument(
         "--translation-python", type=Path, help="Prepared OPUS-MT Python executable"
     )
+    parser.add_argument(
+        "--wordnet-db", type=Path, help="Existing Japanese WordNet 3.0 SQLite database"
+    )
+    parser.add_argument(
+        "--wordnet-adjectives", type=Path, help="Existing Princeton WordNet 3.0 data.adj"
+    )
     parser.add_argument("--opus-mt-assets", type=Path, help="Evaluated local OPUS-MT INT8 bundle")
     parser.add_argument(
         "--region-python", type=Path, help="Prepared local CLIPSeg Python executable"
@@ -457,16 +472,18 @@ def main():
         args.opus_mt_assets is not None and args.lexical_assets is None
     ):
         parser.error("OPUS-MT requires both runtime paths and contextual lexical assets")
+    if bool(args.wordnet_db) != bool(args.wordnet_adjectives):
+        parser.error("WordNet contrasts require both dictionary paths")
     if not args.run_live_api or not sys.stdin.isatty():
         parser.error(
             "Live execution requires separate human authorization, opt-in and an interactive terminal"
         )
 
-    from src.config import CloudflareLiveSettings, OutscraperLiveSettings
+    from src.config import CloudflareLiveSettings
     from src.search_v2.image_proxy_service import ImageProxyService
     from src.search_v2.image_similarity import verify_clip_asset_directory
     from src.search_v2.image_similarity_process import ProcessIsolatedClipImageEncoder
-    from src.search_v2.outscraper_http import RequestsOutscraperTransport
+    from src.search_v2.playwright_products import PlaywrightProducts
 
     def confirm(stage, review):
         print(json.dumps({"stage": stage, **review}, ensure_ascii=False), flush=True)
@@ -483,9 +500,6 @@ def main():
         if len(chosen) != 1 or chosen not in "01234567":
             raise ValueError("Invalid query selection")
         return int(chosen)
-
-    def expired(_signum, _frame):
-        raise TimeoutError("Candidate live deadline exceeded")
 
     try:
         config = shared.BackendE2EConfig(args.output_dir, args.asset_root)
@@ -513,8 +527,6 @@ def main():
                     else {}
                 ),
             )
-        signal.signal(signal.SIGALRM, expired)
-        signal.alarm(900)
         from src.search_v2.lexical_assets import load_lexical_services
 
         with ExitStack() as stack:
@@ -541,14 +553,27 @@ def main():
                         BonsaiProductSelector(evaluator, model_hash)
                     )
 
+            dictionary = None
+            if args.wordnet_db is not None:
+                from src.search_v2.wordnet_contrast import WordNetContrastDictionary
+                from src.search_v2.visual_contrast import ContrastResolver
+
+                dictionary = stack.enter_context(
+                    WordNetContrastDictionary(args.wordnet_db, args.wordnet_adjectives)
+                )
+                lexical_options["contrast_resolver"] = ContrastResolver(dictionary)
+            if args.lexical_assets is not None:
+                lexical_options["contrast_resolver"] = expander.visual_contrasts(dictionary)
+
             result = run_candidate_e2e(
                 config,
                 shared.BackendE2EServices(
                     bonsai_session=lambda: shared.owned_bonsai(runtime),
                     load_cloudflare=CloudflareLiveSettings,
                     cloudflare_transport=shared.RequestsBackendImageTransport(),
-                    load_outscraper_api_key=lambda: OutscraperLiveSettings().outscraper_api_key,
-                    outscraper_transport=RequestsOutscraperTransport(),
+                    load_outscraper_api_key=None,
+                    outscraper_transport=None,
+                    product_transport_factory=PlaywrightProducts,
                     proxy_service=ImageProxyService(allowed_hosts=("m.media-amazon.com",)),
                     encoder=image_encoder,
                     now=lambda: datetime.now(timezone.utc),
@@ -567,8 +592,6 @@ def main():
     except Exception:
         print('{"status":"failed","failure_stage":"entry_or_cleanup"}', flush=True)
         return 1
-    finally:
-        signal.alarm(0)
 
 
 if __name__ == "__main__":

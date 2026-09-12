@@ -821,6 +821,8 @@ body には主に以下を書く。
 
 # amazon-explorer 固有規約
 
+2026-09-12 EXEC-126以降、現行の商品取得はPlaywrightを使う。Node.js 22.12以上、frontendの固定PlaywrightとChromiumを事前準備し、実行時のdownloadをしない。`node --test tests/playwright_products.test.mjs` は通信を遮断した合成DOMの抽出検証、`tests/test_playwright_products.py` は要求・取得元・旧履歴/cache・worker環境・正規化/採点/SQLiteの注入回帰である。通常pytestは実Playwright workerを拒否する。実検索は別の実行として境界と結果を記録する。API key・task/pollを前提にした後段のOutscraper手順は旧経路の契約であり、新規起動は [BACKEND.md](BACKEND.md#playwrightの商品検索詳細取得exec-126) と [README](../README.md#実商品検索cli) に従う。
+
 この章は、前章までの共通ルールに加えて amazon-explorer で適用する規約を定義する。
 共通ルールと重なる場合は、より限定的で安全側の規則を適用する。
 
@@ -891,6 +893,10 @@ ON/OFFには別寸法のトグルスイッチを使い、背景56×32px・つま
 
 ## 標準開発コマンド
 
+EXEC-133の日英最大値採点を変更するときはtests/test_candidate_bilingual_scoring.pyと既存candidate回帰で、条件ID対応・語義保留・翻訳失敗・否定・概数/単位・構造化優先・欠損・旧profile・SQLite保存を検証する。条件展開はローカル辞書/OPUS-MTだけを使い、商品評価LLMを追加しない。実取得の成功と合成画像/履歴の成功は分けて記録する。
+
+EXEC-125のcandidateテキスト評価を変更するときは、説明文部分一致・否定・構造化優先・数値の属性との対応・同義語補助・日英カテゴリ・明示ブランド/型番・旧JSONとSQLite互換を `tests/test_candidate_text_scoring.py` / `tests/test_candidate_text_boundaries.py` と既存candidate回帰で検証する。構造化観測と説明文一致度を別に保持し、商品採点LLMを呼び出さない。説明文を暗黙fallbackにしない旧domain規則に対し、candidate-text-v1だけが今回明示された部分一致の適用対象となる。
+
 最低対応はPython 3.11とし、CIは3.11 / 3.13で検証する。Python 3.10は対象外とする。
 
 依存関係の同期には次を使う。
@@ -910,7 +916,7 @@ uv run --frozen --offline --no-sync pytest -m 'not live_api'
 git diff --check
 ```
 
-Markdown検査は、ルート直下の `*.md` と `docs/*.md` を現行文書として列挙し、local path、ATX見出しanchor、fenced code blockの対応をnetworkなしで確認する。外部URLへは接続しない。`docs/old/` は履歴文書なので検査元から除外するが、現行文書から明示的に参照されたarchive path自体は存在確認する。個別fileだけを調べる場合は、repository rootからの相対pathをコマンド末尾へ指定する。
+Markdown検査は、ルート直下の `*.md` と `docs/*.md` を現行文書として列挙し、local path、ATX見出しanchor、fenced code blockの対応をnetworkなしで確認する。外部URLへは接続しない。`bin/` はローカル退避先でGit追跡外とし、現行文書のリンク先にしない。旧文書の参照は統合先へ向け、binなしでも検査が通る状態を保つ。個別fileだけを調べる場合は、repository rootからの相対pathをコマンド末尾へ指定する。
 
 変更に直接関係するテストを先に実行してよいが、必要な範囲の回帰確認を省略しない。
 実行結果を報告するときは、コマンド、成功・失敗・未実行、失敗理由、未実行理由を示す。
@@ -922,6 +928,8 @@ Markdown検査は、ルート直下の `*.md` と `docs/*.md` を現行文書と
 production E2Eの成功として報告しない。
 
 ### フロントエンドの準備と検証
+
+EXEC-124の固定入力接続画面は、既定モックから分離した `?mode=connected` を使う。Pythonの単一検索workerとcandidateの段階確認へ接続する。build後にfrontendで `npm run test:e2e -- --config playwright.connected.config.ts` を実行すると、実provider/credentialを使わず8766番のfixture APIとのブラウザ結合を確認する。通常のモックE2Eは従来どおり独立して実行する。実サービスの試験入口・上限・残る未接続範囲は [BACKEND.md](BACKEND.md#ブラウザからの接続試験exec-124) と [EXEC-124](GOAL.md#exec-124-フロントエンドと実検索の接続) を正本とする。
 
 `frontend/` はNode.js 22.12以上とnpmを使う。`package-lock.json` を更新する場合も依存の追加理由を説明し、環境準備とオフラインの画面検証を区別する。初回の `npm ci` と `npx playwright install chromium` は公開配布物の取得を伴う。フォントはnpmのローカル資材から配信し、画面にCDNや実サービスへの接続を追加しない。
 
@@ -993,7 +1001,7 @@ mock、offline、credential-freeの結果をlive成功として扱わない。
 
 次の変更では、実装前に `docs/GOAL.md` へ目標と状態を登録し、
 [統合済みExecution Plan規約](#統合済みexecution-plan規約) に従う自己完結したExecution Planを [GOAL.md](GOAL.md) に作成する。
-完了して現行Planではなくなった文書は、参照を更新して `docs/old/plans/` へ移す。アーカイブ済みPlanを現行の要件、手順、進行状態として扱わない。
+完了して現行Planではなくなった文書は、参照を更新して `bin/docs/old/plans/` へ移す。アーカイブ済みPlanを現行の要件、手順、進行状態として扱わない。
 
 - 複数の層または主要moduleを変更する
 - 外部API、キャッシュ形式、データモデル、セキュリティ境界を変更する
@@ -1063,7 +1071,7 @@ credentialとして利用しない。除外状態を確認するときも、内�
 
 ## 統合済みAIレビュー規約
 
-> 統合元: `docs/AI_GUIDE.md`。統合前の文書は `docs/old/` に保存する。
+> 統合元: `docs/AI_GUIDE.md`。統合前の文書は `bin/docs/old/` に保存する。
 
 
 > **標準文書との関係:** 開発・TDD・外部実行承認の共通規則は [DEVELOPMENT.md](#developmentmd)、信頼境界は [SECURITY.md](SECURITY.md) を正本とする。この文書はAIレビュー固有の詳細契約を保持し、実行手順は [HARNESS-RUNBOOK.md](HARNESS-RUNBOOK.md) に分離する。
@@ -1375,7 +1383,7 @@ review・署名:
 
 ## 統合済みExecution Plan規約
 
-> 統合元: `docs/PLANS.md`。統合前の文書は `docs/old/` に保存する。
+> 統合元: `docs/PLANS.md`。統合前の文書は `bin/docs/old/` に保存する。
 
 
 > **標準文書との関係:** Planを必要とする条件と共通の完了規則は [DEVELOPMENT.md](#developmentmd) を正本とする。この文書は個別Planの詳細な記載形式を保持し、現在の到達点と進行状態は [GOAL.md](GOAL.md) に集約する。
@@ -1401,7 +1409,7 @@ Execution Plan（以下、Plan）は、長時間または複雑な変更を、�
 
 ### 3. 保存と識別
 
-進行中の詳細Planは `docs/GOAL.md` に固有の `EXEC-*` 見出しとして置き、同文書の対応TaskとPlan inventoryからリンクする。完了して現行Planではなくなった元文書は、すべての現行参照を更新した上で `docs/old/plans/` へ移す。旧Planは現行要件を上書きしない。最初の完了済みPlanは [EXEC-001: AI相互レビューとTDDハーネスの導入](old/plans/EXEC-001-AI-REVIEW-TDD-HARNESS.md) である。
+進行中の詳細Planは `docs/GOAL.md` に固有の `EXEC-*` 見出しとして置き、同文書の対応TaskとPlan inventoryからリンクする。完了して現行Planではなくなった元文書は、すべての現行参照を更新した上で `bin/docs/old/plans/` へ移す。旧Planは現行要件を上書きしない。最初の完了済みPlanは [EXEC-001: AI相互レビューとTDDハーネスの導入](WORKLOG.md#統合済み履歴plan-exec-001) である。
 
 各Planには、少なくとも次の識別情報を記載する。
 
@@ -1588,7 +1596,7 @@ Planを `完了` にできるのは、次をすべて満たした場合である
 
 ## 統合済みindependent adversary prompt
 
-> 統合元: `specs/prompts/adversary.md`。実行時の正本は `specs/prompts/adversary.txt` とし、Markdown版は `docs/old/runtime/` に保存する。内容を変更するときは両者の役割とdigestを同時に確認する。
+> 統合元: `specs/prompts/adversary.md`。実行時の正本は `specs/prompts/adversary.txt` とし、Markdown版は `bin/docs/old/runtime/` に保存する。内容を変更するときは両者の役割とdigestを同時に確認する。
 
 
 You are the independent adversary for amazon-explorer. Try to falsify the supplied requirements
@@ -1617,7 +1625,7 @@ Do not modify the candidate or coordinator directories.
 
 ## 統合済みindependent reviewer prompt
 
-> 統合元: `specs/prompts/reviewer.md`。実行時の正本は `specs/prompts/reviewer.txt` とし、Markdown版は `docs/old/runtime/` に保存する。内容を変更するときは両者の役割とdigestを同時に確認する。
+> 統合元: `specs/prompts/reviewer.md`。実行時の正本は `specs/prompts/reviewer.txt` とし、Markdown版は `bin/docs/old/runtime/` に保存する。内容を変更するときは両者の役割とdigestを同時に確認する。
 
 
 You are the independent reviewer for amazon-explorer. Review only the supplied, immutable
@@ -1645,7 +1653,7 @@ output. Do not modify the candidate or coordinator directories.
 
 ## 統合済みトラブルシューティング
 
-> 統合元: `docs/TROUBLESHOOTING.md`。統合前の文書は `docs/old/` に保存する。
+> 統合元: `docs/TROUBLESHOOTING.md`。統合前の文書は `bin/docs/old/` に保存する。
 
 
 > **標準文書との関係:** セットアップと通常利用の入口は [README.md](../README.md) と [QUICKSTART.md](../README.md#起動方法) とする。この文書は症状別の診断・復旧手順を保持する。
@@ -2151,7 +2159,7 @@ APIキーをGit、ログ、issue、チャット、スクリーンショットへ
 
 ## 統合済みテスト方針
 
-> 統合元: `docs/TESTING.md`。統合前の文書は `docs/old/TESTING.md` に保存する。
+> 統合元: `docs/TESTING.md`。統合前の文書は `bin/docs/old/TESTING.md` に保存する。
 
 
 ### 1. 目的と範囲
@@ -2864,3 +2872,10 @@ tests/test_candidate_appearance.pyで任意対象句・領域モデル未呼出�
 通常testはtests/test_siglip2.pyと既存candidate/CLIP/履歴回帰、全体offline、Ruff/format/lock/Markdown/diff。SigLIP専用runtime/768次元とCLIP混在拒否、単条件の検証済み数式、複数条件のminimum-positive、欠測/近接参照、workerの時間制限/credential非継承/固定失敗、candidate既定・2段階画像承認・順位・JSON・SQLite履歴・CLI選択を確認する。旧CLIP fixtureはappearance/relativeを明示する。
 
 準備済みSigLIPの別環境はtorch2.6.0+cpu/transformers4.57.6/numpy2.5.3/Pillow12.3.0/tokenizers0.22.2/safetensors0.8.0。資材はsiglip2_assets.jsonに固定し、通常uv環境へtorchを追加しない。実adapter検証は保存済み21商品と正/偽画像を再利用し、全埋込み/点と旧試験値を比較する。これは既知画像の接続回帰であり独立holdoutや実provider E2Eではない。新外部検索/画像生成は行わない。
+
+
+### 条件の辞書・翻訳速度の単体検証（EXEC-132）
+
+`tests/test_condition_terms_benchmark.py` は準備済みローカル辞書とOPUS-MTの実資材を使う任意の速度検証で、通常pytestではskipする。`AMAZON_EXPLORER_LOCAL_TERMS_BENCHMARK=1` と、既存のprivate 0700 directoryを指す `AMAZON_EXPLORER_TERMS_OUTPUT` を指定する。出力fileが存在すれば上書きせず失敗する。外部通信をOSのnetwork namespaceで遮断する実行例、資材位置、単位と範囲は [EXEC-132](GOAL.md#exec-132-条件の辞書ローカル翻訳の単体速度検証) を参照する。モデル/辞書を自動取得しない。
+
+条件1/5/10句の辞書候補取得（各20回）と英訳（各3回）を計測する。現行の2句ずつの別process実行と、試験補助内だけで実モデルを保持する参考値を区別する。後者も同じworker関数で実推論し、現行出力との一致を確認する。検索や条件展開への接続、語義選択・同義性や英訳の正しさを証明するtestではない。生成訳は子processとのIPC以外へ保存せず、診断には数値と件数だけを残す。

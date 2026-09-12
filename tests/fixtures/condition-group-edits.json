@@ -1,0 +1,43 @@
+{
+  "view": {
+    "stage": "query",
+    "revision": 1,
+    "input": "マグカップ。USB非対応。ブランド:合成。電子レンジ対応は不要。取っ手がなくてもよい。",
+    "productName": "マグカップ",
+    "conditionText": "USB非対応。ブランド:合成。電子レンジ対応は不要。取っ手がなくてもよい。",
+    "conditionReview": [
+      {
+        "start": 6,
+        "end": 12,
+        "quote": "USB非対応",
+        "target": "USB非対応",
+        "strength": "required",
+        "reason": "explicit_condition"
+      },
+      {
+        "start": 21,
+        "end": 31,
+        "quote": "電子レンジ対応は不要",
+        "target": "電子レンジ対応",
+        "strength": "excluded",
+        "reason": "avoidance"
+      },
+      {
+        "start": 32,
+        "end": 42,
+        "quote": "取っ手がなくてもよい",
+        "target": "取っ手",
+        "strength": "neutral",
+        "reason": "permission"
+      }
+    ],
+    "queries": [
+      "マグカップ"
+    ]
+  },
+  "edits": {
+    "preferred": "3000円以下",
+    "excluded": "電子レンジ対応, 光沢"
+  },
+  "expectedSource": "マグカップ。USB非対応。ブランド:合成。できれば3000円以下。電子レンジ対応は不要。光沢は避けたい。取っ手がなくてもよい。"
+}

@@ -19,6 +19,11 @@ class DictionaryQueryExpander:
         self._lexicon = lexicon
         self._scorer = scorer
 
+    def visual_contrasts(self, dictionary=None):
+        from src.search_v2.visual_contrast import ContrastResolver
+
+        return ContrastResolver(dictionary, lexicon=self._lexicon)
+
     def propose(self, source, product_phrase):
         request_hash = _hash(
             {
@@ -69,6 +74,13 @@ class ContextualQueryExpander:
         self._lexicon, self._scorer, self._resolver = lexicon, scorer, resolver
         self._translator = translator
 
+    def prepare_conditions(self, source, conditions, visual_conditions):
+        from src.search_v2.condition_terms import LocalConditionExpander
+
+        return LocalConditionExpander(
+            self._lexicon, scorer=self._scorer, translator=self._translator
+        ).prepare(source, conditions, visual_conditions)
+
     def with_resolver(self, resolver):
         return ContextualQueryExpander(
             self._lexicon, self._scorer, resolver=resolver, translator=self._translator
@@ -85,6 +97,11 @@ class ContextualQueryExpander:
         return prepare_product_phrase(
             source, structure, self._lexicon, self._scorer, self._resolver, self._translator
         )
+
+    def visual_contrasts(self, dictionary=None):
+        from src.search_v2.visual_contrast import ContrastResolver
+
+        return ContrastResolver(dictionary, lexicon=self._lexicon)
 
     def propose(self, source, product_phrase):
         from src.search_v2.lexical_context import CONTEXT_PROFILE, has_context

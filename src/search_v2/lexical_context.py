@@ -206,7 +206,10 @@ class BonsaiProductSelector(BonsaiSenseSelector):
 
         return infer_product_name(self._evaluator, source, product, include_english=False)
 
-    def suggest(self, source, product, senses):
+    def suggest_name(self, source, product, senses):
+        return self.suggest(source, product, senses, include_english=False)
+
+    def suggest(self, source, product, senses, *, include_english=True):
         from src.search_v2.bonsai_query_terms import _clean_term
         from src.search_v2.product_phrase import keeps_target
 
@@ -227,7 +230,7 @@ class BonsaiProductSelector(BonsaiSenseSelector):
             {
                 **empty,
                 "product_name_ja": {**term, "type": "string"},
-                "english": term,
+                "english": term if include_english else {"type": "null"},
                 "evidence_index": {"type": "integer", "enum": [0]},
             },
             empty,
@@ -267,8 +270,12 @@ class BonsaiProductSelector(BonsaiSenseSelector):
                         "用途、動作、対象との関係で候補を比較します。語形一致だけでは決めません。"
                         "辞書候補が文脈に合えばsense_idを選び、product_name_jaとenglishはnull。"
                         "辞書候補に合うものがなければ、targetを末尾に残した短い日本語商品名をproduct_name_jaへ提案し、"
-                        "英訳をenglishへ1つだけ返してください。この場合sense_idはnullです。不明な英訳はnull。"
-                        "原文にないブランド・型番・数量・性能を追加せず、否定された商品は提案しません。"
+                        + (
+                            "英訳をenglishへ1つだけ返してください。この場合sense_idはnullです。不明な英訳はnull。"
+                            if include_english
+                            else "英訳は行わずenglishは必ずnullにしてください。この場合sense_idはnullです。"
+                        )
+                        + "原文にないブランド・型番・数量・性能を追加せず、否定された商品は提案しません。"
                         "意味を区別する文脈がない、解釈できない場合は全項目null。選べる場合evidence_indexは0。"
                         "提案は人間の確認前であり、仕様や用途の充足を証明しません。",
                     },
@@ -315,6 +322,8 @@ class BonsaiProductSelector(BonsaiSenseSelector):
             if type(value["evidence_index"]) is not int or value["evidence_index"] != 0:
                 raise ValueError("Invalid product evidence")
             key, name, english = value["sense_id"], value["product_name_ja"], value["english"]
+            if not include_english and english is not None:
+                raise ValueError("English is disabled for name-only proposals")
             if key is not None:
                 if (
                     type(key) is not str

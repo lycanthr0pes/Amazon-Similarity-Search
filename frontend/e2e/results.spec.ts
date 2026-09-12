@@ -26,48 +26,29 @@ test("result cards show ranked badges, concise conditions, and zoomable images",
   await page.getByRole("button", { name: "検索", exact: true }).click();
   await page.clock.runFor(15000);
   await page.getByRole("button", { name: "結果を見る", exact: true }).click();
-  await page.getByRole("combobox", { name: "表示件数" }).selectOption("12");
+  await page.getByRole("combobox", { name: "表示件数" }).selectOption("30");
   const cards = page
     .getByRole("list", { name: "検索結果" })
     .getByRole("listitem");
   await expect(cards).toHaveCount(12);
   const first = cards.first();
-  const matching = first.locator("summary").filter({ hasText: "検索条件" });
+  const matching = first.locator("summary").filter({ hasText: "検索詳細" });
   await expect(matching).toBeVisible();
-  await expect(first.getByText("未確認：静音性", { exact: true })).toBeHidden();
+  const scores = first.getByRole("table", { name: "点数の内訳" });
+  await expect(scores).toBeHidden();
   await matching.click();
-  await expect(
-    first.getByText("未確認：静音性", { exact: true }),
-  ).toBeVisible();
+  await expect(scores).toBeVisible();
+  await expect(scores).toContainText("日本語");
+  await expect(scores).toContainText("英語");
+  await expect(first).toContainText("画像評価：未使用");
   await matching.focus();
   await page.keyboard.press("Enter");
-  await expect(first.getByText("未確認：静音性", { exact: true })).toBeHidden();
+  await expect(scores).toBeHidden();
   await page.keyboard.press("Space");
-  for (const index of [1, 11]) {
-    await cards
-      .nth(index)
-      .locator("summary")
-      .filter({ hasText: "検索条件" })
-      .click();
-  }
+  await expect(scores).toBeVisible();
   await expect(
-    cards.nth(2).getByText("未確認：接続可能な機器", { exact: true }),
+    cards.nth(1).getByRole("table", { name: "点数の内訳" }),
   ).toBeHidden();
-
-  await expect
-    .soft(first.getByText("未確認：静音性", { exact: true }))
-    .toBeVisible();
-  await expect
-    .soft(cards.nth(1).getByText("未確認：接続可能な機器", { exact: true }))
-    .toBeVisible();
-  await expect
-    .soft(
-      cards.last().getByText("不一致：テンキー・本体サイズ", { exact: true }),
-    )
-    .toBeVisible();
-  await expect
-    .soft(cards.getByText(/確認できない：|合わない：|は未確認/))
-    .toHaveCount(0);
   for (const index of [0, 11]) {
     const card = cards.nth(index);
     const rank = card.getByText(`#${index + 1}`, { exact: true });

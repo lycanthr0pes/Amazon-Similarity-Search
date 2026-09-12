@@ -14,6 +14,26 @@ from test_product_phrase import HUB, Scorer
 from test_product_phrase_bonsai import Evaluator
 
 
+def prepare_proposal(translator, *, name="usbハブ", english=None, found=()):
+    from test_product_phrase import WHEEL
+    from test_product_phrase_bonsai import payload
+
+    evaluator = Evaluator(payload(name, english))
+    lexicon = SimpleNamespace(
+        sha256="d" * 64,
+        lookup_products=lambda *_: (WHEEL,),
+        lookup_contextual=lambda _: found,
+    )
+    source = "usb端子を増やすハブ。"
+    review = ContextualQueryExpander(
+        lexicon,
+        Scorer(),
+        translator=translator,
+        resolver=BonsaiProductSelector(evaluator, "a" * 64),
+    ).prepare(source, structure(source, "ハブ", ("usb端子を増やす",)))
+    return review, evaluator
+
+
 class Translator:
     sha256 = "f" * 64
 
@@ -139,3 +159,109 @@ def test_unavailable_translation_cannot_restore_bonsai_english():
     raw["expansion"]["terms"]["original_en"] = "invented fallback"
     with pytest.raises(ValueError):
         ProductPhraseReview.model_validate_json(json.dumps(raw))
+
+
+def test_unlisted_proposal_uses_local_translation_and_name_only_bonsai_schema():
+    from jsonschema import Draft202012Validator
+    from test_product_phrase_bonsai import payload
+
+    translator = Translator(("hub", "usb hub"))
+    review, evaluator = prepare_proposal(translator)
+    assert translator.calls == [("ハブ", "usbハブ")]
+    assert review.expansion.resolution_method == "bonsai_proposal"
+    assert review.expansion.selected_sense_id is None
+    assert review.expansion.terms.original_en == "hub"
+    assert review.expansion.terms.synonyms[0].en == "usb hub"
+    assert review.expansion.translation.status == "ready"
+    schema = evaluator.requests[0]["response_format"]["schema"]
+    assert all(b["properties"]["english"] == {"type": "null"} for b in schema["oneOf"])
+    validator = Draft202012Validator(schema)
+    assert validator.is_valid(payload("usbハブ"))
+    assert not validator.is_valid(payload("usbハブ", "invented translation"))
+    assert ProductPhraseReview.model_validate_json(review.model_dump_json()) == review
+
+
+def test_unlisted_proposal_translation_failure_preserves_japanese_and_rejects_fallback():
+    translator = Translator(RuntimeError("private fixture"))
+    review, _ = prepare_proposal(translator)
+    assert translator.calls == [("ハブ", "usbハブ")]
+    assert review.product_name == "usbハブ"
+    assert review.expansion.terms.original_en is None
+    assert review.expansion.terms.synonyms[0].en is None
+    assert review.expansion.translation.status == "unavailable"
+    raw = json.loads(review.model_dump_json())
+    raw["expansion"]["terms"]["synonyms"][0]["en"] = "invented fallback"
+    with pytest.raises(ValueError):
+        ProductPhraseReview.model_validate_json(json.dumps(raw))
+
+
+def test_name_only_proposal_rejects_bonsai_english_before_translation():
+    translator = Translator(("hub", "usb hub"))
+    review, _ = prepare_proposal(translator, english="invented translation")
+    assert review.product_name is None
+    assert review.expansion.status == "unavailable"
+    assert not translator.calls
+
+
+def test_proposed_identical_name_is_translated_once():
+    translator = Translator(("hub",))
+    review, _ = prepare_proposal(translator, name="ハブ")
+    assert translator.calls == [("ハブ",)]
+    assert review.expansion.terms.original_en == review.expansion.terms.synonyms[0].en == "hub"
+
+
+def test_proposed_name_found_in_dictionary_keeps_dictionary_english():
+    translator = Translator()
+    review, _ = prepare_proposal(translator, found=(HUB,))
+    assert not translator.calls
+    assert review.expansion.selected_sense_id == HUB.sense_id
+    assert review.expansion.terms.original_en == "usb hub"
+    assert review.expansion.translation is None
+
+
+def test_local_proposal_translation_reaches_query_selection_and_history(tmp_path, monkeypatch):
+    import test_candidate_search_live_e2e as live
+    from test_product_phrase import WHEEL
+    from test_product_phrase_bonsai import payload
+
+    module, config, services, _, _ = live.setup_run(tmp_path, monkeypatch)
+    source = module.SYNTHETIC_INPUT
+    evaluator = Evaluator(payload("丸形マグカップ"))
+    translator = Translator(("mug", "round mug"))
+    expander = ContextualQueryExpander(
+        SimpleNamespace(
+            sha256="d" * 64, lookup_products=lambda *_: (WHEEL,), lookup_contextual=lambda _: ()
+        ),
+        Scorer(),
+        translator=translator,
+        resolver=BonsaiProductSelector(evaluator, "a" * 64),
+    )
+
+    def select(review):
+        assert review["query_terms"]["synonyms"] == [{"ja": "丸形マグカップ", "en": "round mug"}]
+        return next(i for i, q in enumerate(review["queries"]) if q["value"] == "round mug")
+
+    result = module.run_candidate_e2e(
+        config,
+        services,
+        select_query=select,
+        lexical_expander=expander,
+        source_parser=SimpleNamespace(
+            analyze=lambda _: structure(source, "マグカップ", ("丸みのある形", "3000円以下"))
+        ),
+        image_score_mode="appearance",
+    )
+    assert result["status"] == "succeeded" and result["history_images_verified"] == 2
+    assert len(evaluator.requests) == 1
+    assert translator.calls[0] == ("マグカップ", "丸形マグカップ")
+    saved = json.loads((config.output_dir / "plan.json").read_bytes())
+    assert saved["request"]["queries"][0]["value"] == "round mug"
+    assert saved["query_expansion"]["resolution_method"] == "bonsai_proposal"
+    assert saved["query_expansion"]["translation"]["provider"] == "opus-mt-ja-en-int8-v1"
+
+
+def test_proposal_without_local_translator_preserves_old_english_and_json():
+    review, _ = prepare_proposal(None, english="usb hub")
+    assert review.expansion.translation is None
+    assert review.expansion.terms.synonyms[0].en == "usb hub"
+    assert ProductPhraseReview.model_validate_json(review.model_dump_json()) == review

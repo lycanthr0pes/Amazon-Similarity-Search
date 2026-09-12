@@ -18,7 +18,7 @@ def test_bonsai_focus_survives_grounding_and_changes_binding(tmp_path):
     assert condition.focus.target == "body of the chair"
     assert json.loads(bonsai.calls[0])["response_format"]["schema"]["properties"]["conditions"][
         "items"
-    ]["properties"]["focus"]
+    ]["anyOf"][0]["properties"]["focus"]
     assert type(service.plan).model_validate_json(service.plan.model_dump_json()) == service.plan
 
 
@@ -172,13 +172,13 @@ def test_unobserved_shape_does_not_outrank_observed_shape(monkeypatch):
 
     monkeypatch.setattr(
         completion,
-        "typed_product_sort_key",
-        lambda evaluation, overall_score, response_index: (
+        "candidate_sort_key",
+        lambda row, overall_score: (
             0,
             -1.0,
             0.0,
             -overall_score,
-            response_index,
+            row.product.provenance.response_index,
         ),
     )
     candidate = SimpleNamespace(

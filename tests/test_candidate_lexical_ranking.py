@@ -38,7 +38,7 @@ def test_title_match_orders_equal_conditions_without_inference(tmp_path):
     result = ranked(tmp_path, products=[{"name": "収納ケース"}, {"name": "スキャナー"}])
     assert [p.product.title for p in result.products] == ["スキャナー", "収納ケース"]
     assert [p.lexical_score for p in result.products] == [1.0, 0.0]
-    assert result.profile_id == "candidate-confirmed-lexical-v3"
+    assert result.profile_id == "candidate-confirmed-lexical-v4"
     assert "semantic_score" not in result.model_dump_json()
     assert "bonsai_request_sha256" not in result.model_dump_json()
     assert CandidateRanking.model_validate_json(result.model_dump_json()) == result

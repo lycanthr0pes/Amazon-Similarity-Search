@@ -1,5 +1,828 @@
 # 開発目標
 
+## EXEC-159: 不要資料をbinへ退避して追跡を解除
+
+状態: 退避・追跡解除・検証完了（未コミット）。作成/更新: 2026-09-13。
+
+目的: 利用者の指示に従い、現行実行・回帰に不要な資料をローカルの `bin/` へ集約する。対象は統合済み旧文書36件、呼出元のない旧段階サンプル6件、対象外となったresponsiveデザインPNG1件、直前の合成UI検証出力。現行ソース・旧履歴互換・テストfixture/画像・現行デザイン参照・モデル・環境・実履歴とcacheは維持する。
+
+手順: Gitと参照関係の調査、移動元/先とSHA-256のローカルmanifest作成、上書きなしの移動、対象だけのindex削除、root限定ignore、現行文書リンクの統合先への更新、退避物なしの文書検査・offline回帰。未コミットの既存変更を保持し、commit/pushは行わない。コードの振る舞いを変更しないため新規TDDは不要。
+
+復旧: `bin/cleanup-20260913.json` の対応とhashを確認して元の場所へ戻し、必要な対象だけGitへ再登録する。退避物は削除せず、過去commitも書き換えない。binはcloneに含めないため、現行文書・検証がbinへ依存しないことを確認する。
+
+結果: 対象43件をGit indexから除去し、`/bin/` のignoreを登録した。旧文書36件・旧Pythonサンプル6件・旧responsive PNG1件と、前回の合成UI検証出力を合わせて133ファイル・17,537,187 bytesをローカル保存した。全移動先のSHA-256一致、ignore、index非登録、予定外のstaged削除なしを確認。/tmpからの単純renameは別filesystemのため失敗し、copy後のhash検証を経て移動を完了した。
+
+検証: `uv run --frozen --offline --no-sync pytest -m 'not live_api' -q --tb=short` は3432 passed/22 skipped/30 deselected（83.46秒、exit 0）。Ruff check・format（412 files）、現行17文書のMarkdown検査、binを含まない非ignoreファイルの一時コピーでの文書検査、作業差分/staged差分のcheckは成功。前回の未追跡ソースを含む現行コード・fixtureと履歴互換を維持した。Frontendソース/buildには変更がないためブラウザとbuildは再実行していない。実サービス・実履歴への操作とGit履歴の書換えは行っていない。追跡解除43件と.gitignoreだけをstageし、既存変更を含む現行文書の更新は未stageで保持する。
+
+## EXEC-158: モック共用画面の目視確認と表示修正
+
+状態: 修正・目視確認完了（未コミット）。作成/更新: 2026-09-13。
+
+目的: 目視確認の利用者指示に基づき、幅1440/1280のChromiumで合成入力の主要画面・ダイアログを撮影し、重複と崩れを確認する。履歴案内の重複/余白不足、比較画像ラベルの折返しによる位置ずれ、採点表見出しの途中改行を確認した。
+
+範囲: 共用React表示部品と視覚回帰。API/モデル/実履歴/採点値は変更しない。手順: 合成スクリーンショット目視、再現RED、最小の余白/配置修正、型・build・関連ブラウザ、修正後の目視。既存未コミット変更を保持し、rollbackは今回の表示修正のみ。モバイルは現行desktop仕様の対象外。実データ・外部通信は使わない。
+
+RED: `npm run test:e2e -- visual-layout.spec.ts --workers=1 --forbid-only` は3 failed（exit 1）。履歴案内2件、カード上端14px差、表見出し2行を再現した。RED test SHA-256=`65cb8f951908dbb90f25240261f9c54dd82fa1b5c27b5a64dac11f103f2baa11`。
+
+結果: 履歴の保存案内を1つにまとめ、案内・内容間に24pxの余白を設けた。画像ギャラリーは同じ行のカードを同じ高さにし、ラベルの折返し分を吸収して画像の上端を揃える。採点表の列見出しだけ途中改行を防ぎ、条件名の折返しは維持する。
+
+検証: frontendで型/整形 `npm run check`、Vitest `npm test` 94件、`npm run build` 成功。`npm run test:e2e -- visual-layout.spec.ts results.spec.ts navigation.spec.ts --workers=1 --forbid-only` は8件成功。同コマンドに `UI_TEST_MODE=development` を指定した開発版も8件成功。`npm run test:e2e -- --config playwright.connected.config.ts --workers=1 --forbid-only` は合成API26件成功。最終visual-layout test SHA-256=`3ce0d2b24ee8bb1078a119b2c31c97422cd645be4aa069ca4576d4f7e620b08b`。RED後のテスト変更は整形のみ。
+
+目視: ローカルChromium、DPR1、幅1440/1280px・高さ1000pxで入力、条件確認、画像生成中/参考/比較/最終確認、調査/完了、結果、履歴一覧/詳細、画像拡大、中止/再生成/削除/破棄ダイアログ、画像なし、保存失敗を撮影した。修正後42枚は `bin/ui-visual-20260913/after/` にローカル保存（EXEC-159で/tmpから退避）。主要画面・修正箇所・ダイアログを目視し、確認範囲で重複・重なり・横のはみ出しを認めなかった。全42状態で文書の横幅、可視h1の単一性、画像欠損、pageerrorを検査し問題0件。外部要求/APIはrouteで拒否し、固定合成入力のみ使用。実サービス・実履歴・他ブラウザ・モバイルの確認ではない。対象文書のリンクと差分検査も成功。
+
+## EXEC-157: オフラインモックを現行接続画面へ統一
+
+状態: 実装・オフライン検証完了（未コミット）。作成・更新: 2026-09-13。
+
+目的: オフラインでも接続画面と同じ条件編集、画像確認、最終確認、調査、結果、履歴を操作できるようにする。利用者の今回の実装指示を根拠とし、旧モック固有の画面を共用画面へ置き換える。
+
+範囲: frontendの画面とデータ供給境界、タブ内合成履歴、シナリオ、関連テスト・文書。任意入力を保持し、固定合成条件・商品・ローカル画像を使用する。実API、モデル、画像生成、商品検索、credential、課金、実履歴DB、商品順位の計算は対象外。既存の未コミット変更を保持する。
+
+手順: 接続画面とモックの差分を確認し、共通条件編集のブラウザREDを固定する。検索/履歴のデータ供給を注入可能にし、既定入口だけオフライン実装を渡す。画像選択の再整理、準備3回、画像2回、明示確認、保存再試行、中止、期限を模擬する。型/整形・Vitest・build・全モックブラウザ・接続fixture・開発版視覚回帰・Markdown/diffを検証する。
+
+判断: 画面を二重に保守せずConnectedApp/ConnectedHistory/ConnectedProductsを共用する。通信を差し替えるグローバルfetch hookは使わず、明示したデータ供給境界でモックを閉じる。保存はsessionStorageの別versionとし旧データを破棄しない。rollbackは今回の共用化とモック変更だけを戻す。
+
+結果: Appは共用画面へのオフラインclient注入だけを行う。条件グループ、画像プロンプト、調査工程、結果、履歴は接続画面と同じ実装。固定12商品の表示画像/英語タイトルの欠損例/日英採点内訳、画像なしの画像点未使用、属性選択シナリオ、準備3回/画像2セット、保存だけの再試行、中止、期限を再現した。旧v1モック履歴は読取/削除を維持し、v2は合成スナップショットを保存する。期限切れは閲覧対象から外し、60秒間隔と履歴表示時にタブ内削除を試み、失敗時は再試行を提示する。
+
+RED: frontendで `npm run test:e2e -- offline-parity.spec.ts --workers=1` は1 failed（exit 1）。旧モックに「優先条件」欄がなく、画像使用への切替時にも再整理を要求しなかった。最初のrootでのnpm実行はpackage.json不在によりexit 254となり、frontendへ修正後に上記REDを得た。以後の同テストは整形のみで期待を維持した。最終テストSHA-256=`d21c492d8dee41e7d07757feb65b6e8f4748217ab3ab60b05670bc89311013a6`。
+
+検証: 型/Prettier `npm run check`、Vitest `npm test` 94件、`npm run build` は成功。`npm run test:e2e -- --workers=1 --forbid-only` は全37件成功（2.1分）。最初の回帰実行は旧モックのボタン名・画像再整理不要の操作を期待して失敗し、接続画面の現行操作に同期した。`npm run test:e2e -- --config playwright.connected.config.ts --workers=1 --forbid-only` は合成API26件成功。`UI_TEST_MODE=development npm run test:e2e -- controls.spec.ts motion.spec.ts frame.spec.ts navigation.spec.ts --workers=1 --forbid-only` は14件成功。最終の期限削除・保存時刻固定後にも型/整形・Vitest94件・build、`npm run test:e2e -- recovery.spec.ts results.spec.ts offline-parity.spec.ts --workers=1 --forbid-only` 13件が成功（14.9秒、exit 0）。履歴カード・日英採点付き結果カードのスクリーンショットを目視確認。対象7文書のMarkdownリンク/anchor検査と `git diff --check` も成功。
+
+影響と制約: backend、実SQLite、実検索、実モデル、credential、課金を変更/実行していないため実サービスE2E・実入力理解・順位品質は未検証。Python domainを変更していないため全体pytestは対象外。オフライン表示は固定合成条件・画像・商品であることを明記する。手元の実稼働serverは再起動せず、ビルド済みフロントエンドを更新した。ブラウザ再読込で新しい画面を読み込む。旧モック専用のmodel/historyは旧保存データ・既存単体回帰用に残す。
+
+## EXEC-156: 辞書に対比候補がない条件のBonsai補完
+
+状態: 実装・offline検証・server反映完了。作成・更新: 2026-09-13。
+
+目的: 辞書に対比候補が0件の条件をBonsai推論へ明示的に振り分ける。既存の補完機構を維持し、未収録と語義選択を要求内で区別する。未知の外観はmatching/opposite、未知部品はpart_enを既存の視覚推論1回で補完する。辞書未収録だけを理由に条件を落としたり保留したりしない指示を追加する。
+
+範囲: 視覚要求の候補分類・promptとfixtureテスト。受信の原文/否定/出典検証、画像なしの推論なし、商品名/採点/履歴は維持する。条件の意味自体が不明な場合や不正応答では文章修正を維持する。新要求hashは旧要求と区別され、既存計画/保存画像は再生成しない。
+
+手順: 未収録外観・部品・既知/曖昧語義の振り分けRED、最小実装、専用/関連/全体offline、文書同期、待機中serverへの反映。実モデル/画像生成/検索/課金は行わない。入力/履歴を保持し、rollbackは今回の要求分類/promptだけを戻す。現状では補完受信は実装済みだが、辞書候補なしを要求で明示していない。
+
+RED: `uv run --frozen --offline --no-sync pytest tests/test_wordnet_contrast.py -k 'missing_' -q --tb=short` は4 failed/1 passed/24 deselected（exit 1）。専用要求fieldが存在せず、candidate接続の合成Bonsaiでも同fieldを参照できなかった。RED SHA-256=`61b43f2609f27722a37795d2523ca929684ccfb6443d931629ac150104e14ed3`。
+
+GREEN: `uv run --frozen --offline --no-sync pytest tests/test_wordnet_contrast.py tests/test_attachment_contrast.py tests/test_visual_contrast.py tests/test_image_free_browser.py -q --tb=short` は86 passed（exit 0）。未収録/既知/多義の分離、未知部品、1回の推論で画像指示まで到達、否定時の反転、辞書出典非偽装、画像なしの未推論を確認。最終test SHA-256=`5a884cfc80f7866124275ba175773bd24cdc230286d8b3dc141be34fbb94d075`。Ruff/format・offline lockは成功。全体offline `uv run --frozen --offline --no-sync pytest -m 'not live_api' -q --tb=short` は3386 passed/22 skipped/30 deselected（75.69秒、exit 0）。Markdown/diffも成功。8772を修正版へ再起動し、入力と履歴4件の保持、idle、API/画面のHTTP200、新規検索なしを確認した。UIコード/履歴schemaは変更していないためfrontend build/ブラウザfixtureの再実行は不要と判断した。実Bonsaiの補完品質は未検証。
+
+## EXEC-155: 画像なしの条件整理から比較画像検証を分離
+
+状態: 実装・offline検証・server反映完了。作成・更新: 2026-09-13。
+
+目的: 参考画像を使わない選択でも比較画像用の推論・対比検証が実行され、文章修正へ戻される不具合を直す。UIのstart/reviseから任意imageModeをAPI・factoryへ渡し、offでは視覚Bonsaiと対比辞書を使わず既存のローカル条件整理・商品名展開を行う。画像使用へ切り替える場合は既存の再整理操作と3回上限で準備し直す。
+
+範囲: 接続画面、コマンド検証、runtime構成、fixture回帰。旧APIは項目省略で従来動作を保持する。日英採点・履歴形式・画像生成の承認は変更せず、実検索/実モデル/課金は実行しない。利用者入力と履歴をログへ出さない。
+
+手順: APIのmode伝達・視覚条件を含む画像なし実行・UI送信のREDを追加し、最小実装後に関連/全体offlineとfrontend/browserを検証する。稼働中serverが処理中でないことを確認して入力/履歴を保持した再起動で反映する。rollbackは今回のmode伝達とUI変更だけを戻し、既存データを保持する。現時点では準備時の画像選択がAPIへ送信されていないことを確認済み。
+
+実装結果: 視覚推論を省くだけでは未登録の外観句がquery_buildで止まることも確認し、画像なし準備では共通ローカル解析の原文句をfocus/contrastなしで保持する構成にした。新しい任意image_preparation=text-only-v1をplan digestへ含め、画像生成・画像採点への転用と視覚推論hashの混入を拒否する。旧field省略のJSONと既存保存結果は保持する。
+
+RED: `uv run --frozen --offline --no-sync pytest tests/test_browser_editing.py tests/test_image_free_browser.py -q --tb=short` は2 failed/35 passed（exit 1）。APIがimageModeを拒否し、runtimeが引数を受け取れなかった。初回SHA-256はediting=`1a64a7cd2a319123f659d7c381e824a4722d4a681507f85c06dbff8e00970736`、image-free=`9df05f4ce2d636afa513e23ca30945b1f9ebb2e6c55678e2dd1b4f4bb0a0f195`。追加の条件保持REDではquery_buildが失敗。frontendの `./node_modules/.bin/playwright test --config playwright.connected.config.ts -g 'image preference reaches'` は送信値offに対しundefinedで失敗（exit 1）。先行の実行は作業directoryを重ねたパス指定誤りによりテスト追記に失敗し、修正してからこのREDを確認した。
+
+関連GREENは40件。required/preferred/excludedの各原文外観句を画像なしで日英最大値採点し、指定なしの除去、画像生成拒否、履歴保存まで検証した。frontend check/build・Vitest80件、接続ブラウザ23件成功。初回ブラウザ回帰は画像なしfixtureのfactoryが新しい任意引数を受け取れず1件失敗し、実runtimeと同じ引数を接続して成功した。off応答には既存受信契約どおりimages=[]を付与した。最終全体offlineは3382 passed/22 skipped/30 deselected（76.97秒、exit 0）。Ruff/format・offline lock・Markdown/diffも成功。8772へ再起動反映し、idle、API/画面のHTTP200、入力と履歴4件の保持、新規検索なしを確認した。モック全35件の初回は29成功/6失敗（2.9分、exit 1）。6件ともEXEC-150以前の履歴一覧の入力全文表示を期待していたため、商品名見出し1件/入力全文0件と削除後の見出し0件を検証するよう期待を同期した。今回の機能コードとは独立したテスト保守であり、一覧の実装は変更していない。変更した6件は同じコマンドに該当テスト名の-gを指定して6 passed（54.5秒、exit 0）。先に成功した29件と合わせて全35件を確認済み。反映後の8772をread-only Chromiumで確認し、画像オフ・入力保持・API状態不変、POST/外部要求/ページ例外0を確認した。
+
+最終テストSHA-256: editing=`55b17e00d83956ef3c7f7ff46a232311c29efc16a7db23e4c3cc0e06dc6c37e3`、image-free=`fd4a4cd6531062be8693bba32a11bc9ee20c43a4995d137e92c8f554d3afd947`、connected browser=`1bc7fc73fb4a90de522e83d49f0b3e8ed86cc7cd03e704b575f752ade4fada6f`。追加の実モデル・商品検索・画像生成・課金は実行しない。
+
+## EXEC-154: 部品付き条件の対比準備
+
+状態: 実装・オフライン検証・サーバー反映完了。作成・更新: 2026-09-13。
+
+目的: 「部品付きの製品」で部品有無の対比を組み立てられず条件整理が止まる経路を修正する。構文のproduct/fragments分離は維持し、接続方式を外観へ移さない。ユーザー入力とprovider応答は文書/fixture/logへ保存せず、別の合成部品条件で再現する。
+
+対象: visual_contrastの有無文法、既存JMdictの英訳候補、Bonsaiの辞書ID/部品英名応答からコードで有無指示を構築、browser/CLI接続、旧profile互換。独自辞書、商品名の新しい複合語分解、商品採点LLM、追加の本番検索/画像生成/実Bonsaiは対象外。辞書にない部品名は同じ視覚Bonsai要求で短い英名だけを提案し、存在/不在の反転はコードが行う。
+
+手順: 付き/付属/無し・原文範囲・除外反転・辞書選択・未知部品のREDを固定。文法と参照adapter/受信を実装し、候補→画像要求とブラウザのfixture回帰、全体offline・静的gateを行う。新profileで旧計画を読み替えず、履歴を再採点しない。検証後は前回の再起動指示に沿って入力/履歴を保持したサーバー再起動を行い、新検索は自動実行しない。rollbackは今回差分だけを戻し既存資材/履歴を維持する。
+
+受入: 既存辞書の部品英訳を優先、候補IDだけの応答で有無を作成、unknown時の英名補完も1回の既存要求内。部品外の属性を変更しない。否定済み条件/指定なしを誤って再反転せず、曖昧な複合句を推測で取り込まない。最終結果と未検証境界を追記する。
+
+実装結果: presence_conditionで単純な名詞句の部品有無を認識し、既存WordNet/JMdictの英訳候補からwith/withoutをコードで組み立てる。JMdictの語義IDのみを選ぶ応答と、未知部品のpart_enのみの応答を同じBonsai要求で検証する。文法条件以外への英名転用、否定を含む英名、未提示IDを拒否した。新規v3と旧v1/v2を区別し、既存商品名/分類/採点を保持する。
+
+RED: `uv run --frozen --offline --no-sync pytest -q tests/test_attachment_contrast.py --tb=short` は8 failed/6 passed、exit 1。付き文法の欠落、lexicon引数未実装、ID/英名のみ応答の拒否を確認した。RED SHA-256: `75148898c2fb8cc842ff784463eac2ed4109237d9ff1283bba9e829213ce2c90`。受入期待を保ち、画像要求への接続と旧v2読取、接続方式を外観条件に含めない回帰を追加。専用17件、関連99件が成功した。関連チェックの一度目は存在しないtest filenameを指定してexit 4だったため、正しいファイル指定で再実行した。
+
+検証進捗: 実行済みの入力はメモリ内だけでローカル解析し、構文のproduct/fragments分離は正常、部品句が既存有無規則に未対応、WordNetに部品語義なし、既存JMdictに2候補ありと確認した。新処理で2候補双方の合成ID応答から条件を構築できた。実Bonsaiの応答は再取得/記録しておらず、最終の実モデル動作や画像品質は未確認。初回全体は3368 passed/1 failedで、画像なし接続fixtureの新method未対応を修正し、画像なし14件と資材を明示mockした単独回帰1件が成功。新しい外部通信/課金は0。
+
+最終検証: 全体 `uv run --frozen --offline --no-sync pytest -m 'not live_api' -q --tb=short` は3369 passed /22 skipped /30 deselected（74.19秒、exit 0）。Ruff check/format、offline lock、Markdownリンク、diff check成功。専用17件の最終SHA-256: `b6c9332a55a7a2bc157650118234562a4dc95987dd3b4d290dc0b6a99acafbdb`。8772のサーバーを修正版へ再起動し、API/画面200、idle、元入力と既存履歴4件の保持を確認した。新しい検索/モデル推論/画像生成は開始していない。未コミット。実Bonsaiでの新応答形式と画像品質の確認は後続の利用者操作で行う。
+
+## EXEC-153: 既存WordNetと文法による対比指示
+
+状態: 実装・オフライン検証完了。作成・更新: 2026-09-13。
+
+目的: 独自の外観対比辞書を新規検索から外し、既存の日本語WordNetの語義とPrinceton WordNet 3.0の反対語をコードで参照する。明確な部品有無は文法で反転し、曖昧な否定はBonsaiの既存視覚要求の補助情報に留める。呼出し上限、原文分類、日英採点、画像確認は維持する。
+
+対象: visual_contrast、WordNet読み取りadapter、Bonsai要求/検証、candidate/ブラウザ/CLI接続、関連fixture。対象外: 実Bonsai、画像生成、商品検索、課金、稼働server再起動、履歴再採点。検索用lexiconや既存DBは更新しない。既存wnjpn.dbのsynlinkに反対語がないため、公式WordNet 3.0のdata.adjを別資材として準備する。公開辞書取得のみで利用者データやcredentialは送信しない。
+
+手順: 辞書関係/語義曖昧/文法/否定方向/旧profileのRED、read-only adapterと新profile実装、要求から画像指示までのfixture接続、関連と全体offline・静的gateを実施する。出典digestと語義を計画へ保持し、既存v1の読取は凍結した規則で維持、新規はv2で区別する。失敗/未知/曖昧を誤った反対語で埋めずBonsaiへ渡す。辞書データは別directoryに保存し自動downloadしない。rollbackは新resolver設定と今回差分のみを戻し、旧履歴・先行変更・辞書元資材を保つ。
+
+受入: 手書き色/形対比が新規経路にない、単一語義の直接反対語が優先、複数語義/複合修飾は保留、部品有無と形容詞の否定を区別、除外の二重反転なし、追加Bonsai呼出しなし、旧JSON/digest互換。実資材の限定ローカルlookupとfixture品質を実画像品質と区別する。実Bonsaiの新要求処理と生成画像の品質は未検証。
+
+実装結果: 独自対応表はv1読取専用へ限定。新ContrastResolverは単一語義の直接反対語、名詞語義の英訳と部品有無の文法、Bonsaiへの文法補助と辞書候補提示を使う。複数語義からの選択は同じ視覚要求のsense_idで検証し、モデルが任意の辞書出典を生成することを拒否する。日本語WordNetとdata.adjの組合せdigestをブラウザ構成に固定した。CLIは両資材pathを任意指定できる。検索用辞書や既存DBは更新していない。
+
+検証進捗: REDは `uv run --frozen --offline --no-sync pytest -q tests/test_wordnet_contrast.py --tb=short` で新ContrastResolver未実装のImportErrorによりcollection停止。REDテストSHA-256は `a592033dfac4c96fae3c8ce570206ba761342731f3468c21727ace279745d3f3`。ログ末尾を表示したラッパーは表示コマンドの終了値を返したためpytest終了値を別保存していない。実装後の初期16件が成功し、同じ期待を保って追加の語義ID・画像接続・資材改変・版違い・ブラウザ構成を25件まで拡張した。関連77件、初回全体3347 passed /22 skipped /30 deselected（74.51秒、exit 0）。旧fixtureのnullは旧手書き確定を前提としていたため、新規経路では明示的な合成Bonsai案へ変更し、旧計画の検証はv1として保持した。
+
+実資材: 公式WNdb-3.0.tar.gzからdata.adjとLICENSEを別directoryへ配置。既存日本語DBに反対語関係がないことを確認し、データ変換や独自辞書作成はせず原配布形式を参照した。合成6句のローカルlookupで自動2件、語義候補の取得を確認。1回測定はlookup約16.8ms、資材読込/SHA照合を含め約202msであり一般的な性能保証ではない。実Bonsai・画像生成・商品検索・課金・server再起動は未実施。
+
+
+
+最終検証: `uv run --frozen --offline --no-sync pytest -m 'not live_api' -q --tb=short` は3352 passed /22 skipped /30 deselected（74.63秒、exit 0）。Ruff check/format、offline lock、Markdownリンク、diff check成功。専用25件の最終SHA-256は `ac32f416d3588bbf2590dd362153e1ccd74083807dbf75ff0f01722157c61f06`。既存対比回帰の最終SHA-256は `a03787e74d74efe9be81f7123a44e8c7e1e56d57559ace4aaf23c1baa5bc747f`。稼働中serverの再起動と実Bonsai/画像の効果確認は今回の実装検証に含めず、次回通常起動後の新規準備から適用する。未コミット。
+
+## EXEC-152: 対比画像への具体的な変更指示
+
+状態: 実装・オフライン検証完了。作成・更新: 2026-09-13。
+
+ローカルの対比変換を優先し、未対応の外観条件だけ既存Bonsai視覚条件要求で対比案を補完する。追加LLM呼出しはせず、商品名用を含む準備あたり最大2回を維持する。原文条件・分類と照合用語は変更せず、画像用の一致側/不一致側の外観記述と出典を別fieldへ持つ。否定条件では参考側に不一致側、対比側に一致側を指定する。
+
+新fieldを条件・計画・画像要求digestへ束縛し、未設定の旧JSONと旧画像要求は同じ形で読む。Bonsai応答は長さ・型・対象句・分類・対比の同一性を検証し、未対応条件の補完失敗は既存の文章修正へ戻す。ローカル対応条件をBonsaiが上書きすることは許さない。確認済み画像・既存履歴を更新しない。
+
+検証はローカル対応/未対応、否定方向、複数条件、無効応答、旧digest互換、Bonsai要求から画像要求へのfixture接続を固定し、RED→実装→関連/全体offlineを行う。追加の実Bonsai・画像生成・検索・課金は含めない。稼働中の画像確認を保つためserverは再起動せず、新しい処理の適用は次回通常起動以降とする。生成画像の実品質保証や自動再生成は今回の範囲外。
+
+結果: VisualContrastの任意fieldを新規candidateへ接続し、Bonsaiの既存視覚選択1回で未対応句だけmatching/oppositeを補完する。丸み/角形、胴体の膨らみ、光沢/マット、取っ手、赤/青/白/黒の明示表現をローカルで扱う。否定方向、他条件の保持、出典、元の検索語/価格の保持を検証した。未対応案の欠落・同一記述・URL/長さ/型違反、ローカル案の上書きは拒否し、ブラウザは既存の文章修正へ戻る。画像指示は新規contrast付きのみv3、未設定の旧条件はv2と従来JSONを保持する。
+
+検証: `uv run --frozen --offline --no-sync pytest -q tests/test_visual_contrast.py --tb=short` の初回REDは11 failed/1 passed（新要求fieldとstrict受信引数が未実装、exit 1）。受入の期待は保持し、整形と追加の接続/修飾範囲テストを行った。最終専用22件、関連242件と追加の語彙接続回帰を確認。全体 `uv run --frozen --offline --no-sync pytest -m 'not live_api' -q --tb=short` は初回3325 passed/1 failedから、既存の「つやのない」をローカルのマット表現へ含めて3327 passed/22 skipped/30 deselected（74.75秒、exit 0）。旧fixtureの未対応条件には明示的な合成対比案を追加し、原文/否定/件数の期待を維持した。Ruff/format、Markdownリンク、diff check成功。
+
+最終専用テストSHA-256: `227bf5490379f242bec4ec3f668b84df6609ef5a99ea7fbf28a29d7f593e6549`。追加の実Bonsai・Cloudflare・商品検索・課金は0。8772は再起動せず、既存画像2枚を保持している。確認時の状態はexpired/revision5であり、承認期限を延長していない。新指示は次回通常起動後に新しく準備する計画から有効。生成画像の実品質を今回のoffline結果から保証しない。
+
+## EXEC-151: 履歴の再読み込みボタン削除
+
+状態: 完了。作成・更新: 2026-09-13。
+
+利用者指示に従い、接続画面とモックの履歴から再読み込みボタンを除去する。履歴の再表示、ブラウザ再読み込み、削除失敗の再試行と期限切れ削除後の内部更新は維持する。保存データと実検索処理は変更しない。
+
+RED: frontendで `./node_modules/.bin/playwright test --config playwright.connected.config.ts -g 'history survives reload'` がexit 1。再読込ボタン0件の期待に対して1件存在した。テストSHA-256は `01bfd5a3b65db443f83e2585832bf9898e373ba4e16e97ac45dcfa2132c21541`。読込失敗の回帰は履歴詳細から一覧へ戻るGETで検証し、既存項目の保持とPOSTなしを引き続き確認する。
+
+実装: 不要なボタンと空の操作領域を除去し、既存の履歴取得・削除処理は保持した。取り消す場合はボタンの表示だけを戻せる。
+
+検証: frontend check/build、Vitest80件、接続ブラウザ21件、モック履歴1件がexit 0。最初の接続回帰は20件成功し、画像なしfixtureの初期入力反映とfillが競合して1件timeoutした。fixture初期値の待機を追加し、同じ期待のまま21件成功した。最終テストSHA-256は `b91e899e8efef9654aec05999831b6ee0a555362598e53777ec7f65a63e60bec`。再読込ボタン不在のテスト内容はRED/GREENで同一。文書リンクとdiff checkも成功。
+
+稼働中8772/8771へ静的反映し、読取専用Chromiumで両画面の再読込ボタン0件・履歴4件を確認した。前後のAPI状態は同一、POST/外部要求/ページ例外0。serverの再起動や追加本番検索・推論・課金は行っていない。
+
+## EXEC-150: 履歴一覧の商品名表示
+
+状態: 完了。作成・更新: 2026-09-12。
+
+目的: 履歴一覧と削除確認の見出しは検索した商品名にし、入力全文は詳細だけに残す。モック一覧の入力文も除去する。既存履歴を書き換えず、追加の検索/推論/課金は行わない。
+
+RED: `uv run --frozen --offline --no-sync pytest tests/test_browser_history.py -k product_name -q --tb=short` はexit1、product_nameが未定義。test SHA-256 `5cc21b10a7b047ec3c64ee7c296546f43be14919e1380a9d27f722ee565673fa`。frontendの `./node_modules/.bin/playwright test --config playwright.connected.config.ts -g 'history headings use'` はexit1、商品名見出しなし。test SHA-256 `3a92648019c861dd0fce0bcbd4b0259494ab319e547bdd51552674fcf700723d`。
+
+範囲と方針: 履歴metadataに任意の商品名を保存し、candidateの画像あり/なしで準備済みの商品名を渡す。旧JSONは未設定項目を省略してhash互換を保つ。新payloadの完了キーは商品名を含めて旧形式から区別し、DBスキーマと採点profileは変更しない。API一覧/詳細へ商品名を通し、旧API/旧履歴は先頭の商品句が単独で読める場合に表示、それ以外は商品名未保存とする。元のsummaryは詳細表示用に保持する。
+
+手順: 保存/再読込/API/一覧表示のREDを追加、最小実装、Python関連回帰とfrontend check/test/build・履歴ブラウザで検証する。稼働中の準備済み検索は再起動せず、静的表示で旧APIにも対応する。個人入力/機密値をログやartifactへ保存しない。rollbackは新metadata投影と表示の差分を戻し、既存DB・先行変更を保持する。新形式の読取には対応版が必要。完了時に結果と制約を記録する。
+
+結果: 履歴一覧と削除確認はproductNameを表示し、入力文は詳細だけに保持する。モックの一覧からも入力文を除去した。画像あり/なし双方の新履歴に、準備済みの商品名を任意metadataとして保存し、一覧/詳細APIへ投影する。旧JSONはproduct_name未設定を省略するため従来のhashと読取を維持する。新payloadの完了キーは商品名で区別し、採点profileとDB user_versionは変更していない。
+
+検証: 関連Python49件、全体 `uv run --frozen --offline --no-sync pytest -m 'not live_api' -q --tb=short` が3305 passed /22 skipped /30 deselected（91.87秒）。frontend check/test/build成功、Vitest80件、connected Playwright21件（22.5秒）、mock履歴回帰1件（2.5秒）。保存・再起動読取・原文保持・画像あり/なしの商品名を検証した。旧APIの先頭商品句、条件主体の旧要約、任意fieldの型/長さ/制御文字も検証した。Ruff/format、offline lock、Markdownリンク、diff check成功。
+
+最終SHA-256: `tests/test_browser_history.py` = `029b02049a3ded765c208e09ccd69e778f37cbb415f0e3f4446804ae002ddf07`、`frontend/e2e/connected-parity.spec.ts` = `5c61f2588469baab9aa3b520711288931d42f256d7c21600875ef198cb77c8b4`。初回RED後は整形のみで新規テストの期待を維持した。既存の画像あり/なしの回帰へ商品名保存のassertを追加した。
+
+稼働確認: 8772/8771を再起動せず静的配信を更新し、両画面で4履歴の商品名見出しを読取専用Chromiumで確認した。前後の4DB hashと主検索のAPI状態は不変、POST/外部要求/ページ例外0。既存の準備済み検索と履歴を保持し、追加検索・推論・課金・再採点・commit/pushなし。現在の旧serverは先頭商品句による表示を使い、保存/API側の新metadataは次回通常起動時に有効となる。名前を特定できない旧履歴は商品名未保存と表示し、再解析しない。
+
+
+## EXEC-149: 参考画像あり/なし表示の削除
+
+状態: 完了。作成・更新: 2026-09-12。小規模表示修正。
+
+利用者指示により参考画像あり/なしの表示を、条件確認・最終確認・履歴と共通モックから除く。画像選択のトグル、生成/確認、画像なし検索は維持する。不要になった共通表示部品と専用styleを削除する。検索・採点・API・DBは変更しない。rollbackは今回の表示削除だけを戻す。
+
+RED: frontendの `./node_modules/.bin/playwright test --config playwright.connected.config.ts -g 'condition groups stay editable'` はexit1。状態表示の期待0に実際1。test SHA-256 `9034cc038c95cc7d476dd9c6d30983c95d5f71f574bc604cbe6f070c71074a03`。同じ回帰でトグル操作を維持したまま表示が消えることを確認する。
+
+結果: 接続画面、条件要約/履歴、モックからReferenceImageStatusと専用styleを除去した。画像選択のトグル・画像確認・画像なしで進む操作は維持。frontend check/buildと単体78件、connected Playwright20件（23.1秒）が成功。モックは `npm run test:e2e -- recovery.spec.ts -g 'failed first image|returning to edit conditions' --workers=1` が2 passed（16.9秒）。RED/GREENのテストhashは同一。Markdownリンクとgit diff check成功。
+
+8772の読取専用Chromiumで状態表示の不在とトグルの表示を確認した。前後のAPI状態は不変、POST/外部要求/ページ例外0。静的配信へ反映済み。Python・実モデル・本番検索・課金・履歴再採点・commit/pushは実行していない。
+
+
+## EXEC-148: 指定なし編集欄の削除
+
+状態: 完了。作成・更新: 2026-09-12。単一表示部品の小規模修正。
+
+「指定なし」の編集欄を除き、優先/希望/否定だけを編集可能にする。許容表現が原文にある場合だけ検索に使わない条件として文章で表示する。neutralの内部値と元の句を保持し、別の条件修正で否定へ変換したり原文から落としたりしない。検索処理・保存・履歴は変更しない。rollbackは条件表示の今回差分のみを戻す。
+
+RED: frontendの `./node_modules/.bin/playwright test --config playwright.connected.config.ts -g 'neutral conditions have no editor'` はexit1、指定なしtextboxの期待0に実際1。テストSHA-256 `51d701eea1f23dccb5cc0b679c617b1b6109a91bc20270d3bd49546b59c546a7`。同じ回帰で、希望条件修正後も許容表現がreviseの文章に残ることを確認する。静的配信だけ更新し、実検索・課金・DB変更は行わない。
+
+補足: 全connected回帰で既存履歴テストが初期入力の反映前にfillし、元文字列と追加入力が連結する失敗を1件検出した。テストの初期値を待ってから編集するようにし、履歴往復で入力を保持する期待は維持した。製品の入力処理は変更していない。
+
+結果: 指定なしtextboxを削除し、許容表現がある場合だけ読み取り専用の説明を表示する。元のneutral値とquoteは保持した。frontend check/buildと単体78件、connected Playwright20件（22.5秒）が成功。最終ブラウザテストSHA-256は `8425312722380ae62801555c28aba40536fcced52851d8f166ea9c7e8bfb993a`（初回RED後は整形と旧期待の更新のみ、新受入の期待は維持）。8772の読取専用ブラウザでも編集欄の不在と他3分類の表示を確認し、状態不変、POST/外部要求/ページ例外0。静的配信へ反映済み。Python/採点/履歴は未変更のため再検証・再検索・課金なし。Markdownリンクとdiff check成功。commit/pushなし。
+
+
+## EXEC-147: 分類ごとのカンマ区切り条件編集
+
+状態: 完了。作成・更新: 2026-09-12。
+
+目的: 商品名を条件より上へ移し、条件確認の個別カードを優先・希望・否定・指定なしの編集欄へまとめる。空の希望欄を含め4分類を常時表示し、条件を半角カンマで区切る記法を補足する。末尾の独立した条件textareaを除き、参考画像のあり/なしを#212121背景で表示する（利用者確認済み）。
+
+対象: Reactの条件表示・編集、reviseへ渡す文章の構成、fixture/回帰と仕様。変更のない原文と既存条件の分類・ブランド/型番・否定属性値を保持し、新しい希望/否定/指定なし項目にはローカル解析が認識する自然文修飾を付ける。反映時の同義語・英訳再取得、入力/再整理回数上限、旧履歴非再採点を維持する。実API・Bonsai・本番検索・課金・DB変更は対象外。
+
+手順: 画面配置/空の希望欄/カンマ編集のブラウザREDを作る。分類別入力と原文構成を実装し、frontend単体とPython分類fixtureで否定/許容/希望予算の意味を確認する。check/test/build、connectedブラウザ、必要なoffline回帰、文書リンクと差分を検査する。既存プロセスを再起動せず静的配信だけ更新する。
+
+RED: frontendの `./node_modules/.bin/playwright test --config playwright.connected.config.ts -g 'condition groups stay editable'` はexit1、優先条件textboxが存在しない。test SHA-256 `9870fba110829b17d03abf6b8daeed4404849ebab362aed8709d83d87888c109`。実装前のこの失敗を基点に検証する。
+
+進捗: カンマ区切りの新ブラウザ回帰は実装後GREEN。共有JSON fixtureをTypeScriptの文章構成とPythonの構文解析/候補計画の両側で検証し、希望予算・USB非対応・否定対象・指定なし・ブランド保持が成功した。新しい修飾表現が欄の分類を上書きする境界もVitestのRED（1失敗）を追加して、修正を求める入力検証でGREENとした。稼働8772の4分類編集、商品名の位置、末尾フォーム不在と背景色はread-only Chromiumで確認済み。合成画面だけ撮影して外観を確認し、利用者データは画像やartifactへ保存していない。
+
+互換性と判断: 既存APIのconditionReviewを分類の正本にし、対象語と元の句を分離する。編集しない項目は元の句を使い、確認一覧にない明示属性も落とさない。曖昧な旧API入力は既存の文章全体修正を維持する。rollbackは今回の分類編集と配色だけを戻し、先行変更・準備中の検索・履歴を保つ。完了時に結果と制約を記録する。
+
+結果: 商品名を条件欄の前へ配置し、優先/希望/否定/指定なしを空欄も含め各1入力欄へまとめた。半角カンマ記法の補足を追加し、独立した末尾の条件textareaを除去した。参考画像は「あり/なし」の値部分のみ#212121背景へ変更し、共通モック表示も同期した。新しい条件は分類に沿う自然文へ変換し、既存の句と明示属性、入力の未変更状態を保持する。希望・否定・許容と属性falseを区別し、翻訳・同義語再取得は既存reviseを一度だけ送る。
+
+検証: frontendの `npm run check` / `npm test` / `npm run build` はexit0（Vitest78件）。`./node_modules/.bin/playwright test --config playwright.connected.config.ts` は19 passed（20.2秒）。修飾入力ガード追加後の同コマンド `-g 'condition groups stay editable|product and condition edits'` も2 passed（2.5秒）。`npm run test:e2e -- --workers=1` は35 passed（2.4分）。Pythonは `uv run --frozen --offline --no-sync pytest tests/test_condition_group_edit.py tests/test_browser_terms_edit.py tests/test_condition_language.py tests/test_browser_editing.py tests/test_candidate_bilingual_scoring.py -q --tb=short` が84 passed（2.67秒）。Pythonの実装は変更しておらず、全体pytestの再実行はしていない。Ruff/format、Markdownリンク、git diff checkも成功。
+
+最終SHA-256: `frontend/src/condition-editor.test.ts` = `4ea9db38682bb4a76293c70622b6325e77625a7a9809592f590adcb442f086d7`、`frontend/e2e/connected-parity.spec.ts` = `912e5afed12c5092bdc393c977f3845141cd0466b1e073713ae2bff0384b39be`、`tests/test_condition_group_edit.py` = `637eb0dad9798eb33f2c787b7e60da99546dd42482a854fe90c3f973497ada7d`。初回RED後のブラウザテスト変更は整形とEXEC-146の旧フォーム期待を新しい分類欄へ合わせたもの。新規受入テストの期待は弱めていない。
+
+稼働確認: 8772のquery/revision2を再起動せず静的配信を更新。読取専用Chromiumで4分類が編集可能、商品名が上、末尾フォームなし、状態背景rgb(33,33,33)を確認。POST0/外部要求0/ページ例外0。前後のAPI状態と4履歴DBのhashが一致した。実モデル/本番検索/課金/履歴再採点/commit/pushなし。利用者の実ブラウザは再読み込みで新画面になる。入力上限と初回を含む再整理3回の制約は維持する。
+
+
+## EXEC-146: 商品名の直接編集と語彙の再取得
+
+状態: 完了。作成・更新: 2026-09-12。
+
+目的: 接続画面の不要な入力案内と条件確認内の入力文・検索語の折りたたみを除く。商品名と条件を直接編集し、「変更を反映」で新しい入力から同義語・英訳を再取得する。未反映のまま検索へ進めない。
+
+対象: browser candidateの表示投影、Reactの条件確認、API検証、fixtureと回帰、FRONTEND/SEARCH-FLOW。既存の元文章修正経路と同じreviseで再準備し、商品名・条件の語彙、計画digest、画像承認を更新する。条件の分類・日英最大採点・履歴互換・再整理3回上限は維持する。外部検索・モデル実行・課金・旧履歴再採点は対象外。
+
+現在: 文章修正はfresh factoryで商品名と条件のexpanderを再実行するが、商品名の直接編集欄はない。解析済み商品名と原文の条件句を表示に渡し、編集時だけ商品名と条件を文区切りで構成する。無編集時は元入力を保持する。解析できない文章は既存の文章修正で回復する。
+
+手順: 最小のブラウザ回帰と再準備のfixtureを追加してREDを記録する。表示投影・入力欄・検証を接続してGREEN、frontend check/test/buildとconnected/mockブラウザ、offline Python、文書リンク・差分を検査する。稼働画面は状態確認後に静的資材を反映し、必要時のみ待機中サーバを入力保持で更新する。
+
+RED: `uv run --frozen --offline --no-sync pytest tests/test_browser_terms_edit.py -q --tb=short` はexit1、productName欠落。test SHA-256 `b8cedbefc81babb9b36cd8eff30ae0d0cbaa03af977a3635c5415f94872e0572`。`frontend/` の `./node_modules/.bin/playwright test --config playwright.connected.config.ts -g 'product and condition edits'` はexit1、商品名入力欄なし。test SHA-256 `59cf43db258fe62b7f013204a45a597b29e0416414e358f2046141de899caf4e`。fixture設定不足を修正後の意図したREDを記録した。
+
+発見/変更: 稼働中8772は利用者操作でquery/revision2へ進んでいたため再起動しない。旧APIでも「原文の最初の商品句が既存queryの先頭と一致し、確認条件の範囲と重ならない」場合だけ直接編集欄へ投影する。曖昧な文中商品名は旧文章修正を維持し、準備済み計画を失わない。追加のVitest回帰を実装前にexit1（直接編集項目なし）で確認した。起動中の処理を再実行せず静的資材だけ反映する。
+
+セキュリティ/互換性: 新表示項目は任意項目として旧履歴を維持。利用者入力・実商品・機密値をartifactへ書かない。単一workerと既存上限を維持。rollbackは今回の表示投影と編集欄のみを戻し、先行差分・DBを保持する。未確認事項と結果は完了時に追記する。
+
+結果: 商品名と条件の手入力を既存reviseへ接続し、未反映時の後続操作を停止する。再準備で商品名・条件のexpanderが再実行され、商品名英訳・条件英訳とsource digestが更新される。旧英訳の混入なし、指定なし・全角文字・文中商品名の原文範囲と明示ブランド/型番の保持をfixtureで確認した。最後にブランド/型番が条件欄から落ちる境界を追加RED（4件中1失敗）から修正し、関連46件でGREENを確認した。
+
+検証: 全体offline `uv run --frozen --offline --no-sync pytest -m 'not live_api' -q --tb=short` は3302 passed /22 skipped /30 deselected（90.61秒）。その後のブランド/型番保持を含む `pytest tests/test_browser_terms_edit.py tests/test_browser_candidate.py tests/test_browser_editing.py tests/test_browser_parity.py tests/test_browser_runtime.py -q --tb=short` は46 passed（3.64秒）。frontendのcheck/build、Vitest73件、connected Playwright18件（22.2秒）、mock Playwright35件（2.5分）が成功。新API項目の境界と旧応答互換、未反映・空の商品名・変更取消・一度だけrevise送信を確認した。RED後のテスト変更は整形と境界assert追加であり、元の期待を弱めていない。
+
+最終test SHA-256: `tests/test_browser_terms_edit.py` = `b03eacc2cd29f1f0decc8f2418804158ab760da5028c67b0805f910a420ecf5e`、`frontend/e2e/connected-parity.spec.ts` = `ff24554ff0b584b05ce80fae272bd4fd94a953e441bc499bd26be571ed09550f`、`frontend/src/connected-api.test.ts` = `d057a276cf9d07d5ab614161cf352e22d81f13e23f8e1cbf9044cae2a4c64ce6`。Ruff/format、offline lock、Markdownリンク、diff checkも成功。
+
+稼働確認: localhost8772のquery/revision2を再起動せず、ビルド配信を更新した。読取専用Chromiumで商品名・条件欄と不要なsummaryの不在を確認し、POST0/外部要求0/ページ例外0。確認前後の状態と既存4DBのhashが一致。サーバ起動時以降に利用者が準備を進めていたため、今回の確認では入力の再整理・モデル・画像生成・本番検索・課金を実行していない。新しいAPIの完全な表示項目は次回通常起動時に有効となり、現在の準備済み計画は保守的な旧API互換で編集できる。旧APIの文中商品が一意でない場合は文章全体の修正欄を維持する。commit/pushなし。
+
+
+## EXEC-145: オフラインモックと接続画面の全画面・操作を統一
+
+状態: 完了。作成/更新: 2026-09-12。
+目的: 入力・条件確認・画像作成/確認・最終確認・調査待機/完了・結果・履歴・失敗回復をモックと同じ共通部品/操作配置にする。
+範囲: React共通画面部品、接続状態の表示投影、戻る/作り直し/保存再試行/新しい検索/安全な中止と残数の接続。自然文での条件修正と現行ランキング・入力/準備/画像の上限、旧履歴を維持する。モックの固定商品や仮の進捗を実画面へ流用しない。条件分類を直接変える操作、未実装の属性推論、追加本番検索/課金は対象外。
+手順: 画面/操作一覧とREDを固定→共通部品で表示統一→serverの実状態に基づく操作→fixture/API/ブラウザ回帰→稼働画面へ反映。未対応操作を見かけだけ有効にせず、安全に使える状態をserverが示す。
+互換性: 順位/保存内容の再計算やDB移行なし。新しい検索は旧承認を無効化し、worker1と新規作業先を維持。履歴閲覧中も実行状態を保持する。画像作り直しは既存2回上限、準備は1検索3回。検索中止は取得済み情報の後段処理を停止する協調中止とし、進行中通信の即時取消とは表示しない。
+検証: 初期/整理中/確認/生成中/了承/最終/調査中/完了/結果/空結果/履歴一覧・詳細/削除・失敗/拡大とキーボード/戻る/二重送信をfixtureで確認する。既存のモック回帰と全体offlineを維持する。外部サービスは実行しない。
+完了/戻し方: 各画面と共通操作を接続しfixture検証、既存履歴不変の確認後に完了とする。変更を戻す場合も新規履歴/旧履歴は保持し、新規UI操作の有効化だけ戻す。
+
+RED: `uv run --frozen --offline --no-sync pytest -m 'not live_api' tests/test_browser_parity.py -q --tb=short` は2 failed/exit1（canReset/workingAction欠落）。test hash=58708bc10ff555f2d923ffe5848246473b02f6ad8202d6c2de07d7ea83a47bb1。`./node_modules/.bin/playwright test --config playwright.connected.config.ts connected-parity.spec.ts` は2 failed/exit1（新しく検索/表示件数なし）、hash=2a038e87a0c2fc9c37dacfe2c58418cea65cd3be42e49ef69cc0d34516b24464。実装後の既存assertionを保持し、拡大対象を合成商品1の完全一致にして厳格locator衝突を修正した。
+既存回帰の変更: 画像後のrevise拒否は本依頼の「条件へ戻る」に合わせ、旧画像消去と古いrevision拒否の確認へ変更した。見出し/全文の常時表示はモックの配置へ移し、元入力保持はAPIで確認する。主操作は画像OFFが既定のため、画像ありtestでトグルONを明示した。旧runtimeのattempt範囲0〜2は維持し、別batchで新しい検索先を分けた。全体の同一overlay attestationは主張しない。
+
+完了: 入力/整理/確認/生成/了承/最終/調査/属性確認/完了/結果/履歴/失敗回復を共通UI部品に揃えた。新規検索、戻って再整理、画像作り直し、協調中止、保存再試行を接続した。モックの固定データと条件欄を実データへ転用せず、接続画面は自然文修正を維持する。
+検証: 全体 `uv run --frozen --offline --no-sync pytest -m 'not live_api' -q --tb=short` は3294 passed/22 skipped/30 deselected（91.89秒）。その後の準備失敗再試行と新batchのsymlink/重複先拒否を含む関連47 passed（1.62秒）。frontend check/71 tests/build、接続ブラウザ17 passed（20.6秒）、既存モック35件と重複選択された接続投影8件を合わせ43 passed（2.5分）。既定configは接続specを除外するよう修正し、以後はモック35件/接続17件に分離する。Python test最終hash=1be2d2595f62a656423ffac926c88269476906a946fd92754df26a2cfa130bd0、ブラウザtest hash=0bc8ed0b506dd0d438d6c8b57528dd6e767658db9e38066b320563f6dcd026da。Ruff/format409files/lock/文書/diff成功。
+表示確認: 1440pxのモックと接続入力でヘッダーの寸法一致、入力/段階/操作位置と結果カードを画像で確認した。390pxでは既存の1184px最小幅による横スクロールを確認したが、正本のdesktop専用契約に従いresponsive変更は加えていない。
+稼働反映: localhost8772/8771を更新し、入力待機・原入力・4DBを保持した。両画面で4履歴、初期10件/24件選択、保存参考画像の拡大と前後移動、再読込を確認した。POST0/外部通信0/pageerror0。旧6server状態hash/4DBhashは不変、主serverはcanResetだけを追加して旧入力を維持。実行先未作成、新規検索/推論/画像生成/課金なし。機能の外部実サービスE2E成功や未知商品の品質をこの結果から主張しない。
+
+## EXEC-144: 元入力・条件名・商品画像の永続保存
+
+状態: 完了。作成/更新: 2026-09-12。
+目的: 接続画面の新しい検索で入力全文、確定した条件名/分類、取得済みの表示用商品画像を保存し、再起動後の履歴でも表示する。
+範囲: candidate完了、private SQLite表示履歴、履歴API、React。既存の30日期限・所有者境界・削除連動を維持する。実検索、追加画像取得、旧履歴の補完/再採点は対象外。
+手順: 保存欠落のRED→版付き任意snapshotと有界PNG保存→履歴表示→offline/フロントエンド/fixtureブラウザ→稼働画面更新。新検索を起動せず、既存DBの不変を確認する。
+互換性: schema5内の任意content profileを追加し、旧JSONの省略/読み込みを維持する。新保存のcompletion keyを分離し、入力/ラベル/画像を同一transactionとpayload digestに含める。取消は新保存の有効化を戻すことで行い、保存済みJSONは読み替えない。
+安全境界: 利用者が明示したprivateアプリ履歴への入力保存だけを許可する。診断ログ/文書/artifactへの利用者データ出力は禁止を維持する。画像は取得済み192px PNGの複製で外部呼出しを追加しない。画像なし検索は画像を保存しない。
+受入: fresh repositoryで全文/条件名/画像一致、旧履歴互換、画像なし/欠損画像、改変拒否、再試行、削除/期限と共有寿命、UI表示をfixtureで確認する。
+実装: 任意content snapshot、PNG検証/保存、API復元と新旧表示を接続。
+RED: `uv run --frozen --offline --no-sync pytest -m 'not live_api' tests/test_history_content.py -q --tb=short` は2 failed/exit1、historyContentAvailableがないという欠落で失敗した。RED SHA256=ec8032d2e5ba821df3bb68891cbb4cd823d62a658581c23340b2d4205be5ce7b。同じassertionは実装後成功。長文/neutral/rollback/再試行/削除/期限/改変拒否を追加して10 passed。最終hashは検証完了時に記録する。
+
+追加境界: flowの原入力と保存snapshotが異なる場合のtestは1 failed/exit1（例外なし）となり、照合を追加して解決した。追加RED hash=d7fffae4360bead394b9c53b81943ff49431eca5dac3dd0ba78a4b12824960b7。最終test hash=5cc684fad701bbb304e233c4c09c5dc8668a75565660ab4ec88dd3daad926521、関連49 passed（4.25秒）。整形/追加を含むため同一overlay attestationとは主張しない。
+検証: 全体offline3288 passed/22 skipped/30 deselected（82.96秒）、その後の原入力照合追加は上記関連49件で検証。frontend check/70 tests/build、接続ブラウザ8 passed（18.2秒）、Ruff/format408 files/lock/Markdown/diff成功。ブラウザは実candidate+SQLiteの画像なし保存と、fixture画像の再読込・外部画像通信なしを検証した。全体モック `npm run test:e2e -- --workers=1` も35 passed（2.4分）。
+稼働反映: localhost8772/8771を更新し、入力待機と原入力を保持した。両画面の既存4履歴/詳細24商品/再読込を確認し、POST0・外部通信0・pageerror0。全7server状態hashと4DBhash不変、新規run出力先未作成。新しい本番検索/モデル推論/画像生成/課金は行っていない。新保存の永続化はfixtureで検証し、実商品の新規保存成功とは区別する。
+
+## EXEC-143: 履歴削除と期限切れデータ削除の接続
+
+状態: 完了。作成/更新: 2026-09-12。
+目的: 履歴一覧/保存結果から対象を確認して削除し、完了から30日を過ぎた履歴と専有画像をサーバーで定期削除する。
+範囲: BrowserHistory、schema5 repositoryの既存削除/期限削除、loopback POST、React確認/失敗時再試行、稼働画面への反映。対象はserver設定済みDBとlocal-userのみ。HTTPからpath/owner/時刻を受け取らない。GETは読み取り専用、新規検索/provider/課金/キャッシュ掃除は対象外。実利用者履歴をテスト目的で削除しない。
+手順/受入: API/SQLite cascade/所有者/期限境界/冪等/ロールバックのRED、既存DB限定の書込経路と定期cleanup、確認ダイアログと再試行の接続、fixtureブラウザ、全体offline/frontend/文書検査、接続server反映。期限切れは直ちに閲覧不可、server稼働中は開始後および60秒間隔で削除を試み、失敗は次回再試行する。
+安全/互換: 起動指定最大32DB、新規run予定先を作成しない。schema5と保存点数は変更しない。履歴と画像はDB内の同一transactionで削除。複数DBはそれぞれtransactionで、部分失敗は成功とせず冪等再試行できる。無関係なowner/DB/生cacheを削除しない。完了済み検索と実行中検索は再実行しない。
+Rollback: 更新前コードへ戻して削除入口/定期実行を止められる。削除済み項目は復元しない旨を画面で確認する。検証には使い捨てfixture DBだけを使用する。
+進捗/証拠: 既存repositoryのdelete/purgeをowner限定・既存file限定writerで接続し、API/UI/60秒cleanupを実装。GETのread-onlyと旧schema拒否を維持した。
+RED: `uv run --frozen --offline --no-sync pytest -m 'not live_api' tests/test_browser_history_delete.py -q --tb=short` は最初2 failed/exit1（履歴POSTが404、BrowserHistory.purge_expired未実装）。初期SHA256=36ff41d7bac80029dfc9239cbaa25ad022f94aa3c04fd1bc63a13f19b5ceae61。同じ2ケースは実装後成功。境界テスト追加/整形後は10 passed（0.47秒）、最終SHA256=1abbe60437155de81051c0e719feee27964b729ccd0ea87bf0a6c06e6b5a9457。1件削除と同一DBの他履歴保持、画像cascadeの失敗rollback、期限到達/未到達/他owner、未知locator再送、symlink/旧schema/未作成path拒否、失敗後の60秒再試行、空削除時のDB bytes不変を検証した。
+frontend check/69 tests/build、接続ブラウザ7 passed（18.1秒）。実candidate/一時SQLite経路で削除キャンセル、503後の再試行、削除成功後の応答喪失と同locator再試行、最後の履歴削除/再読込を確認。検索commandはstart/without_images/searchのまま増えず、状態も不変。追加の利用者データ削除や本番検索は未実行。
+最終検証: 全体offline3276 passed・22 skipped・30 deselected（92.70秒）、全体実行後に追加した2境界を含む対象10 passed。既存モック35 passed（2.5分）、Ruff/format406 files、uv lock --check --offline、Markdownリンク、git diff --check成功。
+稼働反映: localhost8772の接続画面と8771の履歴専用画面を同じURLで更新。両server開始後の期限対象は0件、cleanupPendingなし。実データは4履歴96商品を保持し、4DBと7serverの状態hashは更新前後で不変。両画面の一覧/詳細の削除確認をキャンセル/Escで閉じ、再読込で4件維持、ブラウザPOST0/pageerror0を確認した。削除確認のない削除（confirmed=false、固定合成locator）のAPIは両方400を返し、実データには触れていない。入力/検索状態、新規run未作成を維持した。2つの既存HTTP入口のSQL操作は既存SQLite transactionで直列化され、追加の検索workerは作成していない。
+結果/残る制約: 履歴の手動削除とserver稼働中の期限削除を接続完了。停止中の期限削除は次回起動後に行う。旧raw cacheや外部backupの削除、schema変更、既存結果の再採点、新規provider実行、commit/pushは含めない。
+
+
+
+## EXEC-142: 画像なし検索を接続
+
+状態: 完了。作成/更新: 2026-09-12。
+目的: 接続画面で画像なしを選択し、検索語確認、Playwright商品取得、日英最大値採点、結果と永続履歴まで到達する。画像の生成・取得・評価・認証設定を呼ばない。
+範囲: candidate flow、browser API/runtime、React確認と結果、SQLite JSON契約。否定条件(負)>タイトル>優先>希望>レビューを維持し、画像未使用を画像欠損と区別する。外観条件がない入力も扱う。旧画像経路と保存済み履歴は再採点・移行しない。
+対象外: 追加の本番検索、課金処理、履歴削除。ローカル専用/worker1、入力/推論/候補数/操作回数の上限を維持する。
+手順/受入: 既存入口へ画像なし操作を行うREDを固定し、状態遷移と独立したranking/history profile、lazy画像設定、UIを実装する。fixtureで検索前確認、画像呼出し0、日英採点、履歴再読込、重複操作と旧経路の回帰を検証。全体offline/frontend/ブラウザ/文書検査後、idle接続画面へ反映する。
+互換性/判断: 新しい画像なしprofileに限り画像参照0件と画像hashなしを許す。旧profileの検証を緩めず、serializerは追加任意値を旧履歴へ書き足さない。
+Rollback: 画像なし操作を無効化し従来画像経路を使用する。新旧履歴は保持する。既存作業treeと旧server/DBを変更しない。
+進捗/証拠: 接続/状態遷移/画像依存の遅延化/日英採点/空結果/履歴/画面を実装。追加の実サービス成功は未検証。
+TDD: `uv run --frozen --offline --no-sync pytest -m 'not live_api' tests/test_image_free_browser.py -q --tb=short` の初回は4 failed/exit1（画像なし操作が通常画像ステップへ進み、画像評価まで呼ばれる）。当初test SHA256=e7ef4fdbf0721d8141c0d27b24113d5c79970b297fac46080965b368dd913586。同じ4ケースは実装後成功。追加の画像失敗回復testは2 failed/exit1（例外でgenerator終了）、RED時hash=bb70e29f6c612d725029fc7bb3b8fbcd0496d21cb4298a0a47eef493f2461c97。空結果の保存testも最小長制約で1 failed/exit1を確認後、新profileに限定して解決した。追加/整形により最終test hashは別途記録し、同一overlay attestationとは主張しない。現在14 passed。
+最終test SHA256=d7e50e07f0918f6c0482c13b8feadd795f0b971604fe85e482e82e169d1b5455。全体offlineは3267 passed・22 skipped・30 deselected（87.62秒）。その後、稼働画面がqueryへ進んだことを発見し、メモリ内入力をidleへ引き継ぐmain引数の回帰を追加した。未対応引数で1 failed/exit1を確認後、server/runtime13 passed（0.81秒）。server test最終SHA256=f111be3ae258d0da205d8a156e419c8dcecc25189ee65ccb7af236a4dbd4807f。
+frontend check/67 tests/build成功。接続ブラウザ6 passed（18.0秒）では実candidateと一時SQLiteを使用し、画像なし最終確認→採点→保存→履歴再読込までPOSTがstart/without_images/searchの3回だけであることを確認した。既存画像ありfixtureも成功。Ruff/format405 files、uv lock --check --offline、Markdownリンク、git diff --check成功。
+稼働反映: 8772がquery/revision1だったため、メモリ内の入力を引き継いで同じURLへ更新し、idle/revision0で待機させた。旧準備directoryを保持し、新実行先は/home/products/bonsai-test-logs/20260912-image-free-browser-live-01（未作成）。原入力は引数/ファイル/ログへ出していない。旧6server状態hashと4DBhash不変、入力hash一致、4履歴96商品、実ブラウザの4履歴再表示/再読込でPOST0・pageerror0を確認した。再開には画面の「条件を整理」を操作する。今回の作業による追加のBonsai/商品検索/画像課金なし。
+完了検証: `npm run test:e2e -- --workers=1` は既存モック35 passed（2.5分）。画像なし/画像あり/失敗回復/旧履歴の回帰を維持した。新経路の実商品品質/実サービスE2E、履歴削除、全画面の目標仕様一致はこの接続完了の主張に含めない。
+
+
+
+## EXEC-141: 新しい条件分類を稼働接続画面へ反映
+
+状態: 完了（runtime修正、最新server起動、offline/接続ブラウザ/履歴読戻し）。作成・更新: 2026-09-12。
+
+目的/範囲: 接続継続指示に従い、EXEC-140のコードを新しいloopback serverへ載せ、既存の4履歴へ接続する。初回clarification後に再整理の親directoryがない問題をREDから修正し、起動/確認/再入力/履歴のローカル経路を検証する。新規serverはidleで渡し、既存server/DB、単一process/worker1、呼出し上限を維持する。
+
+境界/検証: 追加のBonsai/画像生成/Amazon検索/credential/課金/再採点を行わない。fixtureで実runtime組立の再整理を確認し、offline gateと接続ブラウザ、実起動のGET/DOM/履歴照合を行う。起動したserverだけを停止できる。commit/pushなし。
+
+実装/RED: 初回入力のローカルclarificationではruntimeがまだ呼ばれず、親outputが未作成のため、revision-1作成時にfailedとなることを再現した。`uv run --frozen --offline --no-sync pytest tests/test_browser_runtime.py -k live_server_revision -q --tb=short` は1 failed・5 deselected（0.66秒）。test SHA256=4a99028ab4cdea17fb9225b324ed365819c1d85b9667d5a16a4c8f58ecc62b9c、RED log=/tmp/ae141-red.log。runtimeへrootとattemptを明示して渡し、再整理時だけ0700の親を必要に応じて作成する。同じtestを含む関連21件が成功した。既存revisionの上書き、symlink、公開権限の親、attempt上限違反を拒否する追加4件を含め、runtime全10件も成功（0.68秒）。最終test SHA256=673328b2fa675022f377c38f46e361f88c3838869b0e6383893ae414cd76abd5。実model/credentialより手前でfixtureに停止させるテストであり、実provider成功ではない。
+
+稼働接続: `uv run --frozen --offline --no-sync python -m tools.browser_search_server --run-live-api --port 8772 --output-dir /home/products/bonsai-test-logs/20260912-condition-browser-live-01` に既存4 DBの `--history-db` を付けて起動した。DBは20260912-playwright-browser-live-01、同live-03、20260912-bilingual-browser-live-01、20260912-editable-browser-live-02の各history.sqlite3。保存先はまだ作成せず、検索待機stage=idle/revision=0/editable=trueのまま保持した。`http://127.0.0.1:8772/?mode=connected` で最新frontendとbackendを使える。既存8765/8767/8768/8769/8770/8771は保持した。
+
+実ブラウザ読戻し: 新serverの入力画面、履歴4件、保存結果の詳細/再読込、検索へ戻る操作を確認した。POST0・外部request0・pageerror0。新serverの操作前後state一致、既存6serverのstate SHA256不変、4DBのfile SHA256不変、未実行outputの不存在を確認した。生の入力/商品本文は診断へ保存せず、件数とhashだけで照合した。接続ブラウザfixture5件も成功（11.7秒）。起動時の --run-live-api は実サービスの実行成功を示さず、この回は検索/画像生成/推論を開始していない。
+
+完了検証: 全体 `uv run --frozen --offline --no-sync pytest -m 'not live_api' -q --tb=short` は3249 passed・22 skipped・30 deselected（78.27秒、/tmp/ae141-offline.log）。全体収集後に追加した出力境界4件はruntime10件として別途成功した。Ruff/format（402 files）、lock、Markdown/diff成功。接続fixture5件のログは/tmp/ae141-connected.log。稼働serverは8772・PID1384470、既存serverは停止していない。今回の実装/起動範囲に残作業なし。本番検索・課金・commit/pushなし。
+
+## EXEC-140: 希望条件と否定条件の自然文指定を拡張
+
+状態: 完了（実装、offline、frontend、fixtureブラウザ検証）。作成・更新: 2026-09-12。
+
+目的: 承認済み計画どおり、文頭/文中/文末の希望・否定・許容表現を共通ローカル解析し、仕様/外観/価格・日英採点・確認画面へ接続する。希望と否定の重なりは否定優先、希望付き価格は希望、指定なしは採点/検索/画像対象から外して表示に残す。分類用LLMは追加しない。
+
+範囲/互換: 原文範囲・照合対象・強さ・根拠を保持する新解析profileを計画digestへ結ぶ。旧計画/履歴は旧契約を保持する。現行順位、日英最大値、価格の観測、worker1本、文字/条件/モデル呼出上限を維持する。個別分類変更UI、画像なし接続、既存DB再採点、本番検索/外部通信/credential/課金/commit/pushは対象外。
+
+手順/受入: 表現分類と既存入口のRED→共通解析/原文照合→条件/外観/価格/語句展開の接続→確認/曖昧箇所表示/文章修正→関連/全体offline、frontend/build/browser、文書同期。不要と許容、属性値の非対応と除外、複数条件の修飾範囲、二重否定/矛盾、旧profile復元を検証する。既知でない意味を推測して条件を捨てない。
+
+境界/rollback: 元入力と商品情報をdiagnosticへ出さず、修正箇所はメモリ内の表示応答だけへ渡す。既存変更とserver/DBを保持し、今回差分のみ戻せる。実行証拠は合成fixture/ローカル資材と区別し、追加の本番テストは行わない。
+
+実装: 共通解析はcondition-language-v1。正規化範囲/原文quote/照合target/strength/reasonを保持し、GiNZAの条件fragmentにも同じ分類を適用する。確認APIは原入力へ位置を戻し、clarificationから既存の文章修正へ接続する。希望価格・否定対象の分離・指定なし除去・日英最大値・旧計画のlegacy projectionとdigest省略互換を検証する。UIの分類切替操作やLLM分類は追加していない。
+
+TDD/修正記録: 最初の表現testは26 failed。そのうち8件は既存入口の分類/除外不足、18件は新module未実装のimport失敗であり後者を有効なREDとして扱わない。初期SHA256はc7b2af3dd55b90af7ed2aa240b4e920d1c2bda8141d8314ee75b6d0837fd3574。既存のcasefold契約に合わせて大文字USBのquote/label期待値を修正したため、全体を同一test overlayのRED/GREEN証明とは主張しない。
+
+追加の有効なRED/GREEN: `uv run --frozen --offline --no-sync pytest tests/test_condition_language.py -k 'known_shape or prepared_local_ginza' -q --tb=short` は2 failed（丸い形の「形」が未消費扱い）→2 passed・39 deselected（1.52秒）。同一test SHA256は54aeaaa0f60a10d0d1bdf526b3b008843f39e28f3cfa9a66927a3da7fecae4eb。`-k 'polite_forms or opposite_boolean'` は6 failed（丁寧形/文中必須/対立boolean未対応）→6 passed・41 deselected（0.20秒）。同一test SHA256は010d99369bdccb73024dcbf9ffefe5a8a1181d57c7382218cd582c595362c12d。保存先は/tmp/ae140-shape-red.log、/tmp/ae140-polite-red.log。形状の限定接尾辞を消費し、未解決の別属性/数量を捨てない回帰を維持した。
+
+検証中の修正: 旧計画fixtureのlist/tupleとrequest digestの組み立て不備、価格fixtureのJPY欠落、確認API fixture時計と実時計のずれを修正した。初回全体runはfixture不備1 failed・3235 passed・22 skipped・30 deselected（84.31秒）であり、実装の成功結果として扱わない。準備済み実GiNZAでは4種類の修飾/文中予算を検証した。モデルはローカル既存資材のみで、Bonsai/OPUS-MT推論の本番品質検証は行っていない。
+
+最終位置回帰: `uv run --frozen --offline --no-sync pytest tests/test_condition_language.py -k conflict_offsets -q --tb=short` は1 failed（構文fragment連結後の位置を原入力と誤認）→1 passed・48 deselected（0.18秒）。同一test SHA256は6d0481556e796149de35ee3b2332c16290f943bdeca88ab99cbea37d929b359a。fragment投影と同時に原文位置対応を作り、修正箇所の引用を元の範囲へ戻した。
+
+検証コマンド/境界: Python全体は `uv run --frozen --offline --no-sync pytest -m 'not live_api' -q --tb=short`。Ruff check/formatは全402 files、lockは `uv lock --check --offline`。frontend/で `npm run check`、`npm test`（66 passed）、`npm run build`、`./node_modules/.bin/playwright test --config playwright.connected.config.ts`（5 passed、12.1秒）、`npm run test:e2e -- --workers=1`（既存モック35 passed、2.5分）を実施した。接続ブラウザはlocalhost8766のfixture APIで、修正要求→再入力→分類確認→画像確認→検索結果と再読込を確認した。生provider要求やcredentialを使わず、本文はテスト用合成データだけ。ブラウザとPythonの時計を合わせたfixtureでは解釈→API→修正→日英採点→SQLite履歴まで接続した。
+
+最終test SHA256: tests/test_condition_language.py=03a6cc16e875872cc90358872cf5b058c8c0bc649dc66a70f78c67f85fae76f4、tests/test_browser_editing.py=6561c1893a0274bdb1c5d711b91dc72afc244b0ad7ffe83fb9afa1672bea7016、frontend/e2e/connected.spec.ts=7de58371a5ecfd8e9a864fafa2aaa6701d746fdf058e96de1f6cc8b40a9cf797、frontend/src/connected-api.test.ts=a00019f9e967f6975ab995e758100203af00554cc9725fafb422a2f037ff405d。初期からのtest増補/整形があるため、上記個別RED/GREENのhashとは区別する。AIレビューのattested passや外部本番成功は主張しない。
+
+最終結果: 位置対応修正後の全体offlineは3248 passed・22 skipped・30 deselected（80.03秒）。Ruff/format/lock、frontend check/66 tests/build、接続ブラウザ5件とモック35件、Markdown全16 files/1793 local links/1355 anchors、git diff --checkが成功した。最終全体ログは/tmp/ae140-final-offline-2.log、ブラウザモックは/tmp/ae140-mock-browser.log、buildは/tmp/ae140-frontend-build.log。既存serverとDBは保持し、新しいbackend動作は次回起動から適用する。追加本番検索・外部provider・credential・課金・既存結果の再採点・commit/pushは行っていない。承認済み実装範囲に残作業なし。
+
+## EXEC-139: 否定条件を先頭にしレビュー点を最終比較へ追加
+
+状態: 完了（順位・保存/復元・表示とoffline/ブラウザ回帰）。作成・更新: 2026-09-12。
+
+目的/範囲: 利用者指定の否定条件（負）＞タイトル＞優先条件＞希望条件＞画像＞レビュースコアを新規candidateの辞書式順位へ適用する。否定一致は低い方、他は高い方を先にし、全項目同点なら取得順。レビューは既存PlaywrightのAmazon星評価0〜5を使用し、未取得は取得済み0より後。画像未取得も同様。レビュー件数による補正や新たなLLM評価は追加しない。
+
+手順/受入: 各隣接優先順・負方向・欠損・全同点・旧profile復元のRED→新sort profileと検証/保存/表示→関連/全体offlineとfrontend/build/browser→文書同期。旧タイトル/画像優先の保存結果は旧profileで検証し、既存DBを再採点しない。タイトル/条件の日英最大値、画像計算、参考50:50合成値は維持する。新しい総合加重和ではなく順位順序の変更である。
+
+境界/rollback: 商品ページの取得済みratingだけを利用するので外部通信/credential/課金/再検索は不要。旧履歴はoptional field省略互換を維持し、SQLite schema移行なし。現行server/既存未コミット変更を保持し、新規起動から適用。rollbackは今回差分のみ。commit/pushなし。
+
+
+実装: candidate_completionの新keyを `(E, -T, -R, -P, -I, -V, 取得順)` にした。Eは日英最大値を集計した否定一致、Vは正規化済みproduct.rating。負の否定点を高い順にすることと同じで、情報不足の判定自体は変えない。旧keyを_title_image_sort_keyとして残し、新profile/旧profile/fieldなしで順序検証を分岐する。レビューは既存ratingを履歴のreview_ratingへ投影するだけで、追加取得や推論はない。null fieldをJSONから省略して旧保存digestを保持し、旧profileの再保存にはratingを追加しない。
+
+表示: APIのsortProfileに応じて順位説明を切り替え、新規結果の否定条件は日英・採用点を0〜−100で表示する。保存値と日英最大値検証は0〜1のまま。reviewRatingを5点満点で表示し、欠損は未取得とする。画像・レビュー欠損はその項目の比較時だけ−1として扱う。旧履歴の正の除外一致表示、旧優先順とschema5読戻しを維持する。合成fixtureでは旧画像優先のA/C/D/Bから、優先条件を先に満たすD/B/A/Cへ変わることと、各画像点/参考合成値が変わらないことを確認した。
+
+TDD: `uv run --frozen --offline --no-sync pytest -m 'not live_api' tests/test_candidate_exclusion_priority.py -q --tb=short` の初回は6 failed・4 passed（0.97秒）/exit1。否定/条件/レビュー優先の未反映と旧profileが理由。RED hash=`bc5ad778cd99c98c9432314cdb438d400295ab907bf7dc45eac2638791a33e2a`。実装後、同fileとtest_candidate_priority.py/test_candidate_connected_flow.py/test_candidate_bilingual_scoring.py/test_browser_candidate.pyは75 passed（6.84秒）。旧priorityの境界testは旧keyへ接続して保持し、現行結合testの確定順/画像点順を新要件に更新した。その後、実際に非nullの合成ratingを保存し、順序改変を拒否する追加assertを加えた最終hash=`a4a35ce5383859c58d967078e6f34ccbaca6ed5a2387b42afe95caf963b45b9e`。元assertを弱めていない。
+
+frontend REDは `npm test -- --run src/connected-api.test.ts` の1 failed・6 passed/exit1。不正reviewRatingを受理したことが理由で、RED hash=`8a29acae48180463c04cadd6d52f3a5d61a0065515c144b43eaafdf43f513b08`。実装/整形後の同file hash=`9343bb2ce81297b8dddc79b3b8b8e56ce45ceabb8583dc8b8ac152daa4714bc8`。npm run check・npm test（65 passed/5 files）・npm run buildと接続Playwright5 tests（11.9秒）が成功した。合成応答で新profileの負表示/星評価と旧profileの正表示/旧説明を確認した。e2e最終hash=`01123b8bfb5f22debbfc99f877c97efe1868b3ec67b6c4650942364fdebcc745`。attestedレビューではない。
+
+全体/完了: `uv run --frozen --offline --no-sync pytest -m 'not live_api' -q --tb=short` は3196 passed・22 skipped・30 deselected（83.60秒）。Ruff check/format（400 files）・uv lock --check --offline・Markdownリンク・git diff --checkが成功した。既存の順位検証11件は旧仕様の固定期待値/新field未許容が原因だったため、新profileと厳密な期待順/field集合を更新し、旧順序は別の互換testとして保持した。実データの再検索/再採点、外部API、credential、課金は0。現在起動中のserverとDBは保持し、新規起動した検索から適用する。新順位の未知商品品質や本番再検索を今回のoffline成功とは扱わない。今回指定の順位変更に残作業なし。commit/pushなし。
+
+## EXEC-138: 永続履歴の一覧と保存結果を画面へ接続
+
+状態: 完了（永続履歴の一覧/詳細/検索へ戻る操作と既存実データの再起動復元）。作成・更新: 2026-09-12。
+
+目的/関連: 接続継続指示とSEARCH-FLOW.mdの8節に従い、SQLiteに保存した結果を一覧から開き、検索へ戻れるようにする。EXEC-137の入力/結果画面を維持する。
+
+範囲: browser履歴adapter、loopback GET API、明示指定した履歴DB（最大32個）と新規runの保存先、React一覧/詳細、再起動後の閲覧専用入口。表示は新しい順の最新30件。既存schema5・owner=local-user・30日失効を維持する。削除操作/期限切れの物理削除、画像なし、構造化条件編集、商品画像の永続化、全モック一致は後続。旧履歴にない原入力/条件ラベル/商品画像を生成や再取得で補わない。
+
+手順/受入: SQLite再読込・owner/期限/破損/任意path拒否のRED→閲覧専用adapter/API→画面の履歴/戻る・エラー・再読込→offline全体/frontend/ブラウザ→既存本番DBの実読戻しをブラウザ確認→文書同期。検索処理中の履歴操作はprovider再実行も現在state変更もしない。初期状態では実履歴UI未接続。
+
+境界/判断: DBパスは起動時のCLI指定だけで、HTTPではopaque locatorだけを受ける。既存DBはSQLite read-onlyで開き、複製/移行/削除しない。認証情報/外部通信/課金は0。生入力・商品名・本文・ASIN・URLを診断へ残さず、件数/成否/hashのみ。既存server/DBと未コミット変更を保持し、新規localhost8771を閲覧用に使う。既存保存fieldで表現できない項目は未保存と表示する。rollbackは新規server停止と今回差分のみ、commit/pushなし。
+
+
+実装: BrowserHistoryは起動時指定の既存DB最大29個と、新規runの初回/修正2回の保存先を登録する。GET時に既存schema5をread-onlyで開き、owner・保存digest・期限・画像hashを検証する。未作成runのDBを作らず、破損を空一覧に読み替えない。GET /api/historyと/api/history/{id}は表示fieldだけを返し、DBパスを受け付けない。旧結果/現行結果の商品projectionを共通化した。新たな採点や商品画像永続化は行わない。
+
+画面: ヘッダーから一覧/詳細へ移動し、検索state・未送信文章・結果表示を保持したまま検索へ戻る。詳細URL fragmentから再読込でき、旧結果の日本語/英語タイトル・価格・日本語リンク・保存されている日英点数と生成画像を復元する。履歴にない原入力全文/個別条件名/商品画像は未保存と表示する。欠損/期限切れと一時的な取得失敗を表示し、再読込に検索POSTを使わない。履歴だけのserverはBonsai等のruntime/検索workerを作らず、検索POSTを拒否する。
+
+TDD: `uv run --frozen --offline --no-sync pytest -m 'not live_api' tests/test_browser_history.py -q --tb=short` の初回は5 failed/pytest exit1。既存serverのGET履歴が404（期待200）で機能不足を確認した。read_only未対応も失敗し、未作成moduleのimport失敗3件は有効な振る舞いREDとして数えない。初回test SHA256=`cd28bc66a3ad8fd6b442620ebb31ad6768ecffd4c6df8d0d2d66ad4c94cfcf81`。実装後の同file＋test_browser_candidate.py＋test_browser_server.pyは16 passed（2.72秒）。整形とfixture名との衝突回避だけを加えた最終test hash=`dc7c94f76e975cda8db007c7bde5a122ba71af53df0e40aac35fb48166fb566d`。assertionを弱めていない。
+
+画面RED/GREEN: frontendから `npm run test:e2e -- --config playwright.connected.config.ts -g 'history survives'` のREDは「検索履歴」ボタン未実装で30秒timeout・1 failed/exit1。RED test hash=`97e83314fdbf59cff6274a5f30ed7394f53c53847c9471334f7dd7625df93401`。実装/整形後の最終e2e hash=`924387bfd21103ebf195037a7eccd80460438d59086ec6ad794a875cf9d79c89`。同じ操作/assertionが成功し、接続全4 testsが10.4秒で成功した。履歴API応答は合成route、既存検索操作はfixture HTTP serverで確認した。実データのHTTP/SQLite/browser結合は後記で別に確認した。hashの変更を完全に同一snapshotのattestationとは扱わない。
+
+全体検証: `uv run --frozen --offline --no-sync pytest -m 'not live_api' -q --tb=short` は3186 passed・22 skipped・30 deselected（78.64秒）。Ruff check/format（399 files）・uv lock --check --offline、frontendのnpm run check・npm test（64 passed/5 files）・npm run buildが成功した。Markdownリンク検査とgit diff --checkを実施。frontendテスト追記の初回はworkdir内にfrontend/を重ねて指定しfile未作成/テスト未検出だったため、正しい相対pathでやり直した。整形の初回も誤ったroot作業directoryからnpm execを呼び、公開Prettier取得を試みて対象file未検出となった。その後はfrontendの既存node_modulesの実行fileを使用し、project依存/lockを変更しなかった。この環境準備の呼出しをoffline検証やアプリの外部通信0へ混同しない。
+
+実保存結果の検証: 新規8771を--history-onlyで起動し、EXEC-127/130/135/137に対応する既存4 DBを明示指定した。新しい順の4履歴、各24商品・計96商品と生成画像計8枚を実HTTP/Chromiumで照合した。タイトル・英語併記・価格・リンク・保存済み点数・画像decode・各詳細のページ再読込が一致した。次に所有serverだけを正常停止し、同じ引数で再起動して同じ全履歴を再検証した。前後の一覧digestは一致、全4DBのfile SHA256も不変。旧8767/8768/8769/8770の表示stateは不変だった。両ブラウザ検証とも検索POST0・画面からの外部通信0・pageerror0。Bonsai・商品取得・画像生成は呼ばず、credential利用0・provider費用0。新規の商品検索E2Eや最新価格の再確認ではない。
+
+証拠/結果: `/home/products/bonsai-test-logs/20260912-history-browser-01/` に件数・成否・hashだけを保存した。summary.json SHA256=`9883ade2ca057aa6c377f222e64867c1d3bafc8172bc548c8e3a2e6d3551b088`、readback-1.json/readback-2.jsonとも=`8525b8dc0d4be5c70ced768d498bda055243da04b1c827e349a788d2354f04d0`、readback.mjs=`37aa82e5e4186f123658ed6d161a3f0ada10fd17fbdb2e3c6f7ae6f5c2ca2b58`。生の履歴本文・ID・商品データ・画面画像は診断へ複製しない。再起動後の8771を閲覧用に保持した。scope内の一覧/詳細/再起動復元は完了。削除と期限切れ物理削除、原入力/条件名/商品画像の永続保存、画像なし、個別条件編集、全画面統一は残る。commit/pushなし。
+
+## EXEC-137: 入力編集と画像・採点内訳の画面接続
+
+状態: 完了（入力編集・画像あり経路・サムネイル/点数表の接続と固定入力の実ブラウザ検証）。作成・更新: 2026-09-12。
+
+目的: 利用者の接続継続指示に従い、固定入力だけのReact実行を自然文入力へ接続し、画像生成前の文章修正・条件再整理と、商品サムネイル/日英採点内訳の表示まで通す。
+
+範囲: browser controller/runtime/APIと接続画面、実candidateとの回帰、実ブラウザ確認。最大2000文字・商品24件・視覚条件1〜3件の画像あり経路を対象とする。画像生成前の再整理は最大2回（最初を含め準備3回）、各準備のBonsai上限2回・worker1本を維持する。画像なし経路、構造化条件カードの個別編集、永続履歴一覧、全モック画面の一致、GPU切替は後続として残す。
+
+手順/受入: 入力引渡し・修正/重複/古い要求の拒否と画像再利用禁止、画像の再取得なし表示、採点表示契約のRED→実装→対象/全体offline・frontend build/ブラウザ→固定の既存入力1回の新規本番接続→文書同期。任意入力の意味品質とfixture成功を混同しない。入力そのものが現行parserで解釈できない場合は実行を止め、原文を保持する。
+
+境界/互換: 旧固定要求と閲覧中のserver/履歴を維持する。入力はメモリとアプリ保存だけで扱い、diagnosticへ生入力/商品データ/credentialを出さない。画像は既存の検証済みproxy結果から縮小し、外部URLをブラウザへ渡さず追加取得も行わない。数値の新fieldは追加的に扱い、旧表示を維持する。実行は継続授権の範囲を事前通知し、新規private出力とlocalhostで実施する。rollbackは新規server停止と今回差分のみで、既存作業を戻さない。commit/pushなし。
+
+
+実装: controllerはeditableなstart/reviseのsourceを受け、factoryから入力別generatorを作る。再整理時は旧generatorを閉じて旧候補を破棄し、画像生成後の修正と準備上限超過を拒否する。Reactは文章変更中の画像生成を無効にし、「変更を反映」で再準備する。視覚条件1〜3件に対応し、条件名を比較画像と点数表へ渡す。評価proxyを包んで検証済みRGBから最大192pxのPNGを作り、同じ取得結果を採点と表示へ再利用する。APIの画像URL/点数検証と旧field省略互換を維持し、SQLite schema/採点順序は変えない。
+
+TDD/offline: 初回test_browser_editing.pyは3 failed・7 passed（factory/source/画像再利用未実装）、frontendのconnected-api.test.tsは1 failed・5 passed（不正thumbnail受理）。実装後、全体 `uv run --frozen --offline --no-sync pytest -m 'not live_api' -q --tb=short` は3181 passed・22 skipped・30 deselected（80.33秒）。Ruff check/format（397 files）、uv lock --check --offline、frontendのnpm run check・npm test（61 passed）・npm run buildが成功した。`npm run test:e2e -- --config playwright.connected.config.ts` は3 passed（10.0秒）。fixture HTTP serverへ別の合成入力と文章修正を送り、応答紛失時の重複排除、旧要求、再読込、サムネイル/点数表を確認した。実candidateの1/3視覚条件とSQLite保存もfixtureで確認した。テスト側のproxy.callsは整数であり、途中のlen誤用を修正した。任意入力や3視覚条件の実サービス品質をこの成功から主張しない。
+
+最終test hash: tests/test_browser_editing.py=`2493b374641da14dc2a06af00b3e2160ed950511f35761f1e615e09cb8444a33`、tests/test_browser_candidate.py=`a95300ca2178096a515af91048ec33898ce7cce1406a52c68c651c7af81b9cd5`、frontend/src/connected-api.test.ts=`4c5c4728ab1b4c6892ed992acde33a9cbb0b6fa9e9a9cda145751d44bc69535a`、frontend/e2e/connected.spec.ts=`c9d4d3393815b4ef23b71345d6b4000b0ab4bc72e1e08189ce89618af9cf3943`。RED時点のhashは未採取であり、最終hashをRED attestationとは扱わない。
+
+初回停止: privateな20260912-editable-browser-live-01はBonsai準備中に進行が止まり、ブラウザdriverが1116.242秒で通信失敗した。Bonsai要求2回中、応答完了は1回。Cloudflare/商品取得へ未到達で、失敗記録を保持した。ホストRAM使用7424MB/7774MB・利用可能350MB、swap2048MB全使用と強いI/O待ちを観測し、当該run所有のBonsai/serverを停止した。完了済み8767/8768/8769の表示stateをメモリ内の軽量read-only serverへ移し、各URLのstate hash一致と元SQLiteの保持を確認した。検索workerは追加せず、旧Python runtimeを解放した。8765も維持した。解放後の利用可能RAMは3163MB。再試行結果との速度差をコード最適化やGPU効果とは扱わない。
+
+本番結果: 同じ固定入力・同じ上限で別directoryのlive-02を起動し、2026-09-12 16:09:55〜16:13:37 JSTに222.365秒で完走した。画面の入力がPOST/runtimeへ渡ることを確認し、5操作を各1回送信。準備のUI観測区間は39.337秒、商品検索開始から完了は151.078秒。実Bonsai2 calls（商品名/視覚条件）、商品名要求のenglish=null、条件OPUS-MT1 call/1句、Cloudflare画像2 calls、匿名Playwright検索1ページ/日本語詳細24/英語詳細24を実行した。資材要求は許可5858・遮断5615。再試行0、有料商品取得API0。画像生成2枚分は課金対象で実請求額は未確認。
+
+取得/採点/画面: 日本語タイトル24件・英語タイトル22件・英語詳細24件、商品画像24要求/24成功・SigLIP2 batches。タイトル＞画像＞否定＞優先＞希望の順、日英最大値、50:50参考合成点、strict復元と保存/APIが一致した。予算内23件・超過1件を条件状態へ反映した。SQLite1履歴/画像2枚・integrity_check=ok・foreign key違反0・画像hash一致。DOMの24商品すべてで192px以内のサムネイルdecode、タイトル/条件の日英点、画像点、参考合成点、日本語リンクと英語タイトル表示を照合した。24点数表を開いて可視性も確認した。再読込の追加POST0・state不変・pageerror0・画面からの外部取得0。旧8769のstate不変、旧8767/8768の完了表示も維持した。初回DOM probeはナビゲーションのliを商品行へ混入させ2項目で偽の不一致を返したため、元記録を残し商品行限定の読戻しで確認した。再検索やproductionコード修正は行っていない。最終38チェック全件成功。
+
+証拠/後始末: `/home/products/bonsai-test-logs/20260912-editable-browser-live-02/` に数値/件数/hashだけの診断と実行scriptを保存した。score-summary SHA256=`86bd0e3e695c3a37e28f81967c98b09a02aa80bdc15b6db8808ff7d8e9dc4e27`、ui-summary=`6e73878cf290eab32ade8493e890b86e809f602412673f1e314077086e6e3a7b`、history-summary=`bdab616650d2c3b27a46a31eab669311a2b8b1d92b2f95d6415360aa18a256a9`、dom-readback=`18194cc1100b096bbb3f91f7a50251e26de7c8483a561d64a853a7d1f04d8f57`、acceptance-summary=`80ac263bcc3d3a7c3e8e311b887c505252bc513ad652d64b963b9ad54bd3b536`。生入力/商品データはアプリ保存とIPC以外に複製していない。Bonsai listenerは解放され、商品/翻訳/画像workerは終了した。結果閲覧用8770と旧結果の軽量serverを保持する。商品サムネイルはprocess内のみで、server再起動後の履歴復元UIは未実装。Markdownリンク/diff検査を実施し、commit/pushなし。
+
+残る範囲: 画像なし、構造化条件カードの個別編集、永続履歴一覧、モックとの全画面統一、未知入力/複数視覚条件の実品質、反復運用の安定性。今回の入力編集・サムネイル/点数表示の接続は完了したが、全画面・全運用機能の接続完了とはしない。
+
+## EXEC-136: 検索準備の処理別時間を実測
+
+状態: 完了（同一固定入力の準備区間1回の実測）。作成・更新: 2026-09-12。
+
+目的/範囲: EXEC-135の準備214.396秒には個別時刻がないため、同じ固定入力とtools/browser_search_runtime.pyの準備経路を1回再実行し、資材初期化・辞書/構文処理・Bonsai起動/2推論/停止・ローカル条件翻訳を分けて計測する。今回の再計測を過去の時間の復元とは扱わない。性能変更・商品取得・画像生成・UI操作・commit/pushは対象外。
+
+手順/受入: private診断wrapperで単調時計による入れ子区間を記録→既存資材と新規ローカルBonsaiで検索語確認まで実行→区間合計と総時間の一致、推論回数/語句数、モデル停止を確認→数値と制約を記録する。要求/応答/検索文/訳文は記録せず、件数・時間・固定code・source hashだけを保存する。
+
+境界/互換: 継続授権と今回の測定指示に基づき、localhost18080へ最大2 calls・各900秒・retry0、OPUS-MTは既存2句/batch・各30秒上限を使用する。network namespace内のloopbackだけで実行し、credential設定を診断用placeholderへ差し替える。外部API呼出し0・API費用0。既存serverと履歴は保持し、新規private directoryを使う。rollbackは診断processの停止のみ。現行コードの動作は変更しない。
+
+実測: private wrapperからlive_stepsの最初のquery表示までを呼び出し、210.633158秒で完了。資材整合性検証3.141540秒、辞書初期化0.055682秒、語義モデル初期化0.456860秒、構文モデル初期化1.652924秒、Bonsai起動/ready待ち5.838673秒、翻訳資材初期化0.183033秒、構文解析0.422053秒、商品名辞書照会0.940978秒、辞書語義採点0.059435秒、商品名Bonsai82.164005秒、視覚要求作成0.001385秒、外観条件Bonsai113.534098秒、視覚応答検証0.280689秒、検索語構築0.063347秒、条件辞書照会0.025316秒、条件翻訳0.942906秒、Bonsai停止0.164874秒、その他の準備0.705359秒。入れ子区間を控除した合計は総時間と一致する。
+
+推論内訳: Bonsai応答の数値metadataでは、商品名は入力処理11.228672秒/生成70.815930秒（入力355、生成52 tokens）、外観条件は入力処理14.874673秒/生成98.567369秒（入力469、うちcache3、生成69 tokens）。通信等を含む呼出し全体は195.698103秒で準備の92.91%。出力生成だけで169.383299秒。条件英訳は実OPUS-MT1 call/1句、非空1件。単回の実測であり平均/P95や最適化効果ではない。前回214.396秒はUIの観測区間で、今回はbackend準備区間。過去の個別時間の復元や、差分全てを処理性能の変化とする比較はできない。
+
+検証/証拠: network namespaceを分離しloopbackのみ有効化、環境変数を空にして既存uv環境から実行。検索語候補5件・視覚条件1件まで到達し、Bonsai2 calls、所有serverの停止と18080の解放、区間合計誤差0、対象source hashの一致を確認した。診断先は `/home/products/bonsai-test-logs/20260912-preparation-timing-01/` のsummary.json（SHA256=`74a646ea90a6e8289bc0aeb1aa24fb606fd116b4e2b8879ffc8e69826bfaf965`）、breakdown.json、probe.py（SHA256=`d3b1f8c52fb9bcb78036e98a0368ddb476d6d918fed529226a08bbf0f6c0fe89`）。実行はexit0。要求/応答/訳文は保存していない。通常pytestはproduction code/契約の変更がないため再実行せず、Markdownリンクとgit diff --checkを確認する。画像生成・商品取得・全体UIの新E2Eは実施していない。今回の範囲に残作業なし。
+
+## EXEC-135: 更新した翻訳・日英採点を実接続で確認
+
+状態: 完了（固定入力1回の本番接続と独立した名前専用要求の検証）。作成・更新: 2026-09-12。
+
+目的: 利用者の次の接続指示に従い、EXEC-134の名前専用Bonsai要求と実OPUS-MT、EXEC-133の日英条件採点を実サービスで確認し、固定マグカップ入力のReact→検索→画像評価→SQLite→表示へ到達させる。
+
+範囲: localhost18080で名前専用提案の独立確認1 callと、固定入力の本番フロー最大2 calls。Cloudflareは既存credentialで参考/比較画像各1枚、匿名Amazon検索最大3ページ・日英詳細各24ページ、商品画像最大24枚・SigLIP最大7 batches。worker1本、再試行0、全体15分制限なし。画像生成2枚分は課金範囲で実請求額は未確定。既存の追加承認不要という継続指示を適用し、操作/上限/課金を事前通知して実行する。
+
+手順/受入: 現行資材/実入口と静的画面確認→実Bonsai名前専用提案1回とローカル翻訳→新規8769でReact確認操作→日英採点/最終順序/50:50合成/履歴とAPI内訳/日本語リンク/再読込を照合→provider worker回収と数値診断/文書記録。通常の辞書選択を強制的に未収録へ変えず、実際に通った分岐を記録する。独立した名前専用確認と全体フローの経路被覆を混同しない。
+
+境界/互換: 生検索文・商品名/本文・ASIN・URL・credential・生例外は診断へ保存しない。アプリのSQLite結果とIPC以外の診断は件数/数値/固定code/hashだけ。既存8765/8767/8768とDBを保持し、新規private directory `/home/products/bonsai-test-logs/20260912-bilingual-browser-live-01` を使用する。失敗した範囲を成功扱いせず、原因確認なしに課金処理を繰り返さない。コード修正が必要ならRED/GREENを別途記録する。rollbackは新規server停止のみで旧結果を維持する。任意入力UI、未知条件の品質、commit/pushは対象外。
+
+準備/独立確認: frontendでnpm run buildが成功した。名前専用の実Bonsai確認は1 call・18.139秒で日本語名を取得し、english=nullを確認した。提案名が元語と同一だったため、OPUS-MTは1句だけ翻訳し、元語/提案名の両方へ英訳を保持した。入力は合成の固定句、商品候補shortlistなしのsuggest_name単体経路であり、辞書ありからの未収録分岐全体の証明ではない。診断は `/home/products/bonsai-test-logs/20260912-name-only-bonsai-live-01/summary.json`。model serverの停止後、新規8769を起動し、2026-09-12 14:46:34 JSTにReact操作を開始した。取得/採点を変えない観測wrapperで呼出し数と数値内訳を収集する。
+
+本番結果: 14:46:34〜14:53:20 JST、406.105秒でReactの5操作を各1回送信し、画像2枚生成→24商品取得→画像評価→日英採点→SQLite保存→表示/再読込を完走した。Bonsaiは商品名1回・視覚条件1回、商品名要求のenglish=nullを確認した。商品名は辞書で確定して英訳も辞書由来、productTranslationはnullだった。条件の英訳は実OPUS-MT1 call/1句/非空1件。独立確認と合わせ実Bonsaiは3 callsで、通常フローで未収録名のMT分岐を強制していない。
+
+取得/費用: Cloudflareは既存credentialで参考/比較画像各1枚、計2 calls。匿名Playwrightは検索1ページ・日本語詳細24・英語詳細24、資材要求は許可5852・遮断5577。再試行0、有料商品取得APIは0。日本語タイトル24件、英語タイトル22件・未取得2件、英語詳細24件。画像proxyは24要求/24成功、SigLIP2 batchesで全件の画像点を取得した。価格取得24件、予算内23件・超過1件で確認状態も一致した。Cloudflare生成2枚分は課金対象で、実請求額は未確認。
+
+採点/保存: candidate-confirmed-lexical-v5 / candidate-text-bilingual-v2 / candidate-siglip2-appearance-v1、sort_profile_id=title-image-conditions-v1、image_weight=0.5を確認した。日英最大値、タイトル＞画像＞否定＞優先＞希望の順、50:50合成点を別計算し、strict JSON復元も一致した。タイトル4件で英語点が高く、条件では英語点が高いものは0件（外観条件の日本語点あり7件・英語点あり0件）。これは観測結果であり、英訳/条件照合の一般的な品質合格とはしない。
+
+SQLite/画面: 履歴1件・画像2枚、integrity_check=ok、foreign key違反0、画像hash一致。保存/読戻しとAPIで商品名・価格・日本語URL・英語field・日英点数内訳が一致した。DOMに24商品と英語タイトル22件を表示し、日本語リンク24件のASIN対応を確認した。再読込で追加POST0・state不変・24件再表示、pageerror0。旧8768のstate全体も不変だった。数値・保存・表示の32チェックは全件成功。商品サムネイルと点数内訳表のDOM表示は未実装のままで、APIに点数内訳を保持する。
+
+証拠/後始末: 新規private directoryにscore-summary/ui-summary/history-summary/dom-readback/provider-metrics/acceptance-summaryと観測scriptを保存した。score-summary SHA256=`f2d83e95e7c11c3684320887c4be9ef2ce09a8412d7f4a8dce4a2e04002e5b62`、ui-summary=`828357d3f1f1c7e4f6c6a3216e68cefa19897e5fdaede1a2c478fdd398093d1f`、history-summary=`bdab616650d2c3b27a46a31eab669311a2b8b1d92b2f95d6415360aa18a256a9`、acceptance-summary=`6895afa54f21ec1ea2ed91cfee0d72c7fa54686c51f426b07206289b4a6038c8`。生の商品データはアプリSQLiteとIPCに限り、診断へ複製しなかった。Bonsaiの18080 listener、商品取得Chromium、翻訳・SigLIP workerは終了した。Pythonのresource trackerだけは親serverに付随して残る。8769を結果閲覧用に保持する。
+
+検証範囲: productionコードの変更なし。直前EXEC-134の3167 passedを再実行せず、今回はfrontend build、実サービス/ブラウザ検証、Markdownリンクとgit diff --checkを実行した。新たなRED/GREENやattestedレビューではない。固定入力での接続成功であり、任意入力・語義/翻訳/未知商品の順位品質、長期運用、点数内訳表・サムネイルUIの完成を意味しない。既存8765/8767/8768とDBを保持し、commit/pushなし。
+
+## EXEC-134: 商品名提案の英訳をローカル翻訳へ統一
+
+状態: 完了（offline結合と実OPUS-MTへの受け渡し）。作成・更新: 2026-09-12。
+
+目的: 利用者の「次の接続」指示に従い、OPUS-MT設定時は辞書候補ありからBonsaiが未収録名を提案する経路も、日本語名提案とローカル英訳に分ける。辞書の英訳は優先し、商品名推論後の英訳元を一貫させる。
+
+対象: BonsaiProductSelectorの名前専用提案、product_phraseの翻訳接続、translation出典の保存契約と回帰・文書。視覚条件のBonsai、日英採点、商品取得、UI操作、既存履歴、commit/pushは対象外。現在は候補0件だけOPUS-MTに接続され、候補ありの未収録提案はBonsai英訳が残る。
+
+手順/受入: 失敗する提案翻訳・名前専用schema回帰→最小接続→辞書優先/失敗/重複排除/旧JSONと未設定互換→関連・全体offline/静的検査→文書同期。設定時はBonsai要求schemaと応答検証の両方でenglish=nullとし、未収録提案では元語/提案語を重複なしで翻訳する。翻訳失敗でも日本語候補を保持し、Bonsai英訳へ戻さない。保留・辞書再照会・利用者の候補選択は維持する。
+
+境界/互換: 固定fixtureと通信なしの標準pytestで接続を検証し、必要なら準備済みローカル翻訳だけを追加確認する。Amazon/Cloudflareへの送信・課金は不要。新構成の要求hashを分離し、旧保存JSONとOPUS-MT未設定の旧経路は保持する。rollbackは新しい名前専用提案と翻訳分岐に限定し、既存DB/資材を更新しない。実Bonsaiの生成品質はoffline成功から主張しない。
+
+実装: BonsaiProductSelector.suggest_nameを追加し、既存suggestの日本語名専用要求へ分岐する。要求schemaのenglishをnullに固定し、非nullの応答も拒否する。product_phraseでOPUS-MT設定時にこのmethodを選び、辞書再照会で確定できないbonsai_proposalを既存の重複除去付き翻訳器へ渡す。translation出典をbonsai_inference/bonsai_proposalで保持し、unavailableに英訳が混在するJSONは引き続き拒否する。設定時の要求識別はproduct-phrase-local-mt-v3、未設定時は従来のproduct-phrase-direct-v2。新field、SQL移行、商品取得cache変更は不要だった。
+
+TDD: `uv run --frozen --offline --no-sync pytest -m 'not live_api' tests/test_product_translation.py -q --tb=short` の初回は4 failed・13 passed/exit1（ローカル翻訳未呼出し3件とBonsai英訳受理1件）。RED test SHA256=`918660e75a58a914ead0ad9b925e8e3b9c4ca004004f25872afd0e229687e5c0`。実装後、同fileとtest_product_phrase_bonsai.py/test_product_phrase_flow.py/test_product_name_inference.py/test_bonsai_query_terms.pyの関連実行は66 passed（1.80秒）。さらに合成の検索語選択→画像完成→SQLite履歴保存と未設定旧JSON回帰を追加し、同fileは19 passed（0.90秒）。最終test SHA256=`46fc895c29ea0645b22cee04504950ee7a2068a56f00376573764bb71a6cba23`。既存のRED assertionは弱めていない。
+
+全体: `uv run --frozen --offline --no-sync pytest -m 'not live_api' -q --tb=short` は3167 passed・22 skipped・30 deselected（78.08秒）。Ruff/check/format、uv lock --check --offline、Markdownリンク、git diff --checkが成功した。UI表示コードと静的資材を変更していないためfrontend build/browser試験は再実行していない。attestedレビューではない。
+
+実MT確認: `unshare --net env PYTHONPATH=/home/products/Git_Products/amazon-explorer uv run --frozen --offline --no-sync python /tmp/amazon-product-proposal-mt-probe.py` がexit0。Bonsai/辞書応答は固定合成、翻訳のみ準備済みOPUS-MT資材と独立Python環境を使用した。異なる提案名と同一名の2ケースは実英訳を保持し、辞書再照会hitの1ケースは翻訳出典なしで辞書英訳を保持した。全3ケースで名前専用schemaとstrict JSON復元が一致した。OSのnetwork namespaceで通信を遮断し、実Bonsai/外部API呼出し0・credential利用なし・費用0。翻訳やモデル性能の新しい速度測定ではない。
+
+証拠/残る範囲: 件数・成否・hashだけをprivateな `/home/products/bonsai-test-logs/20260912-product-proposal-mt-01/summary.json`（SHA256=`d84b4b7582b8b58703a39ac1a664c12ce8b85e8f89b5a6a053ed217571702b5f`）とprobe.pyへ保存した。実の訳文を診断へ残していない。probe SHA256=`97d5b8b659cf2d945d2fbeb83cc7466cbbc35e8dbe3570ed809d8d42a2c6cc7f`。新要求に対する実Bonsaiの応答/意味品質、本番再検索は未検証であり、今回のコード接続と実翻訳の確認を全体live E2Eとは扱わない。既存完了server/履歴を保持し、新規起動のcandidateから適用する。視覚条件のBonsaiは継続使用する。commit/pushなし。
+
+## EXEC-133: 条件展開と日英別採点の最大値採用
+
+状態: 完了（実商品取得・テキスト採点とoffline結合の検証）。作成・更新: 2026-09-12。
+
+目的: 利用者の指示に従い、ローカル辞書・OPUS-MTで条件の同義語/英訳を準備し、英語の商品タイトルと詳細本文を日本語と同じ条件で採点する。タイトルおよび条件ごとにmax(日本語点,英語点)を採用する。否定条件の高い点は除外一致の強さであり、加点ではない。
+
+範囲: 条件語句の固定/出典、英語詳細取得/正規化、タイトル・条件の言語別内訳、candidate最終順位/履歴の方式識別、実入口、回帰と仕様。タイトル＞画像＞否定＞優先＞希望の順、画像計算、主表示の日本語と旧履歴を維持する。LLMによる商品評価、英語の別商品検索、commit/pushは対象外。
+
+方針: 同一ASINの既存英語詳細アクセスから本文/特徴も採り、追加ページは増やさない。欠損/切詰めを区別する。辞書は単一語義かローカル文脈評価で確定した候補だけを使い、未確定語義を混ぜない。OPUS-MTはラベル/条件原文/値/同義語の重複を除いて2句ずつ処理し、失敗を日本語の欠損にしない。語句bundleをplan digestに結び付け、検索語自体には追加しない。JP/EN各言語内の否定・数値/単位・構造化優先を維持した上で、言語間の高い点を採用する。商品仕様の確認状態とテキスト一致点は区別する。
+
+手順: 失敗する日英最大値/否定/欠損回帰→語句と英語本文契約→採点・復元・履歴→実入口とcache分離→全体offline/静的・実ローカル資材と必要な匿名Amazon限定確認→文書同期。実行条件を事前通知し、継続授権を適用する。診断は数値/件数/固定コードのみで、生検索文/商品本文/ASIN/credentialを保存しない。
+
+互換/受入: 旧fieldなしのJSONを旧点数のまま再出力し、新profile/digest/cache版へ分離する。片側の点数変更とmax結果、同じ条件の言語対応、除外、単位換算、否定、数値の誤対応、英語欠損、語義保留、翻訳失敗、保存後の改変拒否を確認する。旧閲覧serverと既存DBを保持し、rollbackは新field/新方式切替に限定する。品質全般・反復安定性の合格と単体成功を混同しない。
+
+実装: condition_terms.pyで条件IDに対応する辞書/ローカル翻訳語句を固定し、candidate_bilingual.pyで日英のタイトル点と条件点を独立計算して最大値を採る。複合句の名詞同義語は句の中で置換し、修飾語を残す。英語詳細の説明・特徴・色・素材は既存の英語ページ取得から保持し、追加ページは増やさない。candidate-confirmed-lexical-v5 / candidate-text-bilingual-v2、新しい要求flagとplaywright-v3 cacheへ分離した。画像完成結果、SQLite履歴、接続APIも数値内訳を保持する。実ブラウザ入口とcandidate CLIのContextualQueryExpanderから自動接続し、旧plan/旧履歴とlegacy CLIの旧採点式は維持した。
+
+TDD: 初回の `uv run --frozen --offline --no-sync pytest -m 'not live_api' tests/test_candidate_bilingual_scoring.py -q --tb=short` は5 failed（condition_terms未実装）。初回test SHA256=`36f73c12d21e03f0a4e6dcf5315b64e4e7e262f7b2ffd4f7871b5f8e3d9b1967`。実装後、同一保存先へ旧/新fixtureを二重作成するtest準備を修正した。全体の初回は3151 passed/4 failedで、4件は商品名の再照会禁止fixtureが独立した条件辞書照会も拒否したものだった。商品名の再照会禁止を保持し、条件照会と分けて検証した。英語の概数表現の追加testは1 failed/19 passedとなり、概数を確定値として採点しない修正後に20 passedとなった。
+
+offline: 全体 `uv run --frozen --offline --no-sync pytest -m 'not live_api' -q --tb=short` は3157 passed・22 skipped・30 deselected（75.67秒）。以後productionコードを変更せず、英語説明の切り詰めとAPI数値投影の3 caseを追加した。最終対象2 fileの実行は22 passed（2.23秒）。NodeのDOM/英語取得testは6 passed、接続画面のfixture browser testは3 passed（8.9秒）。新profileで日英最大値・除外・単位換算・構造化優先・翻訳失敗・旧JSON・改変拒否・画像50:50と優先順・SQLite/API内訳を確認した。Ruff/check/format、uv lock --check --offline、Markdownリンク、git diff --checkが成功した。attestedレビューではない。
+
+最終test SHA256: tests/test_candidate_bilingual_scoring.py=`a3ddc265edd9c6ce9f787a18ff36e06486a4d793c3d46a55f2be3f309be2c21b`、tests/test_product_phrase_flow.py=`477064b091e2e3267e9b4e7f897b9d98db392bc6c1b9a234ccadda7cbfc49b5d`、tests/test_browser_candidate.py=`f0a52c8daf4e5c26e86285258a700f1f47fc6eca8e48eff37081a40c4c4ada4f`、tests/playwright_english_titles.test.mjs=`6735167a09eac331af6310bb96b7141192c3c7861f4512ef32b879bc93b78fd7`。
+
+実検証: 合成の固定条件を使い、準備済み辞書・語義モデル・OPUS-MTと本物のPlaywrightProducts/CandidateSearchを接続した。検証scriptの検索語が商品名だけになるという想定を、通信前に3回のscope assertionで停止して修正した。既存の検索語生成は元の優先条件も含めるため、条件付き1検索と範囲を再通知して実行した。source parserも実入口と同じローカル資材を使用した。追加の同義語/英訳による検索はなく、匿名Amazon検索1ページ・日本語詳細24・英語詳細24、再試行0、許可5831・遮断4892資材要求で完了した。credentialなし、有料API呼出し0。生の検索/商品データはメモリとIPCに限定し、診断へ保存しなかった。
+
+結果: 商品24件の英語タイトル・詳細・説明・特徴が全件取得できた。2つの非価格条件で各1件の英語照合語を準備し、うち1条件は辞書語義1件を採用、もう1条件はローカル翻訳を使用した。価格は共通の観測値を比較するため翻訳対象外。この試験条件では追加の日本語同義語は0件で、同義語による点数変化はoffline回帰で確認した。タイトル2件・条件1件で英語点が高く、条件の内訳は日本語0→英語0.5→採用0.5だった。全24件のmax式と新profileのJSON復元を照合して一致した。準備3.639秒（資材初期化/商品句解析等を含む）、取得96.003秒、採点とstrict復元0.651秒、全体100.294秒。条件翻訳だけの追加時間や以前の別検索との速度差を示す計測ではない。
+
+証拠/境界: 数値のみの `/home/products/bonsai-test-logs/20260912-bilingual-scoring-04/summary.json`（SHA256=`99ac1b84e66ee2794e5088d3550dfcb959abf1c17f1735480b99112afa4e381b`）とprivate検証scriptに記録した。今回は実取得＋ローカル条件展開＋テキスト採点であり、Bonsai/画像生成/SigLIP/SQLite/React全体の新live E2Eではない。画像完成・保存・API・画面はofflineで検証した。8765/8767/8768の既存完了結果は保持し、更新コードは新規起動の検索へ適用する。任意入力の翻訳/語義品質、反復運用、画面の点数内訳表は未検証/未実装。commit/pushは行っていない。
+
+## EXEC-132: 条件の辞書・ローカル翻訳の単体速度検証
+
+状態: 完了（ローカル実資材の単体計測）。作成・更新: 2026-09-12。
+
+目的: 条件の同義語候補と英訳取得にかかる追加時間を、既存のSQLite辞書/OPUS-MT実資材で測る。条件1/5/10件を対象に、辞書の初期化と照会、現行の最大2句/別process翻訳、同一モデルを保持した場合の参考値を分ける。合成の公開試験入力を固定し、各方式3回以上、中央値/範囲と欠損件数を残す。
+
+対象: 単体benchmark testと計測補助、結果記録のみ。productionの条件展開・検索・順位・翻訳器の常駐化は実装しない。既存辞書は商品名用に名詞だけを取り込んでいるため、候補0件も正しい観測として計上し、語義選択/同義性や翻訳品質の合格に読み替えない。既存の翻訳器は呼出しごとに資材検証とモデル起動を行うことを確認済み。
+
+境界: 準備済み `/home/products/models/search-lexical-context-v2/lexicon.sqlite3`、`/home/products/models/opus-mt-ja-en-ct2-v1`、別Python `/home/products/model-envs/opus-mt-eval-02/bin/python` を使用する。network namespaceで外部/localhost通信を遮断し、credential不要・費用0。モデル取得、Bonsai、Amazon、Cloudflare、既存DB/キャッシュ変更は行わない。OSのfile cacheを強制削除せず、初回は新規processでの測定とする。
+
+手順: 現行API/制約確認→固定入力と明示opt-in付き単体test→実資材で計測→関連offline testと静的検査→中央値/初期化/欠損/未接続範囲を記録。通常pytestでは重いbenchmarkをskipし、偽のモデル時間を報告しない。診断は件数・成否・数値・資材/sourceのhashのみとし、ユーザー検索文・生成訳をartifactへ含めない。runtime変更やモデル不一致は停止し、取得で補わない。
+
+受入: 実辞書と実翻訳が1/5/10条件で完了し、失敗/欠損と時間の関係を区別して説明できる。モデルを保持する参考測定では実の同じ翻訳処理を使い、現行adapter出力との一致を検証する。変更は診断用file/文書だけに限定してrollback可能にする。commit/pushは対象外。
+
+
+実行: `unshare --net env -i PATH=/usr/local/bin:/usr/bin:/bin HOME=/root AMAZON_EXPLORER_LOCAL_TERMS_BENCHMARK=1 AMAZON_EXPLORER_TERMS_OUTPUT=/home/products/bonsai-test-logs/20260912-condition-terms-unit-01 /root/.local/bin/uv run --frozen --offline --no-sync pytest -m 'not live_api' tests/test_condition_terms_benchmark.py -q -s --tb=short` は2 passed/exit0（13.06秒）。通信をOSで遮断し、固定資材で実翻訳を行った。試験入力は軽量、丸い、取っ手、陶器、保温、丈夫、滑り止め、電子レンジ対応、食洗機対応、3000円以下の合成10句とその先頭1/5句。利用者データを取得・転用していない。
+
+環境: Intel Core i5-13600KF、CTranslate2 4.8.2/CPU2 threads/int8_float32、SentencePiece0.2.1、sacremoses0.1.1、numpy2.2.6、beam4/最大64 tokens。辞書manifestとSQLite hash、OPUS-MTの固定資材hashが一致した。初回は新規processで、OS file cacheは消去していない。計測中に関連offline test32件（0.87秒）も実行したため、完全な無負荷環境ではない。
+
+| 条件数 | 辞書照会中央値（20回） | 現行翻訳中央値（3回） | 現行翻訳の範囲 | モデル保持時中央値（3回） |
+|---|---:|---:|---:|---:|
+| 1 | 0.0213 ms | 0.3766秒 | 0.3679〜0.6007秒 | 0.0597秒 |
+| 5 | 0.1033 ms | 1.1021秒 | 1.0910〜1.1026秒 | 0.2192秒 |
+| 10 | 0.1832 ms | 1.9394秒 | 1.8941〜1.9885秒 | 0.3695秒 |
+
+初期化: 辞書のfile hash/読取専用接続0.0623秒、翻訳adapterの資材検証0.0960秒は表と別。現行の最初の1句要求は0.6007秒、以降も1/5/10条件につきworkerを1/3/5回起動しモデルを毎回読む。参考測定は同じproduction workerのtranslate関数へ実CTranslate2モデル1個を保持するfactoryを試験内だけで注入した。型を偽装した応答や翻訳cacheは使わず、全9回の出力が現行adapterと一致した。参考workerの最初の1句は0.2557秒（うちモデル構築0.0621秒）、native import0.0291秒は別で、表はその後の処理時間。tokenizer/正規化等は各batchで再生成する。
+
+候補と限界: 辞書hitは1/1、4/5、6/10、現行MTの非空英訳は1/1、5/5、10/10。辞書は全語義のforms/glosses取得だけで、文脈に合った同義語の確定はしていない。形容詞や複合条件の未収録は速度と別の課題。翻訳対象は各条件原文だけで、取得した全同義語を追加翻訳する費用/時間は含まない。句の抽出・文脈語義選択・否定や数値条件の同値性検証・商品採点・本番E2Eの時間/品質は未検証。常駐モデルは試験用で本番未実装。
+
+最終確認: 実資材測定の2 passedに加え、通常offlineは `uv run --frozen --offline --no-sync pytest -m 'not live_api' tests/test_condition_terms_benchmark.py tests/test_opus_mt.py tests/test_query_translation_pairs.py tests/test_product_translation.py tests/test_lexical_dictionary.py -q --tb=short` で32 passed・2 skipped（benchmark opt-inなし）。対象2 fileのRuff/check/format、Markdownリンク、git diff --checkが成功した。production変更がないため全体pytestとfrontend/E2Eは再実行していない。
+
+成果物: tools/condition_mt_benchmark.pyとtests/test_condition_terms_benchmark.pyを追加し、通常pytestでは明示envなしでskipする。production file・既存履歴・稼働serverは変更していない。これは性能観測なので未実装機能のRED/GREENやattestedレビューではない。test/helper hashはtests/test_condition_terms_benchmark.py=`3d09f6f21fbf2e28b9dfbb7ef6b4628b883e29379998079c3d6123e1b96b5d16`、tools/condition_mt_benchmark.py=`5d0c998074e5e7a798efc43b89b484d17f0e1efaa1624e45a35419f48fbde886`。各反復の数値、初期化、資材/source hash、候補件数を上記private directoryのdictionary/current-adapter/retained-model/summary.jsonとtimings.csvへ記録した。生の翻訳出力はIPC比較に限り、保存していない。commit/pushなし。
+
+## EXEC-131: 商品の日本語・英語タイトルを併せて取得
+
+状態: 完了（実商品取得とoffline保存/画面の検証）。作成・更新: 2026-09-12。
+
+目的: 利用者の確認に従い、検索語の英訳とは別に、同じ商品の日本語タイトルとAmazon英語表示のタイトルを取得・保存・表示する。
+
+範囲: Playwright要求/worker、正規化、candidate履歴、接続API/React、互換性とcache、関連仕様。日本語を主タイトルとして保持し、英語が取得不能・未翻訳なら未取得を明示する。商品名の機械翻訳やランキング計算変更、旧結果の上書き、commit/pushは対象外。
+
+現在: 日本語詳細のみを取得し、英語タイトルfieldはない。英語指定だけで英語本文になるか未確認。匿名の言語別contextで同一ASINを検証し、追加英語詳細は商品ごと1回、通常最大24件、ページ30秒、retryなし。CAPTCHAを回避せず、英語側challenge後は追加英語取得を停止して日本語結果を保持する。既存の全体期限なし/worker1本/通信allowlistを維持する。
+
+手順: 既存商品の限定live観測（英語2ページ、credentialなし・API課金なし）→失敗する回帰→取得・保存・表示→offline全体/画面/実取得の限定検証→仕様と結果を同期。各liveの範囲を事前通知し、ユーザーの追加承認不要という継続指示を適用する。診断には件数・成否だけを残し、タイトル・ASIN・生応答は複製しない。
+
+互換性: 新要求の英語取得fieldとcache namespaceで旧日本語cacheを分離する。旧fieldなしのJSON/履歴を同じ内容で読戻せるよう追加fieldは省略可能とし、既存SQLiteを移行・更新しない。既存閲覧server8765/8767/8768を保持する。rollbackは新fieldと取得切替に限定する。
+
+受入: 同一ASINの英語観測のみを保存し、欠損時も日本語商品を維持する。旧JSON互換、追加ページ/IPC上限、英語失敗、API/UI表示を回帰で確認する。実取得の成功数と取得不能数を分け、合成検証を本番成功と扱わない。
+
+
+結果: 同一ASINの英語詳細観測を主タイトルと別に保存する実装を追加した。要求flag/IPC上限、英語challenge後の停止、欠損保持、正規化の500文字上限と状態整合、SQLite読戻し、API投影、React併記、CLI normalized/scored保持とplaywright-v2 cacheを接続した。旧JSONは追加fieldを省略したまま再出力する。順位計算は主タイトルのままで変更していない。
+
+テスト: 実装前の `uv run --frozen --offline --no-sync pytest -m 'not live_api' tests/test_product_english_titles.py -q --tb=short` は2 failed/exit1（要求english_titles未実装・API titleEn未実装）。同じ2件を保持して7件へ拡張し、最終は7 passed/exit0。初回追加patch本文から計算したRED test SHA256=`820bbfadcbd09df5f6fd2006e6fb0a52f1d62759979c8fdd391f904482825a5e`。Nodeの初回 `node --test tests/playwright_english_titles.test.mjs` はmodule未実装で1 failed/exit1、実装後は言語/ASIN/未翻訳/失敗/英語challenge後の停止/重複排除を確認し、既存DOM testと合わせ4 passed/exit0。最終testのSHA256はtests/test_product_english_titles.py=`52dac287f0e839b335663b4006831c702fb19f5ec84f7e9ae9d25f19ab86e00a`、tests/playwright_english_titles.test.mjs=`eb9ff531847b0605e56dd89d9aeaeb689d3694e03bbc7921f48998fe54f9bc84`、frontend/src/connected-api.test.ts=`00bea85e68d5f2c3d57f1ad6431df8223950ee1a1a9a2caa7ca07fb5a0531639`、frontend/e2e/connected.spec.ts=`d9d35ff9525ed3cd789ddb06b9f4ebcb39ac8cca5ece18d8c705b047da458db8`。attestedレビューの証拠ではない。
+
+全体確認: `uv run --frozen --offline --no-sync pytest -m 'not live_api' -q --tb=short` は3141 passed・20 skipped・30 deselected（80.51秒）。frontendのnpm testは60 passed、buildとcheck成功。`npx --no-install playwright test --config playwright.connected.config.ts --workers=1 --forbid-only` は3 passedで、英語タイトルと日本語リンクの併記をfixture APIで確認した。uv lock --check --offline、Ruff/check/format、Markdownリンク、git diff --checkも成功した。画像生成・Bonsai・画像評価の実再実行は不要なため行っていない。
+
+実取得: 最初の匿名英語2ページ観測は2件とも同一ASIN/英語lang/英語タイトルを確認（許可242・遮断171要求）。続く実workerの新規検索では100.860秒、検索1ページ・日本語詳細24・英語詳細24ページ、許可5847・遮断5496要求。日本語商品24件、英語取得22件・未取得2件を返し、CLI正規化でも24件/英語22件を保持した。未取得2件の個別理由は保存していない。credentialなし、有料APIなし、再試行0。probe起動時のPython import path不備は通信前に修正した。実行の診断は `/home/products/bonsai-test-logs/20260912-playwright-bilingual-01/summary.json` の数値だけに限定し、生商品値を保存していない。
+
+残る境界: このliveは商品取得・CLI正規化の確認であり、新しい英語fieldを伴うBonsai/画像生成/順位/SQLite/React全体の実サービスE2Eではない。保存/API/画面は合成データで確認した。稼働中の8765/8767/8768の完了結果は更新せず、新規起動・検索から追加取得が適用される。未知商品の英語提供率、混在表記の自動言語判定、反復運用は保証しない。commit/pushは行っていない。
+
+## EXEC-130: 新優先度で実検索とスコアを再計算
+
+状態: 完了（初回停止後の再実行で固定入力1回を完走）。作成・更新: 2026-09-12。
+
+目的: 利用者の再検索指示に従い、既存の固定入力を実Bonsai/Cloudflare/Playwright/SigLIPへ再投入し、EXEC-129の優先順でスコアを計算・保存・表示する。以前の8765/8767の結果は保持し、新規8768でReact操作から実行する。
+
+範囲: Bonsai localhost18080最大2回、Cloudflare既存credentialで参考/比較画像2枚、匿名Amazon.co.jp検索最大3ページと詳細最大24件、商品画像最大24枚、SigLIP最大7 batches。retryなし、全体15分制限なし。Cloudflare画像生成分の課金があり、実請求額は未確定。ユーザーの継続指示と追加承認不要の指示に従う。
+
+検証: 本番の返り値を変更しない観測wrapperで、provider呼出し数・各順位の数値だけを記録する。タイトル/画像/否定/優先/希望の順序、50:50合成点、SQLite読戻し、新方式fieldとdigest、UI表示/再読込を照合する。診断へ検索文・商品名・本文・ASIN・URL・credentialを保存しない。private出力は `/home/products/bonsai-test-logs/20260912-playwright-browser-live-02/`、旧DB/結果は上書きしない。途中停止は原因を調べ、必要な修正/限定再実行を行う。固定入力1回の結果で未知順位品質を保証しない。commit/pushは対象外。
+
+途中経過: live-02は2026-09-12 12:58:07〜12:59:28 JST、81.352秒で画像2枚生成後の商品取得開始時にfailedとなり、スコア/履歴は未完了。ReactへのPOSTは5回、旧8767のstateは不変。取得例外は汎用エラーへ変換され、初回の具体的原因/HTTP件数は未収集。続く無課金の限定診断は同じ検索語で検索1ページ/詳細1ページ、許可145・遮断261要求、1商品取得に成功した。初回原因の特定や修正済みという証拠にはしない。
+
+再実行: 固定の取得失敗コードとprovider回数を記録する観測wrapperへ変更し、live-03を同じ8768・同じ上限で開始した。Cloudflare2枚の追加課金範囲を事前通知した。旧8767と失敗診断を保持し、新規private出力を `/home/products/bonsai-test-logs/20260912-playwright-browser-live-03/` とする。本番driver・ランキング・通信制約は変更していない。
+
+完了: live-03は2026-09-12 13:01:48〜13:04:55 JST、187.560秒で24商品の再取得・再採点・保存・画面表示まで完走した。実測Bonsai2 calls、Cloudflare2 calls、Playwright検索1ページ/詳細24ページ（許可2912・遮断2883要求）、商品画像24要求/24成功、SigLIP2 batches。初回live-02と合わせてCloudflare生成は4枚、別の限定診断は検索1/詳細1ページ。初回停止の原因と要求総数は未特定で、継続運用の安定性を保証しない。
+
+スコア確認: 全24件のT/I/E/R/P/合成点を数値だけで観測し、新優先keyの昇順と50:50合成式を別計算で照合して一致した。sort_profile_id=title-image-conditions-v1、image_weight=0.5、candidate-text-v1、candidate-siglip2-appearance-v1、取得元playwrightを確認。タイトル点0〜1、画像点0.512468496〜0.949153071、合成点0.337202674〜0.974576535。価格条件の一致22件、不一致2件は新順位17/18位に並び、旧条件優先で末尾に固定されていない。否定/希望の指定を増やす新入力試験ではない。
+
+保存/表示: SQLite1履歴・画像2枚、integrity_check=ok・foreign key違反0・画像hash一致。観測した点数とrepository読戻しが一致し、表示URLの日本語化後にAPI値と全24件一致。DOMの24タイトル/価格/外観評価と日本語リンク・ASIN対応を照合した。5操作を各1回送信し、再読込で追加POST0・state不変・24件再表示、pageerror0、旧8767のstate全体も不変。Bonsai/product workerは終了し、8768を結果閲覧用に保持した。初回失敗の履歴件数は0である。
+
+証拠: live-03へ数値だけのscore-summary.jsonと順位別scores.csv、ui-summary/history-summary/dom-readback/provider-metrics、観測/操作scriptを0700 directory内の0600 fileとして保存した。score-summary SHA256=`fef66f83571e74d37ade2c4d241e9f2e1b31ed6c673c068fc546de1fbcbbca95`、ui-summary=`099dd906a69a1b1ddaa56fdd44f363d225b425559fe3e1040d30e94c404ca3e3`、history-summary=`495feba9011b0f274353092c5284b9ced289a537eb28afd414edb63c1b931c28`。商品本文/タイトル等はアプリの既存SQLite保存に限り、診断CSV/JSONへ複製していない。
+
+残る境界: 商品サムネイルと点数内訳の画面表示は未接続で、今回の内訳はCSVで確認する。未知商品の順位品質・任意入力・反復運用・実請求額は未検証。製品コードは変更せず、Markdownリンク/diff検査で文書を確認した。新順位の固定入力live検証を完了し、commit/pushは行っていない。
+
+## EXEC-129: ランキングをタイトル・画像優先へ変更
+
+状態: 完了。作成・更新: 2026-09-12。
+
+目的: 利用者の明示指示に従い、新規candidateの最終順位をタイトル一致度、画像評価、否定条件、優先条件、希望条件の順に比較する。優先条件は既存required、希望条件はpreferred、否定条件はexcludedへ対応する。同点時だけ次の項目を比較し、最後は取得順とする。画像欠損は同じタイトル点の評価済み商品より後ろ、否定条件への一致度は低い方、他の一致度は高い方を先にする。
+
+対象: 最終順位key・結果/履歴の方式識別と回帰・仕様。採点値、画像モデル、取得処理、条件の観測判定を維持する。先行50:50の合成点は記録に残すが順位keyには使わない。条件不一致による最優先のグループ分けを解除するため、価格超過商品もタイトル/画像が高ければ上位になり得る。古い保存結果は旧順位のまま読み、新しいsort_profile_idとdigestで分離する。
+
+手順: 各優先段階の競合と欠損/同点の失敗test→最終sortとstrict復元/保存→関連・全体offline検証→文書同期。既存8767の完了結果と先行未コミット差分を保持する。外部検索/課金・既存履歴の再採点・commit/pushは行わない。rollbackは新方式fieldと新規sort切替に限定する。
+
+結果: 最終rankingのkeyを `(-T, -I, E, -R, -P, 取得順)` に変更し、画像欠損はI=-1として扱う。条件の状態・一致度・タイトル/画像の点数は従来の計算を維持する。新規result/historyにsort_profile_id=title-image-conditions-v1を記録し、profile digestへ結合した。新方式の復元時は順序とimage_weight=0.5を検証し、旧fieldなしの結果は旧keyで検証・再出力する。画像評価前の内部CandidateRankingは旧順序で保持し、最終keyへ条件のグループ分けを持ち込まない。
+
+検証: 新規優先度testは実装前に9 failed（未実装）、実装後は各項目の競合、画像欠損、全同点、旧sourceの除外観測を確認した。新方式→SQLite読戻し、旧50:50順位とのdigest/保存分離、方式だけ削除する改変の拒否を追加して計10件。関連3 file初回の旧期待は5 failed・35 passedで、新順序A/C/D/Bと、画像同点時B/D/A/Cへ期待を更新した。次の1 failed・40 passedは改変testが新先頭の画像満点に当たり、旧係数でも点数が同じだったため、係数差で点数が変わる行に対象を修正した。拒否assertを保持し、最終全体 `uv run --frozen --offline --no-sync pytest -m 'not live_api' -q --tb=short` は3134 passed・20 skipped・30 deselected（78.11秒）。Ruff/format（390 files）、Markdownリンク、git diff --checkも成功した。
+
+互換と証拠: 新規test SHA256=`59bc60d454c3aa059adeef60209cad3f4d50d38daedc1e93ac37f1c400f124e0`、更新equal-weight test=`c6e9967486dc009f00202ed52d98caf5f0d8139c2fc410dc27403d77306ee61c`、connected test=`2144e67e1c31232ef5a77ebb27c09921f4dd460a771d60585891c14468615cb4`。EXEC-127の実保存24件を新readerで読戻し、旧JSON全体一致・DB bytes不変を確認した。旧80:20/50:50のJSONと履歴を保持する。今回の実行はofflineと保存DB読取のみで、新順序の実サービス検索/未知順位品質は未検証。8767の既存表示は旧実行結果のままであり、新規起動後の検索から適用する。commit/pushは行っていない。
+
+## EXEC-128: タイトルと画像の採点比率を等しくする
+
+状態: 完了。作成・更新: 2026-09-12。
+
+目的: 利用者の指示に従い、新規candidateの合成点をタイトル50%・画像50%へ変更する。条件優先の順位、画像欠損時のタイトル点、モデルと商品取得は維持する。
+
+対象: candidateの合成・検証・履歴metadataと関連回帰/仕様。旧80:20の保存済みranking/SQLiteは旧点数で読込可能にし、新しい合成方式を明示fieldとdigestで分離する。既存8767の完了結果は実行当時の証拠として保持し、外部検索や課金処理を再実行しない。
+
+手順: 等重みの失敗回帰→合成/旧JSON互換→新旧履歴読戻しと条件優先/欠損回帰→offline全体と静的検査→文書同期。既存未コミット変更を保持し、rollbackは今回の合成fieldと既定変更に限定する。commit/pushは対象外。
+
+結果: 新規candidateの合成を `0.5*T+0.5*I` へ変更した。画像欠損時はT、条件優先のsort keyは従来通り。新しいrow/ranking/表示履歴にはimage_weight=0.5を記録し、親子の係数と合成点を検証する。旧fieldなしのJSONは80:20で検証し、再出力で新fieldを省略する。旧profile digestの値を保持し、新履歴digestへ係数を追加して分離した。SQLiteのtable変更や旧履歴更新はない。
+
+検証: 期待値を50:50に変えたconnected回帰は修正前2 failed・27 passedで旧80:20を検出し、修正後29 passed。新規2件は画像寄与による優先逆転、画像欠損、旧JSON/新旧SQLiteの読戻し、digest分離、親子係数/点数の改変拒否を検証した。関連5 fileは64 passed。最終全体 `uv run --frozen --offline --no-sync pytest -m 'not live_api' -q --tb=short` は3124 passed・20 skipped・30 deselected（78.33秒）。Ruff/format（389 files）、Markdownリンク、git diff --checkも成功。新規test SHA256=`fed2fc038a8983ec958526f7af08564adfafb28a21f5638fbf4fc73de180a539`、更新したconnected test SHA256=`9da8f780215e85ce0c33ced79917f06b11664573acf9a07ed404faf57305928a`。
+
+互換確認: EXEC-127の実履歴24件を新readerで読戻し、旧JSON全体一致・DB bytes不変を確認した。今回の検証は合成fixtureと保存済みDBのローカル読取で、実検索/生成/画像評価を再実行していない。新規起動後の検索から50:50を使い、8767の表示済み結果は80:20のまま保持する。未知商品の順位品質と新比率の実E2Eは未検証。
+
+## EXEC-127: Playwright移行後の接続本番テスト
+
+状態: 完了（固定入力1回の本番接続検証）。作成・更新: 2026-09-12。
+
+目的: 利用者の本番テスト指示に従い、既存の固定入力でReact操作から実Bonsai、Cloudflare参考/比較画像、Playwright検索/詳細、実商品画像とSigLIP 2、SQLite保存、画面表示/再読込まで検証する。移行時の追加承認不要の指示を適用する。
+
+範囲: localhost8767に新規serverを起動し、既存8765の完了結果を保持する。Bonsaiはlocalhost18080で最大2回、Cloudflareは既存credentialによる画像生成2枚、匿名Amazon.co.jp検索最大3ページ・詳細最大24件、商品画像最大24枚、SigLIP最大7 batches。retryなし、全体15分制限なし。画像生成分の課金があり実請求額は未確認。検索文・商品本文・ASIN・生応答・credentialは診断artifactへ保存しない。
+
+手順: Reactの各確認ボタンを実操作し、stateとDOMの件数・日本語タイトル・リンク・画像評価・保存を照合する。再読込で再送信しないこと、SQLite読戻しと取得元、旧結果保持を確認し、件数と成否だけを新規private directory `/home/products/bonsai-test-logs/20260912-playwright-browser-live-01/` へ記録する。途中停止は工程と原因を調べ、必要な修正と限定再実行を行う。成功を固定入力1回の接続検証に限定し、未知商品の順位品質や継続運用の合格とは扱わない。commit/pushは対象外。
+
+結果: 2026-09-12 12:29:12〜12:32:04 JST、172.081秒で完走した。Reactからstart/reference/comparison/final/searchの5 POSTを各1回送り、実Bonsaiで条件を整理、実Cloudflareで512×512画像2枚を生成、新Playwright providerで24商品を取得し、実商品画像とSigLIP 2の評価を全24件でavailableとして保存した。全24件のかなを含む日本語タイトル・円価格・日本語指定リンクとASIN対応を確認した。予算内22件はconfirmed、超過2件はcontradictedで末尾に並ぶ。価格超過商品を一覧から消す仕様ではない。
+
+保存/画面: SQLite履歴1件・参考画像2枚、integrity_check=ok・foreign key違反0、画像hash一致。repositoryでstrict読戻しし、retrieval_provider=playwright、ranking_profile=candidate-siglip2-appearance-v1、text_profile=candidate-text-v1を確認した。日本語URLへの表示変換後、APIと履歴の24件が一致。実DOMで24タイトル/価格/外観評価と22一致・2不一致を照合した。再読込後も24件でstate不変、追加POST0、pageerror0。元8765のstate全体も不変。終了後のBonsai/product workerは0で、新しい結果server8767だけは閲覧用に保持する。
+
+検査側の修正: 初回診断scriptは見出しをh3と仮定してDOM照合false、URLを表示変換前の履歴と直接比較してfalseになった。製品のh2と日本語URL変換を確認し、結果画面GETだけの追加検査でいずれも一致を確認した。実検索/課金処理は再実行していない。初回ui-summaryを保持し、最終判定をdom-readback/history-summaryへ分離した。
+
+証拠: 上記private directoryにui-summary.json、history-summary.json、dom-readback.jsonと実行scriptを0600で保存した。ui-summary SHA256=`954f0f2c93b01d1a61e3a62596aa33e1e3b2555d93757de1016c30256f7e9b50`、history-summary SHA256=`cf29eebe3a938dc80f9810ae4da46600d5ea63cc27a2cf167d85fe1ea7174835`。raw商品値はアプリの既存SQLiteに限り、診断には含めない。本番コードは変更していない。
+
+残る境界: 商品画像は取得/評価済みだが接続画面のサムネイルは未接続（DOM画像0）。任意入力、条件編集、モックとの全画面一致、永続履歴一覧、未知商品の順位品質、反復運用、複数検索ページの実遷移は未検証。この実行の個別HTTP要求数とモデル呼出し数は診断に露出しておらず、過去実行の回数を転用しない。実請求額は未確認。詳細と残作業は [WORKLOG253](WORKLOG.md#253-playwright移行後の本番接続フローを完走2026-09-12) と [NEXT-STEPS](../NEXT-STEPS.md) に同期する。
+
+## EXEC-126: 商品取得をPlaywrightへ移行
+
+状態: 完了。作成・更新: 2026-09-12。
+
+目的: 利用者の明示指示に従い、現行Outscraperの検索・商品詳細取得を日本語設定のローカルPlaywrightへ置換する。今回の実装・検証には追加承認を求めない。ブラウザ接続、CLI、再実行と既存診断入口で有料OutscraperやAPI keyを要求しない。
+
+対象: 取得driver、要求/応答の互換adapter、candidate接続、CLI/実行入口、cache分離、関連回帰と文書。Bonsai用途・SigLIP採点・Reactの通常確認操作・保存済み履歴を保持する。commit/pushや公開配置は対象外。
+
+現状: EXEC-124の単独試験で検索1ページ48カード/先頭24件と既存24商品詳細の取得に成功した。本番経路はOutscraperの要求・task/poll・API keyに依存している。既存未コミット差分とEXEC-125の採点変更を保持する。
+
+方針: Node側のPlaywright workerをPython adapterから起動し、匿名contextで検索と詳細を逐次取得する。通信はAmazon.co.jpと必要なAmazon資材に限定し、query/商品本文はstdin/stdoutのprocess間通信とアプリの既存保存だけで扱う。診断ログへraw値を出さない。新要求とcache namespace/digestを分離し、旧JSON/履歴は読込互換を維持する。CAPTCHA、別ASIN、未知redirect、取得失敗は固定エラーで終了し、有料providerへのfallbackはしない。期限はページ/処理別で設定し、検索全体15分制限を追加しない。配送先は匿名Amazonの既定で、旧postal codeの適用済みとは扱わない。
+
+手順: (1) driver・要求・互換境界の失敗test、(2) 検索/詳細抽出とprocess回収、(3) 実行入口とcache移行、(4) offline全体・静的検査、(5) 同じ固定入力の実検索/詳細/正規化の検証、必要な既存画像採点/履歴/画面との接続検証、(6) 文書と結果の同期。実検証は最初に1検索/最大24詳細/再試行0とし、修正が必要な再実行は原因と範囲を通知して行う。有料APIの新規呼出しは必要としない。
+
+rollback: 新規取得adapter/入口切替のみを戻せるよう既存の保存形式を破壊しない。旧cacheを新providerとして再利用せず、自動変換・削除しない。実行中の結果閲覧serverと元DBは保持する。受入条件は新規実行がPlaywrightに到達し、API key未設定で検索でき、日本語取得・件数上限・失敗境界・旧履歴互換の回帰を満たすこと。
+
+- [x] 要求/driverと互換性の回帰。
+- [x] 全実行入口とcache切替。
+- [x] offline/静的検査と実検索、文書同期。
+
+実装: 新規 `product_request.py`、`playwright_products.py`、`playwright_compat.py`、`playwright_client.py` とNode worker/DOM抽出器を追加した。candidate/browser/CLI/retryを切り替え、旧provisionalの既定transportもPlaywrightへ変更した。保存済みplanからの再実行は元planを検証して新要求へ移行し、履歴JSONへretrieval_providerを保存する。Outscraper API keyを実factoryから除き、frontendに既存のPlaywright1.63.0をruntime依存として明示した。npm lock更新はoffline・script/auditなしで実施し、新しい資材のdownloadは行っていない。
+
+回帰: 新規Python13件が成功。新providerの既定、旧plan読込、新旧digest/cache分離、single-useと応答binding、credential/proxy/DEBUG非継承、不正応答拒否、旧task adapter、正規化→条件/画像採点→SQLite、API key loader未呼出し、旧planから新規検索への移行を含む。新規要求/driverの初回は未実装等で5 failed。履歴取得元の追加は欠落を1 failedで確認してから修正した。合成fixtureの組立ミス（属性未確認、fixture戻り値/定数参照）はtest側で修正し、productionのRED証拠と混同しない。最終Python test SHA256=`3c40b1b2f8ed06d094253e1df10cd6110d2b9c5dd7a13d1ef5fb638c36c68fd1`。Nodeの全通信遮断DOM検証1件も成功し、test SHA256=`4dcd06a3ee657330c0d5736aaa4dd684129ddbe015c9dcac14dad51bf18b5b93`。途中でtest追加/整形があるため、最初のREDと最終hashが同一bytesであるとは扱わない。
+
+検証境界の修正: 初回全体testでは旧CLIのmock差し替え先が移行前のままで、実Node workerが1回起動して商品取得失敗となった。HTTP要求数は未収集で、これをoffline検証や成功に数えない。実行を中断し、CLI testの差し替え先とpytestの実worker拒否を追加した。その後の全体は3119 passed・20 skipped・30 deselected（78.79秒）。追加の履歴/入口/再実行回帰を含む最終全体結果は後記する。
+
+実検証: 本番用 `PlaywrightProducts` →Node検索/詳細取得→既存正規化を1回実行。53.549秒、検索1ページ・詳細24ページ、許可要求2909件・遮断2818件、24商品・rejection0件。全24件でかなを含む日本語タイトル、円価格、description、features、画像URL、ASINと一致する商品リンクを確認した。provider=playwrightで、実行前後のAPI state全体が一致。Bonsai/Cloudflare/Outscraper呼出し、画像本体取得、元履歴書換えは0回。番号/件数だけのsummaryと実行scriptを `/home/products/bonsai-test-logs/20260912-playwright-production/` に0700/0600で保存した。summary SHA256=`12e1986e58fd5942dbe63c90993a3268fa589193f2e20e89ebd1841dd262234a`。
+
+確認済みの静的/画面検証: Ruff、format（388 files）、offline uv lock、frontendの型/Prettier・単体59件・build、connectedブラウザ3件（8.7秒）、Markdownリンク・git diff --checkが成功。ブラウザ3件は合成API応答の操作回帰で、今回の実検索とは別の証拠である。未知カテゴリ、複数ページの実遷移、反復運用、Windowsでのbrowser process回収、今回取得した商品の実SigLIP再評価は未検証。現在表示中の完了結果serverは保持し、次の新規起動から新providerを使う。
+
+最終結果: `uv run --frozen --offline --no-sync pytest -m 'not live_api' -q --tb=short` はexit0、3122 passed・20 skipped・30 deselected（79.87秒）。新規13件、保存済みOutscraper要求からの新検索移行、履歴取得元の保存/読戻し、実入口でのcredential loader未呼出しを含む。`node --test tests/playwright_products.test.mjs` の全通信遮断DOM確認も最終整形後に再成功した。既存未コミット差分を維持し、commit/pushは行っていない。実行入口の置換と今回の検索/正規化の受入条件は達成し、継続運用等の検証境界は [NEXT-STEPS.md](../NEXT-STEPS.md) に引き継いだ。
+
+## EXEC-125: 説明文の条件一致とタイトル比較の拡張
+
+状態: 完了。作成・更新: 2026-09-12。
+
+目的: 利用者の5点の修正指示に従い、説明文の部分一致を条件スコアへ使い、構造化された観測値を優先する。元の商品表現を優先して同義語をタイトル採点へ加え、日本語・英語カテゴリ、取得できたブランド・型番を専用の比較項目へ分離する。
+
+対象: candidateの検索意図・テキスト採点・画像との合成・結果復元・履歴の契約、offline回帰、関連設計文書。既存のブラウザ接続作業の未コミット差分を保持する。LLMによる商品採点、追加provider通信、実モデル/ブラウザlive試験、commit/pushは対象外。
+
+方針: 条件の明示証拠と説明文の部分一致を区別する。構造化情報の不一致・情報競合を説明文で上書きせず、否定記載は正の一致点にしない。数値は単位と境界を比較する。タイトルは元語の一致に同義語の補助点を加え、カテゴリは商品表現から得た名詞、ブランド・型番は原文に明示された値だけを使う。採点profileとdigestを更新し、旧保存結果を再採点しない。既存画像20%・画像欠損時のテキスト100%と承認境界を保持する。
+
+手順: (1) 現行契約と変更前差分を確認、(2) 説明文・否定・構造化優先・同義語・専用fieldのRED、(3) 新profile実装と同一testのGREEN、(4) candidate/画像/JSON/SQLite回帰と全offline・Ruff・lock・Markdown・diff、(5) 設計・履歴と結果を同期する。RED/GREENのコマンド・exit・test SHA256を記録する。
+
+現状: 説明文はラベル付き数値抽出だけで、非数値全文一致は未実装。同義語は取得query候補だけで、タイトルは元語とoriginal_enのみ。比較関数にカテゴリ/ブランド/型番fieldはあるがcandidateから未設定。
+
+rollback: 今回追加するテキスト採点とprofile分岐だけを戻す。既存未コミット変更・保存済み履歴・モデル資材を変更しない。関連仕様は [BACKEND.md](BACKEND.md)、保存互換は [DB-SCHEMA.md](DB-SCHEMA.md)、検証規則は [DEVELOPMENT.md](DEVELOPMENT.md) を参照する。
+
+- [x] 現行実装と既存差分を確認。
+- [x] RED/GREENとprofile互換を実装・確認。
+- [x] 全体offlineと静的検証、文書同期。
+
+実装判断: `candidate_title.py` と `candidate_text.py` を追加し、candidateの新規planだけに接続した。旧のtyped証拠・確認状態を保持し、説明文coverageをrequired/preferredの順位比較へ反映する。除外は一致度Eを状態keyへ0.5Eだけ加え、confirmed/uncertain/contradictedの群を逆転せず、除外の記載がある商品を同群内で下げる。原語とカテゴリの欠けた一致分へ同義語最大一致の25%を補い、明示ブランド・型番は独立した完全表現一致とする。各タイトル項目は等重み。新text_profile_idと合成digestは画像結果とSQLiteへ引き継ぐ。
+
+RED/GREEN: `uv run --frozen --offline --no-sync pytest tests/test_candidate_text_scoring.py -q --tb=short` は初回exit1・9失敗（説明文/同義語の順位未反映、構造化数値と説明文の競合、専用field未実装）。実装後exit0・9成功。RED時SHA256は `90fe591b0b8e13b58bd525820b5b4fed0fd1a69ca6e2dcc5ede89fb0c722a2d5`、整形後の最終SHA256は `b206c064fd94ec9349a54d86cdb7a38e338972a7b7a214a36d81820f3894c5e6`。
+
+追加境界test: `tests/test_candidate_text_boundaries.py` 初回はexit1・5失敗/6成功（構造化不明・価格の本文救済、除外順位、英語カテゴリ、診断summaryのprofile）。同一内容の修正後は2 file合計20成功。初回SHA256は `ad72d847c52d04c31b6f1430c7f562f6723b32bb90dd491da0f1a3efa746850e`。さらに否定2表現と属性に隣接しない数値の混同をRED3件で確認し修正した。追加時SHA256は `2bcd8f4c3ea7200868b899dad54d1d5dba891fe18a69aba5bf80aa25c3b722ea`。assertを弱めず、整形後hashは `1088ce8518a9120b228f3e585e8d587a9dbc7e7b06194b8104e9a86770e6626d`。
+
+追加確認: 構造化数値が不明でも説明文の厳密値でconfirmedになる経路をRED1件で確認し、最優先fieldが存在すれば下位sourceを使わないよう修正した。採点profile/digestが新規planへ固定されることもRED1件で確認して接続した。最終境界test SHA256は `df547cc9b39dde0ae2e35b7effe88f3fd9a918f6dc1a46646611eaea3b9ec029`。最終2 fileはexit0・26成功（1.36秒）。新しいモデル推論や外部通信はない。
+
+関連回帰: candidate/ブラウザfixture/語句/画像/JSON/SQLiteの初回は489成功・7skip・1失敗（旧profile期待値）。全体初回は3100成功・20skip・30deselect・3失敗（同義語0点の旧期待2件、旧順位関数をpatchする画像テスト1件）。旧契約の期待を新profileと0.25補助点へ同期し、画像の優先関係のassertを維持してpatch対象を更新した。追加24件と語句・属性画像の計61件はexit0。これらは合成データ・ローカルSQLiteのoffline検証である。
+
+最終検証: `uv run --frozen --offline --no-sync pytest -m 'not live_api' -q --tb=short` はexit0、3109 passed・20 skipped・30 deselected（76.79秒）。新規2 fileは26件で、最終hashは上記のscoring/boundariesの値。`uv run --frozen --offline --no-sync ruff check .`、`ruff format --check .`（383 files）、`uv lock --check --offline`、`uv run --frozen --offline --no-sync python tools/check_markdown_links.py`、`git diff --check` もexit0。途中の3107/3108成功後に追加した構造化不明とplan profile固定の回帰を含む最終結果である。
+
+結果と境界: 5点を新規candidateへ実装し、旧保存結果の点数とJSON互換を保持した。説明文の部分一致は仕様の充足確認とは別の順位点であり、文脈の任意の否定・言い換え・英訳を網羅するものではない。カテゴリは商品語句のhead抽出、ブランド/型番はラベル付き明示入力の範囲。実モデル・実provider・実ブラウザ再検索・未知商品の順位品質は今回未検証で、[NEXT-STEPS.md](../NEXT-STEPS.md) の個別承認後の品質検証へ引き継ぐ。既存の未コミット差分を保持し、commit/pushは行っていない。
+
+## EXEC-124: フロントエンドと実検索の接続
+
+状態: 完了（固定入力の接続試験）。作成・更新: 2026-09-12。
+
+検索診断（2026-09-12、完了）: 利用者の「検索をPlaywrightで行えるか試せ」に従い、既存の選択済み検索語をlocalhost8765からメモリへ読み、日本語指定のAmazon.co.jp検索結果1ページへ匿名Chromiumでアクセスした。最大24件を抽出し、タイトル・価格・ASIN・リンク・画像URLの取得可否、広告表示、重複を検査した。検索navigation1回、retry0、30秒timeout、商品詳細/次ページへの遷移0回。必要なAmazon資材のGETだけを許可し、画像bytesを遮断した。有料API・認証情報・proxyを使わない。合成HTML確認後に実行し、raw検索語/商品値を保存せず件数と成否を記録した。終了時にbrowserを回収し、現在の結果/履歴を保持した。本番providerの置換やランキング変更は対象外。
+
+検索の実測: 2026-09-12 12:02:37〜12:02:39 JST、1.361秒、HTTP200。検索欄と最終URLの検索語が要求と一致し、日本語html langを確認。商品カード48件・一意ASIN48件・不正/重複ASIN0件。先頭24件すべてで、かなを含むタイトル、円価格、ASINに一致するAmazon商品リンク、Amazon画像URLを抽出した。先頭24件中、既存結果とのASIN一致は18件、指定selector/文言でのスポンサーラベル検出は0件（広告の網羅的識別を保証しない）。次ページリンクは存在したが開いていない。CAPTCHA/robot check/主document遮断0件、Amazon資材等を含む許可要求25件・遮断145件。API state全体は前後で一致した。検索語だけを渡し、価格上限/形状条件の適用、画像bytes、詳細ページとの連続処理、複数ページ、反復運用は今回未検証。
+
+検索診断証拠: `/home/products/bonsai-test-logs/20260912-playwright-search/` に実商品の値を含まないscriptと番号別metadata reportを0700/0600で保存。script SHA256=`bab964d78b670ff57161a9c5696625d5924661a0d907bbf3b8994dde73e870db`、report SHA256=`7573e2432fe5a7e3bae3dbd568a18d16a80e39498bbc774bafcb16142f1006c6`。`node /home/products/bonsai-test-logs/20260912-playwright-search/probe.mjs --fixture` は重複・不正ASIN・リンク不一致・主要field・CAPTCHAを確認してexit0。初回の合成タイトルは漢字のみで、かな検査の期待に合わずexit1だったため合成文言を修正した。実検索の通常起動は1回・exit0で完了。結果のread-back、Markdownリンク検査、git diff --checkが成功した。
+
+追加診断（2026-09-12、完了）: 利用者の明示指示により、表示済み24商品の詳細ページをPlaywrightだけで各1回、逐次アクセスした。localhost8765の既存結果を読み、日本語指定・匿名ChromiumでAmazon.co.jpと必要なAmazon静的資材へGETした。API key・有料proxy・他providerを使わず、画像はURL抽出だけとした。各navigationは30秒、タイトル待ちは最大5秒、retry 0、全体15分制限なし。タイトル・価格・説明・仕様・画像URLと同一ASINをメモリ内で検査し、診断は番号別の取得可否・HTTP status・件数だけ保存した。CAPTCHAを回避せず、終了時にbrowserを回収した。結果/履歴の書換え、検索providerの置換は対象外。
+
+Playwright実測: 2026-09-12 11:59:16〜12:00:11 JST、54.930秒、商品document24要求・retry 0。全24件がHTTP200で、かなを含むタイトル、日本語html lang、円価格、特徴箇条書き、商品説明、仕様領域、主画像URLを取得した。ページ内ASINと遷移後URLは全24件で元商品と一致、canonical linkのASIN一致は23件。canonicalの残り1件をURLだけで同一商品と判定せず、ページ内ASINで照合した。A+説明は22件。CAPTCHA/robot check/主document遮断/ASIN競合は0件。静的資材等を含む許可要求2899件、画像・font・media・対象外origin等の遮断2819件であり、外部HTTP要求総数を24件とは扱わない。実行前後のAPI state全体が一致した。
+
+診断証拠: `/home/products/bonsai-test-logs/20260912-playwright-24/` に機密値・商品名・ASIN・URL・本文を含まない実行scriptと番号別metadata reportを0700/0600で保存。script SHA256=`81195ad72572f61103100f43a232fc7181faf30104d82ff343d7551da03373f0`、report SHA256=`32bb2e4e36c7fde068a946c676a4dbd56dee068b6a58b8be70b31eae1f9cc6c6`。`node /tmp/amazon-playwright-24-probe/probe.mjs --fixture` で合成HTMLの主要field・ASIN不一致・CAPTCHAを確認してexit0、通常起動の実24件もexit0。本番コードは変更せず、画像bytesの取得、仕様値の完全な正規化、検索一覧の収集、反復運用の安定性、Outscraper全面置換は未検証。今回の24件について日本語タイトルを直接取得できることを確認した。
+
+目的: 利用者の接続・本番テスト指示に従い、Reactからcandidateの検索語確認、参考画像確認、比較画像確認、検索、保存済み結果表示まで操作する。最初の実検証は利用者指定の既存合成マグカップ入力。SEARCH-FLOW.mdとFRONTEND.mdの確認境界、SigLIP 2既定、Bonsai用途制限を維持する。
+
+開始時: Reactはモックのみ。production_api.pyは別のtyped-ranking経路のjob受付であり、candidateの事前確認controllerではない。既存のdocs/FRONTEND.mdとfrontend/src/screens.tsxの未コミット変更を保持した。
+
+手順: ローカルAPI/controllerと接続画面の契約を固定し、確認省略・重複実行・外部origin拒否のREDを作る。既存candidate/provider adapterを組み合わせ、単一process・検索worker1本で実装する。fixture結合、ブラウザ、全体offline、lint/format/lock/Markdown/diffを検証する。その後、接続先・送信内容・件数・credential種類・費用と保存範囲を示し、実実行の承認を受ける。
+
+境界: 既定モックを維持し、明示起動したローカル接続だけを許す。初回接続は画像あり・1検索の試験入口とし、未接続の画像なしや条件編集を実行可能と表示しない。ブラウザへcredential/承認token/raw応答を渡さず、検索入力やprovider本文を診断ログへ出さない。実結果は既存のprivate SQLite履歴に保存し、旧profile/cacheを再採点しない。外部サービス・credential・費用の承認前にはfixtureだけで検証する。公開配置・認証基盤・複数worker・commit/pushは対象外。
+
+受入条件: 各確認で停止し、再読込や重複POSTで生成/検索が増えない。失敗・期限切れは固定文で表示する。保存済み結果の表示でproviderを再実行しない。offline結果と実サービス結果を区別して記録する。rollbackは追加接続入口を停止して既定モックへ戻す。既存DB/資材/利用者差分を変更しない。
+
+実装: `browser_search.py` がrevisionとoperationを保持して単一workerへ投入する。`browser_candidate.py` は既存CandidateSearchFlowを検索語選択、先行画像、比較画像、最終確認、検索/属性確認、完了へ接続する。`tools/browser_search_runtime.py` は既存の有界provider transport・固定SigLIP/辞書/OPUS-MT・private SQLiteを構成する。`tools/browser_search_server.py` は同じoriginのビルド済みReactとAPIを127.0.0.1だけで配信する。Reactは明示した接続modeだけでAPIを使い、provider応答を通常表示へ変換する。読み直しで検索を再実行しない。
+
+RED: `uv run --frozen --offline --no-sync pytest tests/test_browser_search.py -q` とserver追加testは実装前にModuleNotFoundError・exit2。初回のfrontend単体testもadapter未実装でexit1。初期testは後でformatしたため同一byteのattested証拠とは扱わない。追加の必須表示field欠落testは、SHA-256 `a6434878781fe49ed9c71c7cbde29e862ff8f244e938f90192cba851b2564126`、`npm test -- --run src/connected-api.test.ts` で欠落を受理して1 failed/3 passed・exit1。同じtest bytesを保持した修正後は4 passed・exit0。
+
+検証: 新規Python境界16件成功。既存candidate/runnerを含む関連51件成功。全体offline初回は3056 passed・20 skipped・30 deselected（81.02秒）。frontend単体55件、型/Prettier/build、従来モックの全体ブラウザ35件（44.7秒）、接続ブラウザ1件（6.9秒）成功。接続testはローカルAPIを実起動し、POST受付後の応答消失、段階途中/完了後の再読込、同期二重クリック、外部要求なしを確認した。PythonのHTTP境界testはsocketを使わないHTTP message fixtureで、candidate結合は実SQLiteとprovider fixtureを使う。実provider/modelを呼んだ結果ではない。
+
+最終test hash: browser_search.py test=`f1a00d979b006834632fdb24890ee733e98c1050aaac1b05f096a01dd8c27f76`、server test=`f0ff826bad8f8cce51366ae643819287950a3ae872d276056b9214af02e00eb1`、candidate test=`9b2a710b93504091a628414d9009b35870daeb0f2457183541f3deb012089ef4`、runtime test=`91cf4ed1ecd2ab1aca13c360a1599a662f42cdcba0e1452dc1187d4c896877a0`、connected.spec.ts=`b45590fb15412e70c2fbaa9cfde35c7a23ee93f5b6a0e79d328cab0d964b30a0`。
+
+準備確認: モデル/辞書/各別Pythonの存在とCloudflare/Outscraper設定の検証成功だけを確認し、値は出力していない。credential付きHTTP、Bonsai起動、実モデル推論は0回。localhost8765のfixture画面を目視した。実入力/画像/商品データの診断artifactは作っていない。
+
+次の実行: ローカルBonsai最大2回、Cloudflare参考/比較画像各1枚、Outscraper原語1 query/最大24商品、最大50 polls、商品画像最大24件、SigLIP最大7 batches、自動retry0。900秒後の新規処理停止と各transport timeoutを維持する。Cloudflare/Outscraperの従量分は無料枠を見込まず約0.048633 USDで、回数上限からの見積り。実計上額/強制金額capではない。実行承認後も生成された画像の人間確認を省略しない。結果は新規private directoryのSQLiteへ保存し、provider生応答・例外本文・credentialのログを作らない。実サービス実行は未承認・未実施のためPlanは進行中。
+
+最終検証: runtime上限testと応答の必須field検証を追加した最終treeの全体offlineは3061 passed・20 skipped・30 deselected（76.24秒、exit0）。接続ブラウザは再検証1 passed（6.9秒）、共通画像caption追加後の既定モック画像確認フローも1 passed（17.3秒）。frontend単体55件、型/Prettier/build、Ruff/format/lock/Markdown/diffが成功。SigLIP資材manifestの照合とGiNZA等の任意依存の存在も確認した。実サービス・画像生成・検索は実行していない。
+
+実行承認（2026-09-12）: 利用者が直前提示の接続先・件数・credential利用・概算費用・保存範囲に「はい」と回答した。初回live出力先はrepository外の `/home/products/bonsai-test-logs/20260912-browser-live-01`。8765番を明示live modeで起動し、Reactの `条件を整理` から1回だけ開始した。生成画像ごとの人間確認を維持し、追加検索や自動再試行へ授権を広げない。
+
+初回liveの中間結果: Reactから実Bonsaiによる条件整理が完了し、原語の検索語を選択してCloudflare参考画像1枚の生成が成功した。再読込したReactでも512px画像の描画と `了承して生成` の確認待ちを検証した。比較画像生成・Outscraper検索・商品画像取得・SigLIP評価はまだ実行していない。提示用の正規化済み画像だけをprivate一時ファイルに取り出し、生HTTP応答やcredentialは記録していない。参考画像について利用者の確認を待つ。
+
+初回liveの停止と修正: 参考画像の確認に利用者が了承した時点で、planの期限2026-09-12 10:05:32 JSTを過ぎていた。10:21台の比較生成操作は、CandidateSearchFlow.approve_referenceの先頭の期限検査で拒否される状態だった。追加画像の要求前に停止することを同じ境界のoffline testで再現した。画面には期限と期限切れ状態がなく、押せるボタンから汎用失敗になっていた。live serverを停止し、8765/18080のlistener終了を確認した。比較画像・Outscraper検索・商品画像取得・SigLIP評価を成功扱いにしない。
+
+修正はserver側の期限切れ表示と受付停止。開始から900秒とplan期限の早い方を表示へ渡し、期限切れ後はsnapshot/submitでexpiredへ変える。古い画面からのPOSTもworkerへ渡さない。Reactは具体的な確認期限と期限切れを表示し、画像を閲覧用に保持して実行ボタンを除く。期限を延長したり旧承認を復活させる変更ではない。
+
+期限回帰のRED/GREEN: tests/test_browser_search.pyのSHA-256は `77465e7154c43dcf1823b5f77bf364dc19d0dab653960918a45430714c4dab01`。`uv run --frozen --offline --no-sync pytest tests/test_browser_search.py tests/test_browser_candidate.py -q` は実装前1 failed/10 passed（expired期待にreference、exit1）、同じtest bytesで実装後11 passed（exit0）。candidate testは `e586013a3ee1e436eb4d80639dbc0770ff22ab14540a918d2838092fb41cb0fc`。関連Python18件、frontend単体55件、型/Prettier/build、Ruff/format/lockが成功。接続ブラウザは期限切れでPOST0件・画像保持と既存の確認順序を含む2件成功（8.6秒）、test hashは `54a8502519fd3785ddb04358acbf0e5adfce01643be2b851fd94833e10cab205`。
+
+追加決定（2026-09-12）: 利用者の「全体の15分制限を削除しろ」に従い、上記の全体900秒とplan期限をブラウザ実行から撤廃する。前段の期限表示修正は経緯として残す。現在のserverは `plan_lifetime=None` とし、開始時のcontroller/transport deadlineを持たない。Bonsaiの全体停止timerを各推論900秒へ置き換え、条件整理の完了時にモデルを回収してから確認待ちへ入る。個別のHTTP/subprocess timeout、回数上限、明示了承を維持する。比較画像生成後のsingle-use承認15分は全体制限と区別し、消費後の検索/属性確認へ引き継がない。旧診断CLIの既定期限や既存履歴形式は変更しない。
+
+全体期限撤廃のRED: 検索語/参考画像の各確認待ちを1時間進めるtestは2 failed/10 passed。runtimeの推論別timeout testは2 failed/1 passed。修正後のcontroller/candidate/runtimeを含む関連82件は成功した。実時間を待つ代わりにclockを進めたoffline検証であり、実サービス再実行ではない。
+
+撤廃後の最終検証: 全体offlineは3065 passed・20 skipped・30 deselected（79.54秒、exit0）。検索語確認待ち1時間、参考画像確認待ち1時間、商品取得中1時間をclockで進めても実candidateからfixture商品/SQLite履歴まで完了した。controllerは画像承認を消費した後の期限を除去する。Bonsaiは各呼出に独立した900秒timerを持ち、3回目を拒否し、準備成功/失敗とも所有modelを回収することを注入fixtureで確認した。frontend単体55件、接続ブラウザ2件（8.5秒）、型/Prettier/build、Ruff/format/lock、Markdown/diffが成功。追加の実provider呼出は0回。
+
+撤廃後のtest SHA-256: browser_search=`c873ae71de3087ffc954c3d5d4a0de4d840df810ed2e35dc631ea10b9603ed1e`、browser_candidate=`15e0e0c43e8f0d02a7549c29632a1ebb8c3161010c1dddbd04637c502e47b12e`、browser_runtime=`b0034b22860d2f0ecef490ca043e059c7bf0b642aa1d1fa074fd79c048b45b04`。RED後に商品取得待ち・消費後の期限除去・process回収の検証を追加しているため、先行REDと同一bytesの証明には使わない。
+
+再実行条件: 元のlive sessionは終了した。再開には新規sessionが必要で、Bonsai・参考画像からやり直す場合は既存の合計回数承認を超えるため、追加実行の範囲を提示して明示承認を受ける。元画像/DB/ログを上書きせず、新規private directoryを使う。画像確認時にも画面の期限を示す。
+
+再実行承認（2026-09-12）: 全体15分制限の撤廃と既存入力/同条件/追加見積り約0.049 USDを提示後、利用者が「再実行せよ」と指示した。新規出力先 `/home/products/bonsai-test-logs/20260912-browser-live-02`、localhost8765のReactから `条件を整理` を1回送信し、HTTP202/workingを確認した。Bonsai最大2回、Cloudflare画像2枚、Outscraper1 task/最大24商品/50 polls、商品画像最大24件、SigLIP最大7 batches、retry0。既存Cloudflare/Outscraper認証情報を使い、画像ごとの確認を維持する。外部送信先はapi.cloudflare.com、api.outscraper.cloud/amazon-productsと同host結果URL、m.media-amazon.com。Bonsaiはlocalhost18080。全体期限はなく、個々の通信/推論timeoutを維持する。
+
+再実行の中間結果: live-02は実Bonsaiの条件整理が完了し、Reactで承認済み原語を選択して参考画像生成を1回送信した。Cloudflare参考画像1枚の生成後、APIはreference/revision2/画像1枚/期限なしを返した。React再読込でも512×512の画像表示と了承ボタン、期限表示なしを確認した。条件整理後のBonsai port18080非LISTENも確認済み。比較画像・Outscraper・商品画像取得・SigLIP・履歴完了はまだ実行していない。serverは確認待ちで保持し、今回の参考画像を利用者へ提示する。
+
+live-02の比較生成: 現在の条件に取っ手の有無を含めないことを確認した後、利用者が「では進んで下さい」と了承した。Reactの `了承して生成` を1回送信し、比較画像1枚が成功、計2枚となった。APIはcomparison/revision3と画像承認期限2026-09-12 10:53:46 JSTを返した。全体期限とは別のsingle-use画像承認期限である。2枚を利用者へ提示し、Reactで両画像512×512の表示と最終確認画面の検索ボタンを確認した。Outscraper開始前で停止し、今回の2枚と検索内容への最終確認を待つ。
+
+live-02完走（2026-09-12）: 比較画像と検索内容への利用者の「はい」を受け、画像承認の有効性を確認してReactの検索ボタンを1回押した。HTTP202/working/revision5、画像承認consume1件を確認。2026-09-12 10:42:17 JSTにcomplete/saved=true/24商品となり、画像承認consumeから128.457秒で検索・評価・保存まで完了した。未確定条件0件で、追加の属性選択を必要としなかった。
+
+実結果: APIとprivate SQLiteの24商品を内部で照合し、全件の取得価格が3000円以下、価格不明0件、必須判定confirmed24件、画像評価available24件、candidate-siglip2-appearance-v1を確認した。履歴1件・参照画像2枚、DB integrity_check=ok、保存JSON/画像のdigest一致、各画像512×512、directory0700/DB0600を確認。比較画像は人間確認用に生成して保存し、candidateの採点はSigLIP 2参考画像方式を使った。実課金額やOutscraperの実poll回数は収集していない。
+
+React検証: 結果を見る操作で24カードを描画し、各タイトル/価格/必須状態をAPIと照合した。最後のカードまで表示でき、再読込後も同じ24商品・revision5だった。この結果表示検証中のPOST0件、pageerror0件、外部originへのbrowser要求0件。商品リンクは開いていない。新規の検索や画像生成を追加していない。server8765は結果閲覧用に保持し、Bonsai18080は非LISTEN。
+
+到達範囲: 既存合成入力1件について、Reactから実Bonsai・実Cloudflare・実Outscraper・商品画像取得・固定SigLIP 2・SQLite保存・React結果表示まで完走した。未知入力の順位品質、任意入力/画像なし/条件編集/永続履歴一覧の実接続、公開配置、実課金明細の照合は検証範囲に含めない。今回の価格/必須判定の成功を丸み判定の未知精度保証へ一般化しない。先行のoffline/ブラウザ回帰結果は維持し、今回の実実行は別証拠として記録した。
+
+商品リンクの日本語化（2026-09-12）: 利用者の指摘どおり、live-02の24 URLすべてに英語path `/-/en/` が残っていた。共通 `productLink` で英語pathを除去し、`language=ja_JP` を設定する。ConnectedAppとProductNameで共用し、商品path/他queryと既存URL安全性検査を維持する。provider取得、履歴内容、検索を変更せず、配信中のfrontendを再buildした。単体REDは2 failed/9 passed（英語URLがそのまま出力）、同一test SHA-256 `aa4c0f097eda770be49c1b2fa5b734e80451021034f2da371561f61853c62719` のGREENを含むfrontend全体59件と型/Prettier/buildが成功。実結果を返すlocalhost画面の24リンクを再読込し、全件で日本語指定/同じASIN・origin/revision5を照合した。POST0件、Amazon商品ページは開いていない。接続ブラウザ3件（9.5秒）、Markdown/diffも成功した。リンク先のAmazon側描画を実測したとは扱わない。
+
+日本語リンクの再修正（2026-09-12）: 利用者がリンク先のAmazon本文が英語のままと報告した。前回は画面だけの変換で、APIの24 URLには英語localeが残り、画面URLにも英語の商品名slugが残っていた。API snapshotとfrontendで商品IDを標準 `/dp/ASIN` へ正規化し、`language=ja_JP` を指定する。元の履歴は変更しない。Python REDはAPI snapshotに英語URLが残って1 failed/11 passed、frontend REDはslugが残って1 failed/10 passed。修正後の関連Python16件、frontend59件と型/Prettier/buildが成功。
+
+実確認: 認証情報を使わない英語localeの新規Chromiumから、修正URLの商品ページ1件のdocumentだけを取得した。HTTP200/主document要求1回/html lang=ja-jp/商品タイトル要素あり/日本語のカート操作文言あり/英語のAdd to Cartなし/challengeなしを確認した。利用者自身のログインsession設定は変更していない。商品ページの本文やURLをartifactへ保存していない。
+
+配信反映: 完了済みのAPI状態を別processのメモリだけへ受け渡し、外部処理を持たない結果閲覧serverへ同じ8765番で切り替えた。24商品・2参照画像・revision5を保持し、検索/生成0回。実APIとDOMの24リンクすべてが同じASINの日本語指定標準URLとなり、両者の完全一致とPOST0件を確認した。以前のserverを単に再起動して結果を消したり、結果を作るために再検索したりしていない。
+
+日本語リンク再修正の最終検証: 全体offline3072 passed・20 skipped・30 deselected（77.84秒）、frontend59件、接続ブラウザ3件（8.8秒）、型/Prettier/build、Ruff/format/Markdown/diffが成功した。test hashはbrowser_search=`8c3744fbb21ebca2fa6642b1c4864d55b21c7e83c66b2d60379af2b0ce216c19`、product-name=`551442dee8378b7d3fa3e261654b935873466f6d10859d7b576e69e99dc4ef39`。PythonはRED後に不正URL拒否の検証とformatを追加しており、先行REDと同一byteの証明には使わない。
+
+日本語タイトル取得の試験（2026-09-12）: APIの日本語指定だけでは英語名が返っていたため、日本語指定のAmazon検索URLをOutscraperへ渡す要求schema 2.1を追加した。旧2.0とdigestを分離し、検索語確認と送信URLへの応答bindingを保つ。関連offline147件、全体offline3083件（20 skipped・30 deselected、75.99秒）、Ruff/format/Markdown/diffが成功。その後、利用者承認で1 task・5 poll・126.57秒、24件取得/正規化成功・reject 0件。ただし日本語文字を含むタイトルは2件で、目的は未達。前回の商品と同じASINは17件、そのうち日本語文字を含むタイトルは1件。ブラウザの既定からschema 2.1の有効化を外し、表示中結果と履歴は変更しない。正式な日本語タイトルを取得する方法は引き続き未解決。
+
 ## 次期フロントエンドの自前開発（2026-09-11）
 
 利用者の明示決定により、次期画面はこのリポジトリで自前開発する。外部納品待ちを解除し、[SEARCH-FLOW.md](../SEARCH-FLOW.md) と [FRONTEND.md](FRONTEND.md#11-次期フロントエンドの自前開発方針) を目標仕様にする。React + StyleXのオフライン画面を[EXEC-117](#exec-117-react-stylexのオフライン画面)で実装した。実バックエンド/API接続は後続作業である。過去の個別EXECにある委託・納品待ちの記述は当時の判断と検証範囲として残し、現在の着手制約には使わない。
@@ -148,7 +971,7 @@ Cloudflare画像、複数query、検索履歴などは承認済み仕様であ�
 | [TASK-008](#task-008-次期検索フロー-v2-の実装) | 暫定production profileは限定liveでOutscraper 1 task、24商品画像、CLIP 7 batches、ranking v5まで成功した。[EXEC-075](#exec-075-暫定本番検索のjob履歴接続と無quota方針) で最終承認済み検索からlocal job・schema 5.0履歴までをoffline接続し、本番quotaなしを明示した。品質の既知制約は維持し、API・UI・新serviceを含む実provider E2Eは未確認。次期フロントエンドの設計・実装・接続は自前開発の後続作業 | [EXEC-073](#exec-073-outscraper商品画像から暫定ranking-v5への統合境界)、[EXEC-074](#exec-074-人間確認で停止する商品画像ranking-live-runner)、[EXEC-075](#exec-075-暫定本番検索のjob履歴接続と無quota方針)、[SEARCH-FLOW.md](../SEARCH-FLOW.md) |
 | [TASK-005](#task-005-ランキング品質評価の確立) | [EXEC-065](#exec-065-未知の視覚条件に対する条件別counterfactual画像評価)で、minimum-positive v4の条件別scoreを、条件名や正解labelを使わず候補batchの観測中点へ揃える較正を実装した。development相対合格後、未知のデスクライト・クランプ条件1 caseを固定した結果、順位分離AUCは1.0だったが共通閾値0のaccuracyは0.875で絶対基準0.90へ未達だった。このcaseを再調整へ使わず、最低2 category・各2 caseの残りを別の未使用条件で評価する。画像rankingは無効のままである | [EXEC-064](#exec-064-実ブラウザ候補とgpt-image独立参照のclip診断)、[EXEC-065](#exec-065-未知の視覚条件に対する条件別counterfactual画像評価)、[TD-008](ISSUES.md#td-008-為替とランキング品質の評価) |
 
-[EXEC-003](old/plans/EXEC-003-SEARCH-FLOW-V2-BACKEND.md) は第1マイルストーンの完了記録であり、TASK-008全体の完了を意味しない。同Plan内のOpenAI商品検索案は後続判断で置換済みで、現在の商品検索providerはBonsaiである。
+[EXEC-003](WORKLOG.md#統合済み履歴plan-exec-003) は第1マイルストーンの完了記録であり、TASK-008全体の完了を意味しない。同Plan内のOpenAI商品検索案は後続判断で置換済みで、現在の商品検索providerはBonsaiである。
 
 #### 再開位置
 
@@ -182,6 +1005,10 @@ Cloudflare画像、複数query、検索履歴などは承認済み仕様であ�
 
 | 文書 | 状態 | 役割 |
 |---|---|---|
+| [EXEC-141](#exec-141-新しい条件分類を稼働接続画面へ反映) | 完了 | 最新画面/履歴の稼働接続と初回clarification後の再整理修正 |
+| [EXEC-140](#exec-140-希望条件と否定条件の自然文指定を拡張) | 完了 | 共通条件分類・指定なし除去・文章修正・希望予算と日英照合 |
+| [EXEC-126](#exec-126-商品取得をplaywrightへ移行) | 完了 | Playwright検索・詳細取得、互換adapterとcache移行 |
+| [EXEC-125](#exec-125-説明文の条件一致とタイトル比較の拡張) | 完了 | 説明文の部分一致・同義語・タイトル専用field |
 | [EXEC-123](#exec-123-角の輪郭濃度を補正) | 完了 | 添付画像で残る角の薄れを補正 |
 | [EXEC-122](#exec-122-完了段階の配色とスクロール維持) | 完了 | 完了した丸の青背景と更新時のスクロール維持 |
 | [EXEC-121](#exec-121-枠線の濃淡を画素で検証して改善) | 完了 | 100%表示の角の薄さを再現し、内側1px輪郭へ変更 |
@@ -200,9 +1027,9 @@ Cloudflare画像、複数query、検索履歴などは承認済み仕様であ�
 | [EXEC-101](#exec-101-candidate経路の画像承認clip履歴接続) | 完了 | candidateから段階的画像承認・CLIP・SQLite履歴まで接続 |
 | [EXEC-102](#exec-102-candidate経路の実画像付き実行) | 進行中 | 新candidate経路の実画像・商品取得・CLIP・履歴検証 |
 | [EXEC-103](#exec-103-辞書と文脈による検索語の自動選択) | 進行中 | ローカル辞書と構文/語義の選択、保留と候補確認 |
-| [EXEC-001](old/plans/EXEC-001-AI-REVIEW-TDD-HARNESS.md) | 完了 | TASK-006のbootstrapとTDDパイロットの履歴 |
+| [EXEC-001](WORKLOG.md#統合済み履歴plan-exec-001) | 完了 | TASK-006のbootstrapとTDDパイロットの履歴 |
 | [EXEC-002](#exec-002-attested-ai-review境界の実装) | 進行中 | TASK-007のattested境界と残るlive・運用境界 |
-| [EXEC-003](old/plans/EXEC-003-SEARCH-FLOW-V2-BACKEND.md) | 完了 | TASK-008第1マイルストーンのstrict domain基盤と置換済みprovider判断の履歴 |
+| [EXEC-003](WORKLOG.md#統合済み履歴plan-exec-003) | 完了 | TASK-008第1マイルストーンのstrict domain基盤と置換済みprovider判断の履歴 |
 | [EXEC-004](#exec-004-bonsai-v2-strict応答境界) | 完了 | TASK-008第2マイルストーンのBonsai envelope・content・strict intent境界 |
 | [EXEC-005](#exec-005-決定的検索tokenizer) | 完了 | TASK-008第3マイルストーンのSudachi・英数字tokenizerとquery planner統合 |
 | [EXEC-006](#exec-006-2段階承認と費用予約境界) | 完了 | TASK-008第4マイルストーンの2段階承認、single-use token、call・token・費用予約 |
@@ -489,7 +1316,7 @@ Cloudflare画像、複数query、検索履歴などは承認済み仕様であ�
 ### TASK-006: AI相互レビューとTDDハーネスの導入
 
 - 状態: 完了
-- 実行計画: [EXEC-001](old/plans/EXEC-001-AI-REVIEW-TDD-HARNESS.md)
+- 実行計画: [EXEC-001](WORKLOG.md#統合済み履歴plan-exec-001)
 - 根拠: [TD-009](ISSUES.md#td-009-ai変更の役割分離と証拠契約)
 - 成果: strict task/policy/gate/review/TDD/verdict契約、canonical single-commit policy、Git object再hash、standalone clone検査、deterministic judge、network guard、CI gate、TDDパイロットを導入した
 - 境界: EXEC-001はbootstrap時点の履歴であり、その後のattested runtime、snapshot、runner、broker、署名はTASK-007で実装した
@@ -551,6 +1378,10 @@ TASK-006自体では外部AI、Bonsai、Outscraper、Amazonの実通信、課金
 
 ### TASK-008: 次期検索フロー v2 の実装
 
+2026-09-12の稼働接続は [EXEC-141](#exec-141-新しい条件分類を稼働接続画面へ反映)、条件表現拡張は [EXEC-140](#exec-140-希望条件と否定条件の自然文指定を拡張) に記録する。希望/否定/指定なし/優先の共通解析と文章修正の接続範囲であり、画像なし経路と未知入力の本番品質合格は含まない。
+
+- 現行テキスト採点: [EXEC-125](#exec-125-説明文の条件一致とタイトル比較の拡張) で説明文部分一致、同義語補助、日英カテゴリ・明示ブランド/型番を追加。
+
 - 枠線の再改善: [EXEC-121](#exec-121-枠線の濃淡を画素で検証して改善) で100%表示の角の画素濃度を検証し、内側1px輪郭へ変更した。
 - 枠の描画改善: [EXEC-120](#exec-120-細い外枠の描画改善) で角丸方式と行高を調整した。
 - 表示調整: [EXEC-119](#exec-119-トグルの動き角丸履歴操作の調整) で滑らかな切替・角丸、履歴一覧の小型ボタン、危険外枠色を更新した。
@@ -588,7 +1419,7 @@ TASK-006自体では外部AI、Bonsai、Outscraper、Amazonの実通信、課金
 - 完了した第4マイルストーン: [EXEC-006](#exec-006-2段階承認と費用予約境界)
 - 完了した第3マイルストーン: [EXEC-005](#exec-005-決定的検索tokenizer)
 - 完了した第2マイルストーン: [EXEC-004](#exec-004-bonsai-v2-strict応答境界)
-- 第1マイルストーン証拠: [EXEC-003](old/plans/EXEC-003-SEARCH-FLOW-V2-BACKEND.md)。同Planに残るOpenAI provider案は履歴であり、現行provider判断には [DEVELOPMENT.mdの商品検索 provider](DEVELOPMENT.md#商品検索-provider) と [BACKEND.md](BACKEND.md#13-次期検索バックエンド-v2基盤を一部実装) を使う
+- 第1マイルストーン証拠: [EXEC-003](WORKLOG.md#統合済み履歴plan-exec-003)。同Planに残るOpenAI provider案は履歴であり、現行provider判断には [DEVELOPMENT.mdの商品検索 provider](DEVELOPMENT.md#商品検索-provider) と [BACKEND.md](BACKEND.md#13-次期検索バックエンド-v2基盤を一部実装) を使う
 - 関連: [TASK-001](#task-001-検索処理のジョブ化)、[TASK-003](#task-003-多利用者向けセキュリティ境界の構築)、[TASK-005](#task-005-ランキング品質評価の確立)
 - 現行: Bonsaiで属性を抽出し、1クエリのOutscraper検索、決定的正規化、テキスト・価格採点をStreamlit要求内で同期実行する
 - 目標: Bonsai JSON textのfail-closed parseとstrict intent、決定的query plan、本番Cloudflareで先行1枚の明示確認後に4方向と条件別偽画像を生成するフロー、商品検索前の最終確認、複数query Outscraper、未知商品属性を推測で埋めない決定的正規化、説明可能なtext/price/image ranking、モーダル系UI境界、検索履歴を実装する。gpt-imageは画像評価テストだけに使う
@@ -750,7 +1581,7 @@ live試験の送信内容、費用提示、個別承認、実施順序は [DEVEL
 - 作成日: 2026-09-02
 - 最終更新日: 2026-09-02
 - 関連仕様: [次期検索バックエンド v2](BACKEND.md#13-次期検索バックエンド-v2基盤を一部実装)
-- 前提Plan: [EXEC-003](old/plans/EXEC-003-SEARCH-FLOW-V2-BACKEND.md)
+- 前提Plan: [EXEC-003](WORKLOG.md#統合済み履歴plan-exec-003)
 - 関連要件: [REQUIREMENTS.md](REQUIREMENTS.md)
 - 関連設計: [BACKEND.md](BACKEND.md)、[SECURITY.md](SECURITY.md)
 
@@ -847,7 +1678,7 @@ EXEC-004完了時点では現行pipeline、v2 request builder、system prompt、
 - 作成日: 2026-09-02
 - 最終更新日: 2026-09-02
 - 関連仕様: [次期検索バックエンド v2](BACKEND.md#13-次期検索バックエンド-v2基盤を一部実装)、[テキスト処理とランキング](BACKEND.md#8-テキスト処理とランキング)
-- 前提Plan: [EXEC-003](old/plans/EXEC-003-SEARCH-FLOW-V2-BACKEND.md)、[EXEC-004](#exec-004-bonsai-v2-strict応答境界)
+- 前提Plan: [EXEC-003](WORKLOG.md#統合済み履歴plan-exec-003)、[EXEC-004](#exec-004-bonsai-v2-strict応答境界)
 - 関連要件: [FR-402](REQUIREMENTS.md#35-次期検索フロー-v2)
 - 関連設計: [BACKEND.md](BACKEND.md#13-次期検索バックエンド-v2基盤を一部実装)
 
@@ -947,7 +1778,7 @@ TDD RED、focused 23件、関連75件、offline全体791件、Ruff、lock、文�
 - 作成日: 2026-09-02
 - 最終更新日: 2026-09-02
 - 関連仕様: [利用者フロー](../SEARCH-FLOW.md#ui操作フロー)、[次期検索バックエンド v2](BACKEND.md#13-次期検索バックエンド-v2基盤を一部実装)、[セキュリティ境界](SECURITY.md#13-bonsai正本の商品検索フローの安全境界基盤を一部実装)
-- 前提Plan: [EXEC-003](old/plans/EXEC-003-SEARCH-FLOW-V2-BACKEND.md)、[EXEC-004](#exec-004-bonsai-v2-strict応答境界)、[EXEC-005](#exec-005-決定的検索tokenizer)
+- 前提Plan: [EXEC-003](WORKLOG.md#統合済み履歴plan-exec-003)、[EXEC-004](#exec-004-bonsai-v2-strict応答境界)、[EXEC-005](#exec-005-決定的検索tokenizer)
 - 関連要件: [FR-403・FR-406](REQUIREMENTS.md#35-次期検索フロー-v2)、[DATA-011](REQUIREMENTS.md#5-データキャッシュ要件)、[SEC-011](REQUIREMENTS.md#6-セキュリティ要件)、[NFR-205・NFR-206](REQUIREMENTS.md#83-性能可用性)
 - 関連設計: [BACKEND.md](BACKEND.md#13-次期検索バックエンド-v2基盤を一部実装)、[SECURITY.md](SECURITY.md#13-bonsai正本の商品検索フローの安全境界基盤を一部実装)
 

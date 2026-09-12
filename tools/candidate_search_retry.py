@@ -8,7 +8,6 @@ import json
 import os
 from pathlib import Path
 import re
-import signal
 import sqlite3
 import stat
 import time
@@ -217,6 +216,7 @@ def run_search_retry(config, services, bundle, *, human_confirmed):
             human_confirmed=True,
             normalization_profile=policy.normalization_profile,
             now=services.now(),
+            use_playwright=services.product_transport_factory is not None,
         )
         shared._json_file(config.output_dir, "plan.json", candidate.plan.model_dump(mode="json"))
         shared._json_file(
@@ -234,7 +234,9 @@ def run_search_retry(config, services, bundle, *, human_confirmed):
             owner_id=live.OWNER,
             plan_sha256=candidate.plan_sha256,
             now=services.now(),
-            transport=_DiagnosedProducts(
+            transport=services.product_transport_factory(candidate.plan.request)
+            if services.product_transport_factory
+            else _DiagnosedProducts(
                 candidate.plan.request, services.load_outscraper_api_key, products, services.sleep
             ),
         )
@@ -298,14 +300,10 @@ def main():
     args = parser.parse_args()
     if not args.run_live_api:
         parser.error("Separate human authorization and live opt-in are required")
-    from src.config import OutscraperLiveSettings
     from src.search_v2.image_proxy_service import ImageProxyService
     from src.search_v2.image_similarity import verify_clip_asset_directory
     from src.search_v2.image_similarity_process import ProcessIsolatedClipImageEncoder
-    from src.search_v2.outscraper_http import RequestsOutscraperTransport
-
-    def expired(_signum, _frame):
-        raise TimeoutError("Search retry deadline exceeded")
+    from src.search_v2.playwright_products import PlaywrightProducts
 
     try:
         bundle = load_saved_run(args.source_dir)
@@ -316,16 +314,15 @@ def main():
             bonsai_session=None,
             load_cloudflare=None,
             cloudflare_transport=None,
-            load_outscraper_api_key=lambda: OutscraperLiveSettings().outscraper_api_key,
-            outscraper_transport=RequestsOutscraperTransport(),
+            load_outscraper_api_key=None,
+            outscraper_transport=None,
+            product_transport_factory=PlaywrightProducts,
             proxy_service=ImageProxyService(allowed_hosts=("m.media-amazon.com",)),
             encoder=ProcessIsolatedClipImageEncoder(),
             now=lambda: datetime.now(timezone.utc),
             sleep=time.sleep,
             confirm=None,
         )
-        signal.signal(signal.SIGALRM, expired)
-        signal.alarm(900)
         result = run_search_retry(
             shared.BackendE2EConfig(args.output_dir, args.asset_root),
             services,
@@ -346,8 +343,6 @@ def main():
             flush=True,
         )
         return 1
-    finally:
-        signal.alarm(0)
 
 
 if __name__ == "__main__":

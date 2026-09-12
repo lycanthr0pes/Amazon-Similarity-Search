@@ -28,7 +28,9 @@ def test_only_visual_candidates_are_offered(source, expected):
     payload = json.loads(request["messages"][1]["content"])
     schema = request["response_format"]["schema"]["properties"]["conditions"]
     assert payload["clauses"] == expected
-    assert schema["items"]["properties"]["source_phrase"]["enum"] == expected
+    assert [
+        variant["properties"]["source_phrase"]["enum"][0] for variant in schema["items"]["anyOf"]
+    ] == expected
     assert schema["maxItems"] == min(3, len(expected))
     assert payload["source"] == source
 

@@ -1,5 +1,44 @@
 # セキュリティ
 
+## UI共通操作の実行境界（EXEC-145）
+
+新規検索/修正/作り直し/保存再試行/中止は既存同一originのcommand APIでrevisionとoperationを照合する。取得中の中止要求は記録後に次の処理境界で停止し、通信を即時取消できたとは返さない。比較/保存開始後の中止・実行中のresetを拒否する。resetで旧操作のrevisionを再利用しない。新しい準備先のsearch-Nはsymlinkを拒否し、private作業先と共通履歴DBだけを使う。モックとの表示統一を理由とする外部実行やcredential取得は行わない。
+
+
+## 明示許可されたprivate履歴内容（EXEC-144）
+
+元入力・条件名・商品画像の永続保存という利用者指示に基づき、privateアプリ履歴に限り元入力全文と分類/名称を保存する。診断ログ・文書・review packet・artifact・commitへの原文/生providerデータ/credential出力は禁止を維持する。画像は既存proxyで取得済みの縮小RGB PNGのみで、外部URLの再取得はしない。全文/条件/商品PNGは保存結果の整合性digest、owner制約、30日期限、既存確認付き削除/期限削除に含める。履歴HTTPは同一origin/no-store、旧履歴の未保存値を外部取得や推測で補わない。
+
+## 履歴削除の接続境界（EXEC-143）
+
+履歴のGETはread-only、削除POSTは既存のloopback/Host/Origin/固定browser header/JSON上限検証を共有する。個別削除にはlocatorとconfirmed=trueを要求し、ownerはlocal-user固定、DB pathと期限判定時刻はserverが所有する。期限削除はserverの60秒周期と失敗時の明示再試行だけから呼び、path/owner/cutoffのclient指定を拒否する。既存schema5に限るmode=rwで未作成DB/旧schemaを作成・移行せず、別ownerや未指定DBへ書かない。履歴と専有画像の削除はtransaction/cascadeで一体化し、失敗の生例外や利用者本文を応答/ログへ出さない。外部通信/credential/providerを用いず、検索controllerの実行状態とは分離する。
+
+EXEC-138の永続履歴APIは起動時に指定されたprivate SQLiteだけをmode=roで開く。HTTPはopaque locatorのみ、ownerはlocal-user固定。旧結果のdigest/期限/権限検証を維持し、検索providerへの再送、保存データの補完、DB移行/削除は行わない。Host/同一origin/no-store/CSPと固定エラーを維持し、DBパス/生例外/履歴本文をログへ出さない。`--history-only` は検索worker/runtimeを作らず検索POSTを拒否する。
+
+EXEC-134のOPUS-MT設定時は、商品名提案のBonsai要求・応答でenglish=nullを強制する。辞書で確定できない提案の英訳は準備済みローカル翻訳へ渡し、失敗時もBonsai英訳に戻さない。名称と訳文を新たに外部へ送信せず、既存の候補確認・検索の送信境界を維持する。旧履歴と翻訳器未設定の互換経路は変更しない。
+
+EXEC-133の条件展開は準備済みのローカル辞書・語義モデル・OPUS-MTだけを使う。条件を外部翻訳APIや商品検索語へ送らず、商品評価LLMを追加しない。英語詳細も同一ASIN/言語検査と既存の通信上限を適用する。条件の原文・展開語・日英の商品本文はアプリのplan/結果保存とIPCに限定し、診断へ出さない。診断は条件ID、数値点、件数、固定エラーコード、資材hashに限る。詳細は [BACKEND](BACKEND.md#条件の同義語英訳と日英最大値採点exec-133) を参照。
+
+## 英語タイトル追加取得の境界（EXEC-131）
+
+英語詳細は匿名en-US contextで、既存の日本語contextのcookieや利用者profileを共有しない。取得対象は日本語検索で選択した同じASINに限定する。既存host/GET・HEAD/ページ要求上限を適用し、未知redirectやASIN不一致の本文を採用しない。英語ページのinstructionには従わず、CAPTCHA検出後は追加英語取得を停止する。英語取得失敗を日本語商品全体の失敗にせず、未取得fieldで表す。日本語必須取得の停止規則は維持する。
+
+追加ページ上限・工程期限は [BACKEND](BACKEND.md#商品の日本語英語タイトルexec-131) に定義する。英語タイトルも商品本文と同じ利用者データとして扱い、アプリ保存/IPC以外の診断ログやartifactへ含めない。新しいcredentialや有料APIは使用しない。
+
+## Playwrightの商品取得（EXEC-126）
+
+商品検索は匿名Chromiumの一時contextで行い、利用者のcookie/profile、API key、環境proxy、DEBUG/PWDEBUGを継承しない。Pythonからworkerへの入力はstdin、商品応答はbounded stdoutのIPCだけで渡す。stderr、生ページ、検索語、商品本文、ASIN/URLを診断ログへ複製しない。Node/Chromiumを事前準備し、検索時のdownloadを行わない。許可host・操作・ページ/応答上限を [BACKEND.md](BACKEND.md#playwrightの商品検索詳細取得exec-126) に固定する。
+
+通常pytestはPython socketだけでなくPlaywright実worker起動も拒否し、明示的な注入fixtureで取得器を検証する。Node側の抽出testは全networkをabortした合成HTMLを使う。ページのinstructionを実行しない。CAPTCHAやアクセス制限を迂回せず、固定エラーで終了する。失敗後の別providerへのfallbackはない。
+
+## ブラウザ接続試験の境界（EXEC-124）
+
+接続試験serverは `127.0.0.1` のみへbindし、Hostも同じIP/portだけを受け付ける。proxy headerは利用しない。変更要求は同一Origin・JSON Content-Type・独自headerを要求し、cross-site fetch・未知段階・古いrevision・重複field・過大bodyを拒否する。CORSを許可しない。全応答をno-storeとし、CSPで画面からの外部fetch・外部画像・frameを制限する。credential、providerの承認token、raw応答を画面へ渡さない。
+
+EXEC-137ではeditableなcontrollerのstart/reviseだけsourceを受け付ける。2000文字・UTF-8・制御文字と8192 bytesのHTTP上限を適用し、初回を含め3準備・画像生成前の修正だけ許可する。既存operationを削除せず古い要求の重複排除を保持する。入力と修正内容はメモリ/アプリ保存以外へ記録しない。サムネイルは既存proxyの検証済みRGBから192px以内のPNGとして作り、任意URL fetch APIは追加しない。ブラウザの画像取得は同一origin/data PNGに限定する。
+
+外部実行は既定無効。明示起動した1検索の範囲でも検索語・参考画像・比較画像・検索を人間が確認する。ブラウザの二重クリックや再読込は外部実行を増やさない。同じOS利用者の悪意あるprocessに対する認証機構や公開サービスではない。private SQLite以外に利用者入力・生providerデータを診断ログへ保存しない。起動/呼出し回数制限と保存範囲は [BACKEND.md](BACKEND.md#ブラウザからの接続試験exec-124) を参照する。
+
 ## 1. 対象範囲
 
 この文書は、現行のローカル実行向け amazon-explorer に実装されている保護と、運用上必要な制約を整理する。アプリの実装根拠は `src/config.py`、`src/clients/`、`src/repositories/cache_repository.py`、`frontend/src/`、次期domain境界は `src/search_v2/`、AIレビュー用の境界は `tools/ai_review/` と `tests/conftest.py` を正とする。現行Bonsai経路と次期検索の内部境界は [BACKEND.md](BACKEND.md)、利用者向けの確認順序は [SEARCH-FLOW.md](../SEARCH-FLOW.md) を参照する。

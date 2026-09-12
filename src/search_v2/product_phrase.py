@@ -131,7 +131,9 @@ def prepare_product_phrase(source, structure, lexicon, scorer, resolver=None, tr
     resolver_hash = resolver.sha256 if resolver is not None else None
     request_hash = _hash(
         {
-            "profile": "product-phrase-direct-v2",
+            "profile": "product-phrase-local-mt-v3"
+            if translator is not None
+            else "product-phrase-direct-v2",
             "source": source,
             "structure": asdict(structure),
             "dictionary": lexicon.sha256,
@@ -179,7 +181,9 @@ def prepare_product_phrase(source, structure, lexicon, scorer, resolver=None, tr
                 senses[i]
                 for i in sorted(range(len(scores)), key=scores.__getitem__, reverse=True)[:3]
             )
-            if hasattr(resolver, "suggest"):
+            if translator is not None and hasattr(resolver, "suggest_name"):
+                resolution = resolver.suggest_name(source, product, shortlist)
+            elif hasattr(resolver, "suggest"):
                 resolution = resolver.suggest(source, product, shortlist)
             elif shortlist:
                 resolution = resolver.select(source, product, shortlist)
@@ -200,6 +204,8 @@ def prepare_product_phrase(source, structure, lexicon, scorer, resolver=None, tr
                         original_en=None, synonyms=(TranslatedTerm(ja=name, en=resolution.english),)
                     )
                     method = "bonsai_proposal"
+                    if translator is not None:
+                        terms, translation = _translate_product(translator, product, name)
         if selected is not None:
             name = _product_name(selected, product)
             terms = terms_from_sense(product, selected)

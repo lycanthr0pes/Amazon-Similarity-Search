@@ -291,7 +291,7 @@ def test_execution_posts_exact_four_request_sequence_and_records_image_review() 
         call["url"]
         == (
             "https://api.cloudflare.com/client/v4/accounts/"
-            f"{ACCOUNT_ID}/ai/run/@cf/black-forest-labs/flux-2-klein-4b"
+            f"{ACCOUNT_ID}/ai/run/@cf/black-forest-labs/flux-2-klein-9b"
         )
         for call in transport.calls
     )
@@ -1034,7 +1034,7 @@ def test_request_object_tampering_is_revalidated_before_transport() -> None:
 def test_endpoint_accepts_only_lowercase_32_hex_account_id() -> None:
     m = module()
     assert m.cloudflare_endpoint(ACCOUNT_ID).endswith(
-        f"/accounts/{ACCOUNT_ID}/ai/run/@cf/black-forest-labs/flux-2-klein-4b"
+        f"/accounts/{ACCOUNT_ID}/ai/run/@cf/black-forest-labs/flux-2-klein-9b"
     )
     for invalid in ("", "0" * 31, "0" * 33, "G" * 32, "A" * 32, 123):
         with pytest.raises(

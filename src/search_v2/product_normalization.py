@@ -21,6 +21,7 @@ from pydantic import StringConstraints
 from pydantic import ValidationError
 from pydantic import field_validator
 from pydantic import model_validator
+from pydantic import model_serializer
 
 from src.search_v2.outscraper_contract import OutscraperAmazonProductsRequest
 from src.search_v2.outscraper_contract import outscraper_request_sha256
@@ -58,7 +59,12 @@ ProviderRequestId = Annotated[
 PriceJpy = Annotated[int, Field(gt=0, le=MAX_PRICE_JPY)]
 AttributeName = Literal["brand", "categories", "color", "material", "features"]
 TruncatedFieldName = Literal[
+    "description_en",
+    "features_en",
+    "color_en",
+    "material_en",
     "title",
+    "title_en",
     "brand",
     "store_name",
     "description",
@@ -70,6 +76,7 @@ TruncatedFieldName = Literal[
     "shipping",
 ]
 DiscardedFieldName = Literal[
+    "features_en",
     "asin",
     "brand",
     "store_name",
@@ -151,6 +158,15 @@ class ObservedProductAttributes(StrictFrozenContract):
 
 
 class ProductCandidateProvenance(StrictFrozenContract):
+    provider: Literal["outscraper", "playwright"] = "outscraper"
+
+    @model_serializer(mode="wrap")
+    def serialize_compatible(self, handler):
+        data = handler(self)
+        if self.provider == "outscraper":
+            data.pop("provider", None)
+        return data
+
     outscraper_request_sha256: Digest
     query_plan_sha256: Digest
     provider_request_id: ProviderRequestId = Field(repr=False)
@@ -166,6 +182,15 @@ class ProductCandidateProvenance(StrictFrozenContract):
         return value
 
 
+class EnglishProductDetails(StrictFrozenContract):
+    description: Annotated[str, StringConstraints(min_length=1, max_length=4000)] | None = Field(
+        default=None, repr=False
+    )
+    features: tuple[BoundedAttribute, ...] = Field(default=(), max_length=20, repr=False)
+    color: BoundedAttribute | None = Field(default=None, repr=False)
+    material: BoundedAttribute | None = Field(default=None, repr=False)
+
+
 class NormalizedProductCandidate(StrictFrozenContract):
     schema_version: Literal["2.0"]
     source: Literal["amazon"]
@@ -175,6 +200,12 @@ class NormalizedProductCandidate(StrictFrozenContract):
         StringConstraints(min_length=1, max_length=MAX_PRODUCT_TITLE_CHARACTERS),
     ] = Field(repr=False)
     store_name: BoundedAttribute | None = Field(repr=False)
+    title_en: Annotated[str, StringConstraints(min_length=1, max_length=500)] | None = Field(
+        default=None, repr=False
+    )
+    title_en_status: Literal["available", "unavailable"] | None = None
+    details_en: EnglishProductDetails | None = Field(default=None, repr=False)
+    details_en_status: Literal["available", "unavailable"] | None = None
     description: (
         Annotated[
             str,
@@ -199,8 +230,23 @@ class NormalizedProductCandidate(StrictFrozenContract):
     discarded_fields: Annotated[tuple[DiscardedFieldName, ...], Field(max_length=20)]
     provenance: ProductCandidateProvenance
 
+    @model_serializer(mode="wrap")
+    def serialize_compatible(self, handler):
+        data = handler(self)
+        if self.title_en_status is None:
+            data.pop("title_en", None)
+            data.pop("title_en_status", None)
+        if self.details_en_status is None:
+            data.pop("details_en", None)
+            data.pop("details_en_status", None)
+        return data
+
     @model_validator(mode="after")
     def validate_observed_values(self) -> NormalizedProductCandidate:
+        if (self.details_en_status == "available") != (self.details_en is not None):
+            raise ValueError("English details status is inconsistent")
+        if (self.title_en_status == "available") != (self.title_en is not None):
+            raise ValueError("English title status is inconsistent")
         if self.source_currency is None and (
             self.price_jpy is not None or self.list_price_jpy is not None
         ):
@@ -229,6 +275,15 @@ class ProductCandidateRejection(StrictFrozenContract):
 
 
 class NormalizedProductBatch(StrictFrozenContract):
+    provider: Literal["outscraper", "playwright"] = "outscraper"
+
+    @model_serializer(mode="wrap")
+    def serialize_compatible(self, handler):
+        data = handler(self)
+        if self.provider == "outscraper":
+            data.pop("provider", None)
+        return data
+
     schema_version: Literal["2.0"]
     normalization_mode: Literal["observed_only_no_llm"]
     outscraper_request_sha256: Digest
@@ -257,7 +312,8 @@ class NormalizedProductBatch(StrictFrozenContract):
         for product in self.products:
             provenance = product.provenance
             if (
-                provenance.outscraper_request_sha256 != self.outscraper_request_sha256
+                provenance.provider != self.provider
+                or provenance.outscraper_request_sha256 != self.outscraper_request_sha256
                 or provenance.query_plan_sha256 != self.query_plan_sha256
                 or provenance.provider_request_id != self.provider_request_id
             ):
@@ -620,7 +676,7 @@ def _query_index(
         if type(raw_query) is not str:
             return None, "unapproved_query"
         matching = [
-            index for index, query in enumerate(request.queries) if query.value == raw_query
+            index for index, query in enumerate(request.provider_queries()) if query == raw_query
         ]
         if len(matching) != 1:
             return None, "unapproved_query"
@@ -680,9 +736,46 @@ def _normalize_candidate(
     if title is None:
         return None, _rejection(raw, "missing_title")
 
+    title_en = None
+    title_en_status = None
+    if item.get("title_en_status") in ("available", "unavailable"):
+        if item["title_en_status"] == "available":
+            title_en = _normalize_text(
+                item.get("name_en"),
+                maximum=MAX_PRODUCT_TITLE_CHARACTERS,
+                field_name="title_en",
+                truncated_fields=truncated_fields,
+            )
+        title_en_status = "available" if title_en else "unavailable"
+
     asin = _normalize_asin(item.get("asin"))
     if item.get("asin") is not None and asin is None:
         _append_once(discarded_fields, "asin")
+
+    details_en_status = item.get("details_en_status")
+    if details_en_status not in ("available", "unavailable"):
+        details_en_status = None
+    details_en = None
+    if details_en_status == "available":
+        values = {
+            key: _normalize_text(
+                item.get(key + "_en"),
+                maximum=4000 if key == "description" else 200,
+                field_name=key + "_en",
+                truncated_fields=truncated_fields,
+            )
+            for key in ("description", "color", "material")
+        }
+        details_en = EnglishProductDetails(
+            **values,
+            features=_normalize_string_collection(
+                item.get("features_en"),
+                maximum_items=20,
+                field_name="features_en",
+                truncated_fields=truncated_fields,
+                discarded_fields=discarded_fields,
+            ),
+        )
 
     brand = _normalize_text(
         item.get("brand"),
@@ -814,6 +907,10 @@ def _normalize_candidate(
             source="amazon",
             asin=asin,
             title=title,
+            title_en=title_en,
+            title_en_status=title_en_status,
+            details_en=details_en,
+            details_en_status=details_en_status,
             store_name=store_name,
             description=description,
             attributes=attributes,
@@ -830,6 +927,9 @@ def _normalize_candidate(
             truncated_fields=tuple(truncated_fields),
             discarded_fields=tuple(discarded_fields),
             provenance=ProductCandidateProvenance(
+                provider="playwright"
+                if request.provider == "playwright" or provider_request_id.startswith("playwright-")
+                else "outscraper",
                 outscraper_request_sha256=request_sha256,
                 query_plan_sha256=request.query_plan_sha256,
                 provider_request_id=provider_request_id,
@@ -850,7 +950,14 @@ def normalize_outscraper_products(
     profile: ProductNormalizationProfile,
 ) -> NormalizedProductBatch:
     try:
-        validated_request = OutscraperAmazonProductsRequest.model_validate(request)
+        from src.search_v2.product_request import PlaywrightSearchRequest
+
+        request_type = (
+            PlaywrightSearchRequest
+            if isinstance(request, PlaywrightSearchRequest)
+            else OutscraperAmazonProductsRequest
+        )
+        validated_request = request_type.model_validate(request)
         validated_profile = ProductNormalizationProfile.model_validate(profile)
         if (
             type(provider_request_id) is not str
@@ -919,6 +1026,10 @@ def normalize_outscraper_products(
 
     try:
         return NormalizedProductBatch(
+            provider="playwright"
+            if validated_request.provider == "playwright"
+            or provider_request_id.startswith("playwright-")
+            else "outscraper",
             schema_version="2.0",
             normalization_mode="observed_only_no_llm",
             outscraper_request_sha256=request_digest,

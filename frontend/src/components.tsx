@@ -193,7 +193,7 @@ export function Dots({ label }: { label: string }) {
 export function Generating({ label }: { label: string }) {
   return (
     <figure {...stylex.props(styles.imageCard)}>
-      <figcaption>{label}</figcaption>
+      <figcaption {...stylex.props(styles.imageCaption)}>{label}</figcaption>
       <div
         role="status"
         aria-label={`${label}を生成中`}
@@ -251,15 +251,17 @@ export function ImageCard({
   label,
   detail,
   onOpen,
+  imageKind = "mock",
 }: {
   src: string;
   label: string;
   detail?: string;
   onOpen: () => void;
+  imageKind?: "mock" | "generated";
 }) {
   return (
     <figure {...stylex.props(styles.imageCard)}>
-      <figcaption>{label}</figcaption>
+      <figcaption {...stylex.props(styles.imageCaption)}>{label}</figcaption>
       <ImageZoom label={label} onOpen={onOpen}>
         <img
           src={src}
@@ -270,7 +272,9 @@ export function ImageCard({
         />
       </ImageZoom>
       <p {...stylex.props(styles.small)}>{detail}</p>
-      <p {...stylex.props(styles.small)}>AI生成イメージのモック</p>
+      <p {...stylex.props(styles.small)}>
+        {imageKind === "mock" ? "AI生成イメージのモック" : "AI生成イメージ"}
+      </p>
     </figure>
   );
 }
@@ -561,6 +565,7 @@ const styles = stylex.create({
     borderTopRightRadius: 12,
     backgroundColor: theme.white,
   },
+  imageCaption: { flexGrow: 1, overflowWrap: "anywhere" },
   imageCard: {
     width: 256,
     padding: 17,

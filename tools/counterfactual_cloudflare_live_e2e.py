@@ -41,7 +41,10 @@ from src.search_v2.usage_ledger import UsageReservationRequest
 
 COUNTERFACTUAL_CLOUDFLARE_E2E_REQUEST_COUNT = 2
 COUNTERFACTUAL_CLOUDFLARE_E2E_RETRY_COUNT = 0
-COUNTERFACTUAL_CLOUDFLARE_E2E_COST_MICROUSD = 633
+# Conservative reservation for two <=1 MP outputs and one <=1 MP input;
+# sub-MP billing rounding is not specified. This is not an actual invoice.
+# https://developers.cloudflare.com/workers-ai/models/flux-2-klein-9b/
+COUNTERFACTUAL_CLOUDFLARE_E2E_COST_MICROUSD = 32_000
 SYNTHETIC_INPUT = "白い陶器製マグカップ"
 VISUAL_CONDITION = "白い"
 
@@ -49,7 +52,7 @@ _PLAN_SHA256 = hashlib.sha256(
     b"amazon-explorer-counterfactual-cloudflare-minimum-live-e2e-v1"
 ).hexdigest()
 _PRICING_POLICY_SHA256 = hashlib.sha256(
-    b"flux-2-klein-4b:two-output-tiles:one-input-tile:633-microusd"
+    b"flux-2-klein-9b:two-first-MP-outputs:one-input-MP:32000-microusd-reservation"
 ).hexdigest()
 _OWNER_ID = "counterfactual-cloudflare-live-e2e"
 _SESSION_ID = "minimum-reference-set"

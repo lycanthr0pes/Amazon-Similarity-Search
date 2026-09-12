@@ -1,5 +1,213 @@
 # バックエンド設計
 
+## 辞書に対比候補がない場合（EXEC-156）
+
+画像あり準備の要求にcontrast_inference_tasksを追加し、ローカル確定案も辞書候補もない条件だけを入れる。reasonはno_contrast_candidate、targetは分類表と同じ原文の照合対象。通常の外観はoutput=matching_oppositeでBonsaiが一致側/対比側の具体的な英語記述を補完し、部品有無はoutput=part_enで部品名を補完してコードで有無指示を作る。辞書候補がある曖昧語義は従来のdictionary_contrast_candidatesへ、確定済み語義はlocal_contrastsへ渡す。
+
+Bonsaiには辞書未収録だけを理由に保留/条件除去しないことを明示する。原文自体を解釈できない場合や不正応答は文章修正へ戻す。推論出典はbonsaiとして辞書IDを捏造させず、既存の原文/分類/否定方向・出典検証を維持する。追加の推論はせず既存視覚要求1回に含め、画像なしのtext-only-v1では呼ばない。要求hashは更新されるが、VisualContrast v3・応答schema・既存計画/履歴は変更しない。
+
+## 画像なしの準備（EXEC-155）
+
+接続画面のstart/reviseは任意imageMode（on/off）を受け付け、省略時は従来の画像準備を維持する。offでは既存ローカル構文・条件分類から照合用の外観句を保持し、視覚Bonsai・対比辞書・画像生成用の対比検証を呼ばない。商品名用の既存Bonsai、同義語/OPUS-MTと日英最大値採点は維持する。外観句は既存VisualConditionSetの原文範囲/分類を使い、focus/contrastと視覚モデル要求・応答hashを持たない。
+
+画像なし準備はplan.image_preparation=text-only-v1をdigestへ含める。この計画での参考画像生成・画像採点は拒否する。queryはimageMode=off、images=[]、canGenerateImages=falseを返し、画像なしの最終確認へ進める。画像使用へ切り替える場合は再整理が必要で、3回の準備上限に含む。条件が曖昧な場合の文章修正と商品取得の最終確認は保持する。旧計画/履歴を変更せず、新規検索・課金による検証は行わない。
+
+
+## 部品付き条件の対比準備（EXEC-154）
+
+新規の対比profileは `visual-contrast-v3`。部品名の固定表は作らず、名詞句に付く「付き/つき」「が付属」「が付いている」「がある/ない」を有無文法として認識する。修飾を含む複合部品名や不明な範囲は部分一致で切り捨てない。指定なしは除去し、除外の反転は画像要求側に一度だけ適用する。
+
+WordNetにない部品名も、検索用の既存JMdict/SQLiteから英訳と語義を参照する。WordNetの一意な名詞語義を優先し、JMdictは最大4語義を扱う。複数候補は同じBonsai視覚要求で `contrast={sense_id: ...}` を選択し、候補IDに結び付いた部品英名からwith/withoutの指示をコードで構築する。候補がない/文脈に合わない場合は `contrast={part_en: ...}` で部品の短い英語名詞句だけを受け、コードが両側を生成する。否定語を含む英名、別の条件への候補ID転用、部品有無以外へのpart_en応答を拒否する。
+
+Bonsaiへの `presence_conditions` には部品の原語とtarget自体の有無を渡す。接続方式を画像条件へ移さず、商品名に含まれる修飾は現在の構文解析結果に保持する。新しい商品名分解や採点条件の追加は行わない。Bonsai呼出しは増やさず、原文の分類・採点用の日英展開は既存処理を継続する。
+
+grammar出典には参照したWordNetまたはJMdictのdigest/語義IDを保持し、part_enをBonsaiが補完した場合はbonsai出典とする。旧v1/v2 JSONを再解釈せず、既存画像・履歴を再生成/再採点しない。ブラウザとCLIは既存の語彙サービスから辞書参照を受け取り、追加の辞書ダウンロードや独自辞書構築は行わない。
+
+## 既存辞書と文法による対比指示（EXEC-153）
+
+EXEC-153時点の準備は `visual-contrast-v2` を使う。手書きの色/形対応表は新規経路から外し、`wordnet_contrast.py` が準備済み日本語WordNet 1.1 SQLiteとPrinceton WordNet 3.0のdata.adjを読み取り専用で参照する。検索用lexiconの名詞制限や既存DBは変更しない。日本語の手動確認済み語義を参照し、英語の直接反対語 `!` のsource/target語番号を辿る。同義/類似関係を反対語へ読み替えず、別版のoffsetを混ぜない。
+
+単一形容詞/形状詞で語義と対比が一意ならコードで確定する。複数語義の場合は最大16語義から最大4対比候補/句を取り、定義付きで既存Bonsai視覚要求へ同梱する。候補を選ぶ場合はmatching/oppositeとsense_idを返し、コードで辞書候補との完全一致を検証する。未登録、候補上限超過、複合修飾などはBonsai補完へ渡す。複数候補を根拠なく先頭で決めない。これは画像用の語義選択であり、商品採点・検索条件の推論を追加するものではない。
+
+`蓋がある/ない` 等は単一名詞語義の英訳からwith/withoutを組み立てる。除外された単独名詞も対象特徴自体をmatchingにし、excludedの反転は画像要求側だけで行う。`丸い→丸くない`、`蓋が丸い→蓋が丸くない` 等の文法否定は `contrast_negation_hints` として渡し、具体的な外観が決まったとは扱わない。部位の複雑な修飾を部分一致で変換しない。指定なしは候補/否定補助から外す。Bonsaiの回数上限は準備あたり最大2回のまま。
+
+v2のcontrastにはorigin（wordnet/grammar/bonsai）とevidence（元のtarget、辞書由来ならdictionary_sha256・sense_ids）を保持する。モデルが任意の出典を主張することはできず、受信時に確定する。v1/fieldなしのJSONは従来の形で読み、旧計画を辞書変更で再解釈しない。画像指示のテンプレートはprompt-v3を継続し、新しい条件/計画digestで旧画像要求と分離する。保存済み履歴と順位は変更しない。
+
+ブラウザの明示live構成は `/home/products/models/search-lexical-v1/wnjpn.db` と `/home/products/models/wordnet-3.0-visual/data.adj` を使い、組合せdigestをコードで固定する。未配置/改変は準備失敗とし、自動downloadしない。CLI `tools.candidate_search_live_e2e` は `--wordnet-db` と `--wordnet-adjectives` を両方指定して接続する。未指定では文法補助+Bonsaiを使い、旧独自対応表へ戻らない。公開辞書の取得・LICENSE保存は環境準備であり、実画像生成成功ではない。
+
+## 対比画像の具体的な外観指示（EXEC-152）
+
+EXEC-152時点のcandidateでは、ローカルの `visual-contrast-v1` 変換を先に調べ、未対応の句だけ既存Bonsai要求へ `contrast_inference_clauses` として渡す。Bonsaiは一致側matchingと不一致側oppositeを短い具体的な英語で提案する。ローカル対応の句はcontrast=nullを返し、コードが確定値を設定する。ローカル案の上書き、欠落・同一記述・型/長さ違反・URL/制御文字は拒否する。推論呼出し数は増えない。原文・条件分類・検索語・日英採点を変更せず、外観変更の提案だけに使う。
+
+VisualConditionの任意contrastにはprofile/origin/matching/oppositeを保存し、原文範囲とともに条件/計画/画像要求のdigestへ含める。旧JSONは未設定fieldを省略する。新画像要求はprompt-v3、旧条件は従来のprompt-v2を維持して再生成・再採点しない。参考画像には確定した外観記述、対比画像には対象条件の変更後の外観記述を指定し、他条件は維持する。excludedでは参考にopposite、対比にmatchingを使う。例として取っ手不要なら参考は取っ手なし、対比は取っ手ありとなる。
+
+未対応条件を補完できない場合は画像生成前に文章修正へ戻す。画像確認・生成回数制限・商品24件・worker1本を維持する。具体的な指示を追加したことは、生成画像が条件差を満たす品質保証ではない。実装/検証と稼働中serverへの適用境界は[EXEC-152](GOAL.md#exec-152-対比画像への具体的な変更指示)を参照する。
+
+## 共通UI操作と実行状態（EXEC-145）
+
+BrowserSearchはworkingAction・researchStep・referenceRemainingと操作可否を返す。progressは実行境界でだけ更新し、revisionを単調増加させる。cancelは取得中に限って受け付け、進行中の取得終了後のcheckpointで比較/保存を開始せず終了する。resetは実行中に拒否し、停止/完了時だけ古いgenerator・確認・入力を破棄する。履歴は削除しない。reviseは画像/最終確認からも元入力で準備し直せるが、各検索3回の上限を維持する。
+
+regenerateはcandidateの既存作り直しを使い、参考画像2回上限と新しい画像の了承を維持する。表示画像は新しい作成分だけへ切り替える。保存に失敗した場合は結果とpending snapshotを保持し、retry_saveで保存だけを再試行する。プロバイダ・画像・採点の再実行は行わない。新規検索の準備番号はprocess内で再利用せず、3つの準備先ごとにsearch-Nを分ける。履歴DBは起動時指定output直下に共通化し、後続検索も同じ履歴一覧から開く。既存revision DBの読込は保持する。
+
+
+## 履歴内容の永続保存（EXEC-144）
+
+接続画面の完了時にhistory-content-v1として元入力全文・条件名・原文に結び付いた分類を保存する。商品画像は評価時に取得済みの192px PNGを再利用し、商品行とともに保存する。保存失敗の再試行は同じsnapshot/completion keyを使い、取得/採点を繰り返さない。履歴GETは保存済み内容を復元し、分類・翻訳を再実行しない。画像なし検索は入力/条件のみを保存し、画像未取得も区別する。旧履歴は任意fieldの省略を維持する。
+
+## 履歴削除と期限削除（EXEC-143）
+
+POST /api/history/commandは同一origin/Host/固定browser header/JSON/8192 bytesの既存境界を使う。個別削除はaction=delete、id=履歴locator、confirmed=trueの3fieldだけを受け付ける。期限削除の再試行はaction=purge_expiredだけを受け付け、owner/path/cutoffをclientから指定できない。削除済み/不在locatorへの再送は成功として収束する。検索controllerにはcommandを渡さず、実行中/完了済み検索を再実行しない。保存結果のGETは引き続きread-only。
+
+BrowserHistoryは設定済み最大32DBのlocal-userだけを削除する。existing_onlyのmode=rwは作成/移行を拒否し、書込待ちは0.25秒。履歴と専有画像は外部キーcascadeの同一transactionで削除し、secure_deleteを有効にする。複数DBの一部が失敗した場合は503で返し、削除済み分を作り直さず残りを再試行できる。
+
+HTTPserverは開始後の最初のpollと60秒間隔で期限削除を呼ぶ。期限は完了日時+30日、expires_at以下のserver現在時刻で判定する。1DBの失敗で他のDBを止めず、次周期で再試行する。失敗が残る場合は履歴一覧応答にcleanupPending=trueを付け、画面に再試行を表示する。GETは期限切れを常に除外する。server停止中は掃除せず、次回起動後に処理する。新規run予定先を作成せず、未指定DB・別owner・生cache・DB file自体は削除しない。
+
+
+## 画像なし検索の接続（EXEC-142）
+
+接続用CandidateSearchFlowはallow_image_freeで外観0件を許可し、候補となる外観句が0件なら視覚候補用Bonsaiを呼ばない。外観句がある場合の分類・翻訳・文字採点は維持する。without_imagesはowner/plan/stateに結び付いた明示操作で、images_skippedへ遷移した後に再度商品検索の最終確認を待つ。画像生成途中の失敗からも切替可能で、使用済み画像利用量はledgerに残す。画像承認期限は採用しない画像に限り破棄でき、計画自体の期限は迂回しない。
+
+画像なしではCloudflare設定、資材確認、商品画像proxyとSigLIPを遅延factoryから呼び出さない。価格を含む日英条件最大値とタイトル比較は共通処理を使い、否定一致の少なさ、タイトル、優先、希望、レビュー、取得順で比較する。新しい最終rankingとhistory profileにより画像欠損と未使用を区別する。0件も空の結果として保存可能。既存画像あり経路は画像了承を引き続き必須とする。
+
+
+EXEC-141では接続serverからruntimeへoutput rootと準備attempt（0〜2）を渡す。初回ローカルclarificationでrootが未作成でも、再整理時に0700の親を作成してrevision-1/2へ進める。symlink/リポジトリ内/公開権限の親と既存revisionの再利用を拒否する。idle/履歴閲覧では実行先を作成せず、実providerを起動しない。現在の稼働接続と検証境界は [EXEC-141](GOAL.md#exec-141-新しい条件分類を稼働接続画面へ反映) を参照する。
+
+## 条件表現の共通解析（EXEC-140）
+
+新規candidateは `condition-language-v1` で、日本語の希望・否定・許容・必須の修飾をローカル解析する。Sudachiの正規化と、設定済みGiNZAの商品/条件範囲に共通ルールを適用する。句読点で区切った次の条件へ修飾を広げない。文頭の「できれば」「なるべく」、文中の「容量はできれば」、末尾の「だとうれしい」「を希望します」などはpreferred、「避けたい」「不要」「いらない」「以外」「なし」はexcluded、修飾なし/「必須」「必ず」はrequiredとする。希望と否定の重なりはexcludedを優先する。
+
+「なくてもよい」「こだわらない」「でも構わない」は否定判定より先にneutral（指定なし）として認識する。原文範囲・照合対象・強さ・理由を保持し、neutralは元入力/確認表示に残すが、検索語・条件展開/採点・画像候補から外す。仕様の非対応はrequiredのfalse値、対応不要はexcludedのtrue値とし、商品名の「ノン」を否定修飾として扱わない。希望付き価格はpreferred、修飾なしの価格はrequiredで、観測円価格の比較へ引き継ぐ。
+
+Bonsaiへ渡す外観候補には確定済みstrengthと正規化原文の範囲を付け、応答の完全な句・範囲・分類を既存契約と照合する。分類推論の呼出しは増やさない。ローカル辞書/翻訳は希望・除外の指示を除いた照合対象へ適用し、原文quoteは別に保持する。日英最大一致とEXEC-139の順位を維持する。
+
+二重否定、同じ対象への矛盾、対応/非対応の必須指定の衝突、未解決の修飾範囲は検索を開始せず、確認APIのclarificationで文章修正を求める。句数は確認応答の既存上限24件以内、構文fragment16件、仕様4件・外観3件と入力2000文字の既存制約を維持する。数値でない「軽い」等を架空の重量へ変換しない。指定なし除去後に外観がなくなる場合はEXEC-142の画像なし経路を案内する。任意の日本語の意味理解や実商品の品質合格を保証するものではない。
+
+新規計画に解析profile/digestを含め、旧fieldなしの計画は旧分類・旧provenanceで復元する。保存済みranking/historyは再採点しない。詳細な互換保存契約は [DB-SCHEMA.md](DB-SCHEMA.md) を参照。
+
+## 否定条件優先とレビューの最終比較（EXEC-139）
+
+新規candidateの順位は **否定条件（負）＞タイトル＞優先条件＞希望条件＞画像＞レビュースコア** とする。同点のときだけ次の項目を比較する。否定一致Eは低い方、T/R/P/IとレビューVは高い方を先にする。keyは `(E, -T, -R, -P, -I, -V, 取得順)`。負の否定点N=-Eを最大化することと同じで、画面では否定条件を0〜−100で示す。内部の日英最大一致値と保存値は0〜1のままで、符号を付けるのは表示と優先方向である。否定情報の欠損を非該当確認とは扱わない。
+
+レビューVはPlaywrightが日本語商品詳細から取得済みのrating（Amazon星評価0〜5）を使い、新たなページ取得/レビュー本文推論/件数補正はしない。画像とレビューの未取得はそれぞれ比較時だけ−1とし、取得済み0より後にする。上位項目が異なるとレビュー点は順位に影響しない。例として否定一致0.1の商品は、否定一致0.2の商品よりタイトル/画像/レビュー点に関わらず先になる。
+
+`sort_profile_id=excluded-title-conditions-image-review-v1` を最終rankingと履歴へ保存し、復元時もこのkeyで検証する。旧title-image-conditions-v1は旧key、fieldなしはさらに以前の方式で検証する。新旧digestを分離して既存履歴を再採点しない。日英最大値、画像推論とタイトル/条件採点の分離、参考50:50合成値は変更しない。履歴商品へoptionalなreview_ratingを追加し、APIはreviewRating、画面は5点満点として表示する。未保存/未取得はnull、旧JSONはfieldを省略して旧digestを保つ。画面の順位説明は各結果のsortProfileに合わせる。
+
+## 条件の同義語・英訳と日英最大値採点（EXEC-133）
+
+新規candidateは、設定済みのローカル辞書・語義評価・OPUS-MTで条件語句を準備し、`candidate-confirmed-lexical-v5` / `candidate-text-bilingual-v2` を使う。既存のContextualQueryExpanderを使うブラウザ試験入口とcandidate CLIに接続する。本節がEXEC-125/131の日本語本文だけを採点する記述を置き換える。旧planの再実行や条件展開器なしの注入構成は旧profileを維持し、legacy CLIの旧採点式は変更しない。
+
+条件ID・強さ・日本語原文・同義語・英訳と辞書/モデルdigestをplanに固定する。辞書は単一語義、またはローカル文脈評価0.80以上・次点との差0.20以上の語義だけを採用する。未収録の複合句は名詞部分の同義語を元の句内で置換し、修飾語や否定を保持する（追加最大3句）。構成名詞の英訳を句全体の英訳として流用しない。未確定の語義は混ぜない。辞書英訳を優先し、未収録の語句はOPUS-MTで最大192句、重複を除いて2句ずつ処理する。英訳の欠損/失敗や数値変化は日本語語句を保持して英訳なしとする。価格は共通の観測円価格で比較し、検索文全体の翻訳・辞書再照会を行わない。条件語句をAmazon検索語へ追加しない。
+
+日本語商品名・説明・特徴と、英語商品名・説明・特徴を同じ条件IDで独立採点し、各条件の `max(score_ja, score_en)` をR/P/Eへ集計する。数値は属性ラベルと単位・上下限を照合する。各言語内で構造化観測を優先し、否定、競合、概数、欠損・切り詰めを扱う。日英が矛盾する場合も利用者指定どおり高い一致点を採用するが、日本語観測による仕様確認状態を変更しない。英語未取得はnullで、日本語点を使う。否定条件Eも最大一致点を使うため、英語で除外対象に一致すると除外側へ働く。外観条件の語句も独立した文章一致点として集計し、画像点には混ぜない。
+
+タイトルは既存の元語優先・同義語補助・カテゴリ/ブランド/型番の式を日英の商品タイトルへそれぞれ適用し、高い点をTとする。画像モデルと画像点I、参考合成点50:50を維持する。最終順位はEXEC-139の否定条件優先へ更新した。日英の内訳は保存/APIで確認できる。これは文章の一致度であり、属性の実物確認や翻訳品質の保証ではない。
+
+新要求は `english_titles=true` と `english_details=true`。既に取得する同一ASINの英語詳細ページから説明・特徴・色・素材も採り、タイトル追加時と比べたページ数は増えない。英語langとASIN一致を検査し、タイトルが未翻訳でも英語詳細の観測は保持する。上限・匿名context・CAPTCHA停止規則は下節と同じ。商品本文自体の機械翻訳は行わない。CLI cacheはplaywright-v3へ分離し、旧v1/v2を更新・削除しない。
+
+## 商品の日本語・英語タイトル（EXEC-131）
+
+新規Playwright要求は `english_titles=true` を固定し、日本語詳細に加えて同じASINの `language=en_US` 詳細を逐次取得する。日本語はja-JP context、英語はcookieを共有しないen-US contextを使う。同一browser・worker1本とする。通常candidateは日本語24詳細＋英語最大24詳細、2検索語なら各最大48、CLIは設定上限（最大100）ずつ。検索ページ数は従来通り語あたり最大3。英語は商品ごと1回、重複ASINは再取得せず、ページ30秒・表示待機5秒・再試行0。各言語の取得後にIPC進捗を送り、50秒の工程期限と件数から計算する進捗上限を維持する。
+
+英語タイトルは同一ASIN、htmlの英語lang、Latin文字を含むタイトルを観測して採用する。かな・漢字が残る混在/未翻訳タイトルは保守的に未取得とする。URL指定だけでは英語取得済みにしない。英語側の欠損、redirect、ASIN不一致、timeoutは日本語商品を保持して未取得にする。英語側CAPTCHA検出後はそのjobの残り英語ページへアクセスしない。日本語側の必須取得失敗は従来通り停止する。機械翻訳・LLM補完・有料providerへのfallbackはない。
+
+主タイトル `title` は日本語のまま、`title_en` と `title_en_status`（available/unavailable）を正規化・表示履歴へ保存する。EXEC-133の新規candidateでは日英のタイトル点の高い方を使う。商品リンクは日本語表示を維持する。旧要求は英語fieldを省略したまま復元でき、英語ページを勝手に追加しない。EXEC-131時点のcacheはplaywright-v2、EXEC-133以降はplaywright-v3とし、旧cache/履歴を更新・削除しない。
+
+## candidateの最終順位の優先度（EXEC-129）
+
+この節は旧title-image-conditions-v1の復元契約である。新規実行はEXEC-139に従う。
+
+2026-09-12の利用者の明示指示により、新規candidateの最終順位は次の順で比較する。同じ値の場合だけ次の項目を使う。
+
+1. タイトル一致度Tが高い。
+2. 画像評価Iが高い。未評価は評価済み0点より後ろ。
+3. 否定条件excludedへの一致度Eが低い。
+4. 優先条件requiredの一致度Rが高い。
+5. 希望条件preferredの一致度Pが高い。
+6. 全項目同点なら取得順。
+
+実装keyは `(-T, -I, E, -R, -P, 取得順)`、画像未評価時だけI=-1として比較する。required_statusによる最優先のグループ分けは行わず、価格超過等の不一致商品もタイトル/画像が高ければ上位になる。不一致・未確認の表示判定は保持する。T/R/P/EはEXEC-133の条件展開あり構成で日英最大値を使い、画像点Iは従来どおりとする。古いテキスト内訳なしのsourceは観測判定によるR/Pと、除外条件の観測matchの加重割合を使う。否定条件の情報不足を非該当と確認したことにはしない。
+
+50:50の合成点は表示履歴の参考値として計算・保存するが、最終順位には使わない。画像評価前の内部CandidateRankingと旧保存結果は従来の条件優先順で検証する。新しい最終ranking/履歴は `sort_profile_id=title-image-conditions-v1` と新digestを持ち、復元時にも新しい順序を検査する。この節が後段のcandidate条件優先という旧記述を置き換える。
+
+## Playwrightの商品検索・詳細取得（EXEC-126）
+
+2026-09-12の利用者の明示指示により、商品取得の現行providerはPlaywrightとする。本節が後段のOutscraper実通信・task/poll・API keyの記述を置き換える。旧型や関数名は保存互換と明示的な旧protocol adapterで保持する。
+
+`product_request.py` の新規要求はprovider=playwright/schema1.0で、日本語表示・検索語・24件上限・検索最大3ページ・詳細取得・再試行0を固定する。candidateは最大1検索語、汎用要求は日英各1語まで。`playwright_products.py` がNode workerを1ジョブずつ起動し、`tools/playwright_products_worker.mjs` が検索結果のASIN/リンクを照合して詳細へ進む。Node.js 22.12以上、frontendの固定Playwright1.63.0と事前導入済みChromiumを使う。起動時に依存やbrowserをダウンロードしない。
+
+検索結果は上限まで重複ASINを除き、必要な場合だけ次ページへ進む。詳細ページは同一ASINの観測を確認し、商品名・円価格・説明・仕様・特徴・明示ブランド/色/素材・カテゴリ・評価・在庫・配送表示・画像URLを取得する。仕様行をラベル付きdescriptionに保持して既存の観測属性抽出へ渡す。画像本体はbrowserでは遮断し、既存画像proxy/SigLIP経路へURLを渡す。本文の翻訳・商品採点LLMは追加しない。配送先は匿名Amazonの既定であり、互換fieldのpostal_codeを配送先設定済みとは扱わない。
+
+Chromiumは匿名context・ja-JP・service worker無効。Amazon.co.jpとAmazon画像資材hostのHTTPS GET/HEADのみ許可し、画像/font/media/iframe/POST/外部origin/redirectを遮断する。ページごとに最大200資材要求、navigation30秒とDOM待ち5秒を設ける。Pythonはページ完了通知を50秒ずつ待ち、停止したworkerを回収する。検索全体15分制限は設けない。HTTP失敗、CAPTCHA、検索語不一致、ASIN不一致、タイトル欠損では検索を失敗として返す。少ない候補件数や価格等の欠損は観測された範囲で返す。
+
+ブラウザの実構成とcandidate CLI/retryは `PlaywrightProducts` を直接使う。legacy CLIの `run_product_search` は `call_playwright` を使い、旧正規化/採点へ接続する。旧provisionalのtask-protocol入口には `PlaywrightTaskTransport` を既定注入し、同期結果を旧protocolへ変換する。Outscraperへ要求を送らず、API keyをworkerへ渡さない。旧Outscraperクライアント/transportのコードは過去の契約回帰用で、これらの実行factoryでは生成しない。
+
+取得元と旧JSONの互換は [DB-SCHEMA.md](DB-SCHEMA.md#playwright取得元と旧cacheの互換exec-126)、試験結果は [EXEC-126](GOAL.md#exec-126-商品取得をplaywrightへ移行) を参照する。UIの入力・画像確認・検索・結果表示の操作順は維持する。
+
+## candidateの説明文・タイトル採点（EXEC-125）
+
+EXEC-125で導入した `candidate-confirmed-lexical-v4` / `candidate-text-v1` の基礎式を以下に定義する。EXEC-133の条件展開あり構成では上節の日英最大値を適用する。EXEC-128の利用者指示以降、新規candidateのタイトルと画像は各50%とする。画像モデルの既定は維持する。
+
+条件ごとに、構造化された属性・ラベル付き特徴等の既存観測判定を優先する。数値仕様はfeatures、title、descriptionの順で、値が得られた最優先sourceだけを比較する。明示不一致・競合・構造化された未確認値を、説明文で救済しない。価格はprice_jpyだけを使い、説明文の価格で補わない。
+
+既存証拠で未確認の条件は、取得済みdescription全体を文単位で走査する。条件の単語が文に部分一致した割合を0〜1で計算し、最も高い文を採用する。日本語は正規化した単語の部分一致、英数字は語境界付きで照合する。真偽条件は属性名末尾の「対応」を除いた語、enum/text_setは対象値と登録aliasを使う。否定・不確かさを検出した文を肯定点にせず、同じ条件について肯定と否定が混在すると0点にする。数値は同じ文の属性名・数値・互換単位と上下限を比較し、単なる数値語の存在を加点しない。切り詰められた説明文は使わない。これは文章の一致度であり、部分一致からTypedProductEvaluationを「確認済み」へ変更しない。
+
+| 値 | 計算 |
+|---|---|
+| 条件点c | 明示一致1、不一致・競合0、証拠不足時は説明文の一致度。欠損0 |
+| 必須R・希望P | 各区分の `sum(weight*c)/sum(weight)`、小数6桁。現行条件weightは各1、条件0件は1 |
+| 除外E | 除外条件への一致度の同じ加重平均。条件0件は0。未記載を除外条件の不該当確認とは扱わない |
+| 画像評価前・旧結果の順位key | `(必須状態の順序 + 0.5*E, -R, -P, -総合点, 取得順)`。状態の順序はconfirmed=0、uncertain=1、contradicted=2。新規最終順位にはEXEC-129を使う |
+
+タイトル比較用 `title_comparison` は元の商品表現とoriginal_en、category_ja/category_en、brand、model_number、最大3件の同義語対をplanへ固定する。カテゴリは明示入力を優先し、なければ元の商品表現の末尾単語を日本語カテゴリ、英訳の前置詞句前の末尾単語を英語カテゴリとする。これは語句上の分類でありAmazonの分類階層ではない。ブランドは `ブランド: 値` / `メーカー: 値`、型番は `型番: 値` / `モデル番号: 値` の明示入力から取得する。英数字を含むだけの製品規格を型番と推測しない。`カテゴリ: 値` / `カテゴリ英語: 値` も使用できる。未取得の専用fieldはnullで、分母に入れない。
+
+原語名一致O、カテゴリ一致C、同義語最大一致Aはそれぞれ単語集合coverageで、日英の高い方を使う。商品名点は `O + 0.25*(1-O)*A`、カテゴリ点は `C + 0.25*(1-C)*A`。元語の満点を保持し、同義語だけの一致は各項目最大0.25とする。ブランド・型番はNFKC/casefoldと英数字境界付きの完全表現一致で0/1、同義語で補わない。存在する商品名・カテゴリ・ブランド・型番の点を等重みで平均してタイトル点Tとする。合成点は画像あり `0.5*T+0.5*I`、画像欠損時 `T`。新規の最終順位は合成点から分離し、EXEC-129の優先順を使う。新規結果/履歴は `image_weight=0.5` と新digestを保持し、fieldなしの旧candidate結果は従来の80:20として読む。保存済み結果を自動再採点しない。
+
+採点はローカルの文字列・単位規則だけで、新たなモデル呼出しやページ取得はない。既存のLLM商品採点禁止と人間確認・provider上限を維持する。旧plan/result/historyは新fieldを省略したまま読み、新採点へ暗黙移行しない。保存契約は [DB-SCHEMA.md](DB-SCHEMA.md#candidateの説明文タイトル比較の保存exec-125)、検証は [EXEC-125](GOAL.md#exec-125-説明文の条件一致とタイトル比較の拡張) を参照する。
+
+## 永続履歴のブラウザ接続（EXEC-138）
+
+`browser_history.py` は起動時に指定されたDBだけを `SqliteProvisionalHistoryRepository(read_only=True)` で開く。SQLite URIのmode=roによりSQL書込み・新規作成を禁止し、既存schema5/権限/owner/digest/30日期限の検証を維持する。ownerはserverがlocal-userへ固定する。新規runのDBは作成前なら一覧に含めず、作成後から読み込む。DBの移行・コピー・削除、商品/画像の再取得は行わない。
+
+GET `/api/history` は新しい順の最新30件（日時・要約・保存期限・比較件数・opaque ID）、GET `/api/history/{id}` は保存済み商品/採点/生成画像を表示形式で返す。任意pathや失効/不明IDは404、破損/保存障害は本文を含めない503。現行APIと同じHost/同一origin/no-store/CSP境界を使う。履歴APIは検索controllerを操作しない。旧schema5には元入力全文・個別条件名・商品サムネイルがないため、未保存と表示し補完しない。履歴結果は最大48商品、現行検索は24商品を維持する。削除/期限切れ物理削除はEXEC-143、全文/条件名/商品PNGはEXEC-144で接続する。
+
+通常の新規起動に `--history-db /absolute/private/history.sqlite3` を繰り返して指定できる（既存DB最大29個＋run保存先3個）。DBパスはHTTPでは変更できず、自動directory走査もしない。既存結果だけ開く場合は次を使う。Bonsai・商品取得・画像生成のruntimeや検索workerを作らず、検索POSTも拒否する。
+
+```sh
+uv run --frozen --offline --no-sync python -m tools.browser_search_server \
+  --history-only --port 8771 --history-db /absolute/private/history.sqlite3
+```
+
+`http://127.0.0.1:8771/?mode=connected` で履歴一覧を開く。ブラウザ再読込はURL fragmentのIDから詳細を再取得し、サーバー再起動時は同じDB引数で復元する。過去の検索を再実行する機能ではない。現在の検索と履歴を併用する新規serverでは、履歴表示中も検索状態を保持し、`検索へ戻る` で未送信の入力や結果表示へ戻る。旧serverは起動時のコード/状態を保持するため、新機能は新規起動した入口に適用する。
+
+## ブラウザからの接続試験（EXEC-124）
+
+EXEC-137で自然文入力と画像生成前の文章修正を接続した。POSTのstart/reviseはeditableなcontrollerに限りsourceを受け付け、空白だけ・2000文字超過・制御文字・UTF-8不正をworker投入前に拒否する。revision/operationによる重複排除を維持し、準備は初回を含め3回、修正はquery段階だけ許可する。修正では旧generatorを閉じ、旧候補を破棄し、新規private revision directoryで再準備する。画像生成済みの承認を別入力へ流用しない。視覚条件1〜3件の画像ありフローを接続し、解釈不能/視覚条件なしは停止する。
+
+結果には検証済み商品画像から作った192px以内のPNG thumbnailと、保存済みscoresのimage/totalを追加する。画像は評価時のproxy結果を再利用し追加通信しない。日英内訳、点数profile、順位計算、SQLite形式は変更しない。EXEC-144以降の新しい接続履歴ではサムネイルもDBへ保存する。frontendは外部画像URL、範囲外の点数、日英最大値の不一致を拒否する。
+
+2026-09-12に `browser_search.py` のserver所有controller、`browser_candidate.py` の段階別adapter、`tools/browser_search_server.py` のloopback配信入口を追加した。既存のtyped-ranking用ASGI APIとは別に、candidate/SigLIP 2の確認操作へ接続する。下記の「接続は後続」は一般画面の残作業を指し、このローカル接続試験入口を含まない。
+
+`--offline-fixture` はprovider/credentialを使用しない。実行条件への人間承認後だけ、リポジトリ直下で次を使う。
+
+```sh
+uv run --frozen --offline --no-sync python -m tools.browser_search_server \
+  --run-live-api --output-dir /home/products/bonsai-test-logs/browser-search-new-run
+```
+
+既存directoryを再利用しない。ビルド済み `frontend/dist/` と同じoriginの `http://127.0.0.1:8765/?mode=connected` を開く。起動自体はproviderを呼ばず、画面の `条件を整理` で初めて実行する。初期入力は画面で編集できる。資材、別Python、辞書/OPUS-MTは `tools/browser_search_runtime.py` に固定し、自動取得しない。停止は起動端末のCtrl+C。ブラウザを閉じても進行中の外部taskは取消されない。
+
+現在の上限は1process・検索worker1本・準備3回まで（各Bonsai最大2回）・視覚条件1〜3件・Cloudflare 512px参考画像1枚と条件別比較画像最大3枚・匿名Playwright検索最大3ページ/日本語詳細24ページ/英語詳細24ページ・商品画像最大24件・SigLIP最大7 batches・自動再試行0。OutscraperはEXEC-126で置き換えた。2026-09-12の利用者指示で全体900秒制限を撤廃した。個々の通信/推論のtimeoutと件数制限は維持する。Bonsaiは各推論900秒、起動待ち180秒で、条件整理が終わったら確認待ちに入る前に所有processを終了する。画像生成HTTPは各120秒。外部taskのサーバー側取消は保証しない。
+
+GET `/api/state` は現在の表示、POST `/api/command` はrevision・operation・段階別の選択と、EXEC-137のstart/reviseのsourceを受け付ける。両応答のsnapshotでは商品URLを同じASINの `/dp/ASIN?language=ja_JP` 形式へ投影し、保存済みの元URLを変更しない。API body上限8192 bytes。owner、provider設定、credential、承認tokenはPOSTで受け付けない。旧editableなしのcontrollerでは検索文を受け付けず固定入力を維持する。複数タブでも最初の操作だけを受け、同一operationの同一再送は現在状態を返す。途中の再開権限はprocess内だけに保持し、server再起動で外部処理を再実行しない。
+
+ブラウザ実行はserver側で `plan_lifetime=None` を指定し、検索計画の全体期限を設けない。検索語/参考画像の確認待ちに15分制限はない。比較画像生成後のsingle-use承認は従来どおり発行から15分有効で、その期限だけを比較画像/最終確認の画面へ渡す。controllerは期限切れのGET/POSTをexpiredとし、古いPOSTをworkerへ渡さない。承認消費後の検索/属性確認/評価へその期限を引き継がない。既存診断CLIのplan期限は既定15分を維持する。失効した承認を復活させず、新規sessionの追加呼出には実行範囲の承認を必要とする。
+
+完了時はprivate directoryの既存schema 5 SQLiteへ結果/参考画像を保存し、読戻しを照合する。APIの完了結果はその保存結果から表示項目だけに変換する。生HTTP応答・例外本文・credential・画像生成promptの診断artifactは作らない。履歴形式・旧profile/cacheは変更しない。EXEC-138で永続履歴一覧とserver再起動後の結果閲覧を接続した。削除操作と旧履歴に未保存の項目は後続。
+
+2026-09-12のlive-02は固定入力1件で実providerから24商品・24画像評価・履歴保存・React表示まで完走した。再読込時の同一結果も確認した。実行条件と品質評価の範囲は [EXEC-124](GOAL.md#exec-124-フロントエンドと実検索の接続) に記録する。
+
+日本語タイトル取得の限定試験用に `japanese_search_urls=True` を追加した。Outscraper要求schema 2.1は、確認済み検索語を `https://www.amazon.co.jp/s?k=...&language=ja_JP` に符号化して `query` に渡す。APIの `language=ja` と従来のdomain、配送先、24件/task/poll上限を維持する。応答のqueryは送信URLと照合し、商品名はproviderの観測値をそのまま正規化する。旧schema 2.0の要求・digest・履歴は変更せず、新要求のdigestと分離する。2026-09-12の承認済み1 taskでは24件を取得できたが、日本語文字を含むタイトルは2件にとどまり、目的を達成しなかった。ブラウザの既定には採用せず、語句指定のschema 2.0を維持する。商品の正式な日本語タイトルを取得する方法は未解決で、翻訳や追加providerへの自動切替は行わない。
+
 次期フロントエンドは2026-09-11の決定により自前開発する。外部納品待ちを解除し、`frontend/` にオフライン画面を実装した。モックは実バックエンド・local HTTP API・SQLite履歴へ接続せず、固定合成データとタブ内の `sessionStorage` を使う。画面とローカルAPIの接続は後続作業とする。既存の暫定job・履歴APIを現行candidateの確認フローへ接続済みとは扱わず、接続時に不足するcontrollerと表示契約を整理する。検索実行の単一host・単一process・worker 1本と実サービス検証の承認規則を維持する。詳細は [FRONTEND.md](FRONTEND.md#11-次期フロントエンドの自前開発方針) を参照する。
 
 ## 1. 目的と範囲
@@ -1065,7 +1273,7 @@ ASCII語境界で扱う。公開request、prompt、schema、response token数に
 
 ## 統合済み全体設計
 
-> 統合元: `docs/DESIGN.md`。統合前の文書は `docs/old/` に保存する。
+> 統合元: `docs/DESIGN.md`。統合前の文書は `bin/docs/old/` に保存する。
 
 
 > **標準文書との関係:** 実装領域ごとの正本は [FRONTEND.md](FRONTEND.md)、[BACKEND.md](BACKEND.md)、[SECURITY.md](SECURITY.md)、[DB-SCHEMA.md](DB-SCHEMA.md) とする。この文書は領域を横断する設計原則と構成を保持する。
@@ -1165,7 +1373,7 @@ flowchart LR
 | `src/schemas.py` | 内部データモデル |
 | `src/paths.py` | リポジトリルートの絶対パス解決 |
 
-`docs/old/examples/` は過去の段階別検証コードであり、現行仕様やテスト対象ではない。
+`bin/examples/legacy-phases/` は過去の段階別検証コードであり、現行仕様やテスト対象ではない。
 
 ### 5. 処理フロー
 
@@ -1332,12 +1540,12 @@ CLIでは例外が呼出元へ伝播する。Reactモックは固定の失敗状
 
 このほか、strict schema、価格mode、NFKC、各artifact digest、Bonsai・Cloudflare・Outscraperのbounded transportと利用量確定、観測値だけの商品正規化、固定registry・限定商品証拠・裁定、固定ONNX CLIP、schema 3.0のtyped proposal付き承認・state・段階別orchestration・`typed-ranking-v4` 後半pipeline、schema 2.0のtyped表示snapshot・SQLite `user_version=2` 履歴、本文非保持のholdout評価契約を扱う。blocking proposal、旧2.0検索artifact、旧Bonsai request v2・v3、ranking-v3 runtime、旧SQLite version 1は新契約として読み替えない。画像scoreは色・外観形状・商品種別だけの補助評価とし、画像componentを無効のまま維持する。localhost BonsaiはEXEC-042で4件を実行したが、全てstrict応答検証に失敗し、条件分解の意味品質と商品順位は未測定である。EXEC-043のdevelopment regressionも4件全てが旧300秒timeoutで失敗した。EXEC-044でapplication timeoutを除き、EXEC-045では4件全てのHTTP応答が完了したが `content_not_json` でranking前に停止した。Cloudflare、運用allowlist・実商品画像host、Windows native、legacy現行検索からの履歴保存、認証、API・UIへは接続していない。Outscraperは2026-09-06の別承認済み単一taskで24候補の応答・正規化契約まで確認したが、Bonsaiからrankingまでの一続きの実サービスE2Eではない。合成fixture、mock HTTP、一時SQLiteと単一live taskによる成功も、実Bonsaiの未知入力品質、実Cloudflare生成品質、実Outscraper属性充足率、一般的なranking品質を証明しない。
 
-実装証拠は [EXEC-003](old/plans/EXEC-003-SEARCH-FLOW-V2-BACKEND.md)、[EXEC-004](GOAL.md#exec-004-bonsai-v2-strict応答境界)、[EXEC-005](GOAL.md#exec-005-決定的検索tokenizer)、[EXEC-006](GOAL.md#exec-006-2段階承認と費用予約境界)、[EXEC-007](GOAL.md#exec-007-cloudflare-4方向request-builder)、[EXEC-008](GOAL.md#exec-008-outscraper複数query-requestと明示承認guard)、[EXEC-009](GOAL.md#exec-009-決定的商品正規化と未知属性境界)、[EXEC-010](GOAL.md#exec-010-安全な画像取得phash固定clip境界)、[EXEC-011](GOAL.md#exec-011-決定的ランキングv2とスコア内訳)、[EXEC-012](GOAL.md#exec-012-bonsai-v2-requestと実行境界)、[EXEC-013](GOAL.md#exec-013-bonsai-v2-http-transport)、[EXEC-014](GOAL.md#exec-014-outscraper-v2-httptaskpolling境界)、[EXEC-015](GOAL.md#exec-015-検索後半pipelineと完了state)、[EXEC-016](GOAL.md#exec-016-cloudflare-http応答と画像正規化)、[EXEC-017](GOAL.md#exec-017-offline検索orchestration)、[EXEC-018](GOAL.md#exec-018-cloudflare画像生成失敗後の回復state)、[EXEC-019](GOAL.md#exec-019-owner分離した30日検索履歴repository)、[EXEC-020](GOAL.md#exec-020-完了検索から表示用履歴への変換と保存)、[EXEC-021](GOAL.md#exec-021-pinned-ip画像https-transport)、[EXEC-022](GOAL.md#exec-022-server-side画像dns-resolver)、[EXEC-023](GOAL.md#exec-023-server-side画像proxy-service)、[EXEC-024](GOAL.md#exec-024-windowswsl向け画像dns-process-isolation)、[EXEC-025](GOAL.md#exec-025-固定onnx-clip-cpu-runtimeと品質smoke)、[EXEC-038](GOAL.md#exec-038-型付き条件ranking-v4境界)、[EXEC-039](GOAL.md#exec-039-型付きranking-v4のoffline検索経路移行)、[EXEC-043](GOAL.md#exec-043-bonsai構造化出力と安全診断)、[EXEC-044](GOAL.md#exec-044-bonsai-application-timeout撤廃)、[EXEC-045](GOAL.md#exec-045-時間上限なしbonsai-development-regression)、[EXEC-062](GOAL.md#exec-062-outscraper単一task実商品接続試験) を参照する。
+実装証拠は [EXEC-003](WORKLOG.md#統合済み履歴plan-exec-003)、[EXEC-004](GOAL.md#exec-004-bonsai-v2-strict応答境界)、[EXEC-005](GOAL.md#exec-005-決定的検索tokenizer)、[EXEC-006](GOAL.md#exec-006-2段階承認と費用予約境界)、[EXEC-007](GOAL.md#exec-007-cloudflare-4方向request-builder)、[EXEC-008](GOAL.md#exec-008-outscraper複数query-requestと明示承認guard)、[EXEC-009](GOAL.md#exec-009-決定的商品正規化と未知属性境界)、[EXEC-010](GOAL.md#exec-010-安全な画像取得phash固定clip境界)、[EXEC-011](GOAL.md#exec-011-決定的ランキングv2とスコア内訳)、[EXEC-012](GOAL.md#exec-012-bonsai-v2-requestと実行境界)、[EXEC-013](GOAL.md#exec-013-bonsai-v2-http-transport)、[EXEC-014](GOAL.md#exec-014-outscraper-v2-httptaskpolling境界)、[EXEC-015](GOAL.md#exec-015-検索後半pipelineと完了state)、[EXEC-016](GOAL.md#exec-016-cloudflare-http応答と画像正規化)、[EXEC-017](GOAL.md#exec-017-offline検索orchestration)、[EXEC-018](GOAL.md#exec-018-cloudflare画像生成失敗後の回復state)、[EXEC-019](GOAL.md#exec-019-owner分離した30日検索履歴repository)、[EXEC-020](GOAL.md#exec-020-完了検索から表示用履歴への変換と保存)、[EXEC-021](GOAL.md#exec-021-pinned-ip画像https-transport)、[EXEC-022](GOAL.md#exec-022-server-side画像dns-resolver)、[EXEC-023](GOAL.md#exec-023-server-side画像proxy-service)、[EXEC-024](GOAL.md#exec-024-windowswsl向け画像dns-process-isolation)、[EXEC-025](GOAL.md#exec-025-固定onnx-clip-cpu-runtimeと品質smoke)、[EXEC-038](GOAL.md#exec-038-型付き条件ranking-v4境界)、[EXEC-039](GOAL.md#exec-039-型付きranking-v4のoffline検索経路移行)、[EXEC-043](GOAL.md#exec-043-bonsai構造化出力と安全診断)、[EXEC-044](GOAL.md#exec-044-bonsai-application-timeout撤廃)、[EXEC-045](GOAL.md#exec-045-時間上限なしbonsai-development-regression)、[EXEC-062](GOAL.md#exec-062-outscraper単一task実商品接続試験) を参照する。
 
 
 ## 統合済みBonsai system prompt
 
-> 統合元: `src/clients/bonsai_prompt.md`。実行時の正本は `src/clients/bonsai_prompt.txt` とし、Markdown版は `docs/old/runtime/` に保存する。内容を変更するときは両者の役割とdigestを同時に確認する。
+> 統合元: `src/clients/bonsai_prompt.md`。実行時の正本は `src/clients/bonsai_prompt.txt` とし、Markdown版は `bin/docs/old/runtime/` に保存する。内容を変更するときは両者の役割とdigestを同時に確認する。
 
 
 あなたはEC商品検索用の商品属性抽出器です。
@@ -1794,11 +2002,13 @@ lookup_productsが正常に空候補を返した場合だけ、BonsaiProductSele
 
 ### OPUS-MTによる未収録商品句の英訳
 
-2026-09-10の利用者判断で、未収録10句の概念充足5/10を受け入れ、candidateの商品句準備と実CLIへ接続した。ContextualQueryExpanderにOpusMtTranslatorを設定した場合、辞書lookup_productsが正常に0件を返したときだけBonsaiへ日本語名を要求し、英訳欄はschemaでもnullに固定する。Bonsaiが保留した場合は翻訳しない。原語と提案名を重複除去して1 batch・最大2句を翻訳し、各句に1つだけ英訳を対応付ける。
+2026-09-10の利用者判断で、未収録10句の概念充足5/10を受け入れ、candidateの商品句準備と実CLIへ接続した。EXEC-134以降、ContextualQueryExpanderにOpusMtTranslatorを設定した場合は、辞書候補0件の直接推論と、候補ありからの未収録名提案の両方でBonsaiへ日本語名だけを要求する。英訳欄はschemaと応答検証でnullに固定し、英訳を返す応答は採用しない。候補ありの場合は既存どおり辞書語義を選択でき、提案名の辞書再照会で英訳が確定すれば辞書を優先する。候補0件からの直接推論では再照会しない。
+
+未収録名の英訳は、原語と提案名を重複除去してOPUS-MTの1 batch・最大2句で取得し、各句に1つだけ対応付ける。Bonsaiが保留した場合や辞書選択時は翻訳しない。翻訳失敗時は日本語候補を保持し、英訳をnullにしてBonsai英訳へ戻さない。OPUS-MT未設定の旧経路は維持する。ブラウザ試験入口と構文解析付きcandidate CLIは既存の翻訳器設定から新分岐へ接続する。視覚条件のBonsai呼出しにはこの名前専用設定を適用しない。
 
 OPUS-MTは既存INT8資材を固定hashで確認し、独立したPython環境のCTranslate2 4.8.2・SentencePiece 0.2.1・sacremoses 0.1.1・NumPy 2.2.6を使う。CPU1 worker/2 threads、beam4、最大64出力tokens、30秒timeout・retry0。子processへ入力はstdinで渡し、credential環境変数を継承しない。stderrは保存せず固定エラーを返す。資材取得や外部翻訳APIは実行しない。資材/worker変更、runtime不一致、timeout、不正出力では日本語候補を保持し、英訳をnullにする。英訳の意味品質を形式検証で保証したとは扱わない。
 
-QueryExpansion.translationにprovider/model/request/response digestとstatusを追加する。辞書出典・Bonsai出典と分け、translator identityを要求hashへ含めて旧構成とcache/承認を共有しない。旧JSONはtranslation省略を許容する。既存DB/履歴は書き換えず、候補は元の確認段階で人間が選択する。検索条件・CLIP視覚抽出・単語一致採点は変更しない。
+QueryExpansion.translationにprovider/model/request/response digestとstatusを保持する。EXEC-134ではbonsai_inferenceとbonsai_proposalの両方で許容し、辞書出典・Bonsai出典と分ける。OPUS-MT設定時の要求識別をproduct-phrase-local-mt-v3へ分離し、translator identityと共に要求hashへ含めて旧構成とcache/承認を共有しない。未設定時のproduct-phrase-direct-v2と旧JSONのtranslation省略を維持する。既存DB/履歴は書き換えず、候補は元の確認段階で人間が選択する。検索条件・視覚抽出・採点は変更しない。
 
 
 ### Candidate相対画像順位と原語英訳の採点

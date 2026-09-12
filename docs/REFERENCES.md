@@ -1,5 +1,9 @@
 # 参考資料
 
+日本語の商品名取得（2026-09-12）: [Outscraper公式API仕様](https://app.outscraper.cloud/api-docs-data.json)の `/amazon-products` は商品・検索・一覧ページURLを `query` に受け付け、`language` の列挙値に `ja` があることを確認した。検索URLの日本語指定によるタイトル取得は別途実APIで検証する。[公式料金](https://outscraper.com/amazon-scraper/)では月間先頭500商品が無料、501〜5000商品は1000件あたり2 USD。24件試験の従量分の見積りは0〜0.048 USDで、実計上額は未確認。
+
+EXEC-124準備（2026-09-12）: [Cloudflare FLUX.2 klein 4B](https://developers.cloudflare.com/workers-ai/models/flux-2-klein-4b/)の入力512px tile単価0.000059 USD/出力単価0.000287 USDと、[Outscraper Amazon料金](https://outscraper.com/amazon-scraper/)の有料枠2 USD/1000商品を再確認した。2出力/1入力tileと24商品は約0.048633 USD。無料枠・実計上額・税・既存月額を確認した結果ではなく、実行回数上限に基づく従量分の見積りである。
+
 ## 目的
 
 amazon-explorer の仕様確認、実装変更、障害調査で参照する一次資料をまとめる。アプリの現行挙動はコードとテスト、外部サービスやライブラリの現行仕様は対応する公式資料を正とする。
@@ -12,7 +16,7 @@ amazon-explorer の仕様確認、実装変更、障害調査で参照する一�
 2. 採用バージョン、Python要件、設定可能な名前は、`pyproject.toml`、`uv.lock`、`.env.example` を確認する
 3. 外部サービスやライブラリが現在何を保証するかは、対象バージョンに対応する公式資料を確認する
 4. 設計意図と運用手順は `docs/` の参照資料を確認し、上記の一次資料と矛盾する場合は文書を修正する
-5. `docs/old/examples/` は経緯の確認だけに使い、現行仕様の根拠にはしない
+5. `bin/docs/old/examples/` は経緯の確認だけに使い、現行仕様の根拠にはしない
 
 公式仕様と現行コードが食い違う場合は、外部仕様に合わせて動くと推測せず、互換性の問題としてコード・テスト・文書を同時に確認する。
 
@@ -139,56 +143,58 @@ SHA-256 `b8cd685aae7251792700ce312c7ddc410c55e0bda5416abef68de83ce55429ea` の20
 
 ## 統合元文書とアーカイブ
 
-`agents-setup` テンプレートにない説明用Markdownは、次表の正本文書へ内容を統合し、元ファイルを `docs/old/` に保存する。アーカイブは作成当時の詳細と判断経緯を確認するためのもので、現行の要件、設計、手順、進行状態を上書きしない。
+2026-09-13の整理以降、以下の旧資料は `bin/` 内のローカル退避物であり、Git追跡・配布対象に含めない。表中の退避パスは所在の記録だけとし、現行判断は統合先を参照する。移動対応とSHA-256はローカルの `bin/cleanup-20260913.json` に保存する。過去の記録中の `docs/old/` と `examples/legacy-phases/` は移動前のパスを表す。
+
+`agents-setup` テンプレートにない説明用Markdownは、次表の正本文書へ内容を統合し、元ファイルを `bin/docs/old/` に保存する。アーカイブは作成当時の詳細と判断経緯を確認するためのもので、現行の要件、設計、手順、進行状態を上書きしない。
 
 `docs/HARNESS-RUNBOOK.md` はユーザー指定により統合対象外とし、実行コマンド、期待結果、停止・再実行規則の正本として現位置に保持する。旧 `docs/SEARCH-FLOW.md` の技術内容は要件・バックエンド・セキュリティ文書へ、テスト内容は [DEVELOPMENT.mdの統合済みテスト方針](DEVELOPMENT.md#統合済みテスト方針) へ分け、ルートの [SEARCH-FLOW.md](../SEARCH-FLOW.md) は旧 `UI-FLOW.md` を基に利用者向け操作の正本とする。
 
 | 統合元 | 統合先または現行正本 | アーカイブまたは扱い |
 |---|---|---|
-| `docs/QUICKSTART.md` | [README.md](../README.md#起動方法) | `docs/old/QUICKSTART.md` |
-| `docs/CONSTRAINTS.md` | [REQUIREMENTS.md](REQUIREMENTS.md#統合済み制約) | `docs/old/CONSTRAINTS.md` |
-| `docs/DESIGN.md` | [BACKEND.md](BACKEND.md#統合済み全体設計) | `docs/old/DESIGN.md` |
-| `docs/UI.md` | [FRONTEND.md](FRONTEND.md#統合済みui設計) | `docs/old/UI.md` |
-| `docs/AI_GUIDE.md` | [DEVELOPMENT.md](DEVELOPMENT.md#統合済みaiレビュー規約)、[SECURITY.md](SECURITY.md) | `docs/old/AI_GUIDE.md` |
-| `docs/PLANS.md` | [DEVELOPMENT.md](DEVELOPMENT.md#統合済みexecution-plan規約) | `docs/old/PLANS.md` |
-| `docs/TROUBLESHOOTING.md` | [DEVELOPMENT.md](DEVELOPMENT.md#統合済みトラブルシューティング) | `docs/old/TROUBLESHOOTING.md` |
-| `docs/MEMORY.md` | [WORKLOG.md](WORKLOG.md#統合済みプロジェクトメモリ) | `docs/old/MEMORY.md` |
-| `docs/TASKS.md` | [GOAL.md](GOAL.md#統合済み大規模タスク一覧) | `docs/old/TASKS.md` |
-| `docs/TODO.md` | [GOAL.md](GOAL.md#統合済み小規模タスク一覧) | `docs/old/TODO.md` |
-| `docs/TECH-DEBT-TRACKER.md` | [ISSUES.md](ISSUES.md#統合済み技術的負債トラッカー) | `docs/old/TECH-DEBT-TRACKER.md` |
-| `docs/INDEX.md` | [AGENTS.md](../AGENTS.md)、[統合済み旧ドキュメント索引](#統合済み旧ドキュメント索引) | `docs/old/INDEX.md` |
-| `docs/TESTING.md` | [DEVELOPMENT.md](DEVELOPMENT.md#統合済みテスト方針) | `docs/old/TESTING.md` |
-| `docs/plans/EXEC-002-ATTESTED-AI-REVIEW-BOUNDARIES.md` | [GOAL.md](GOAL.md#exec-002-attested-ai-review境界の実装) | `docs/old/plans/EXEC-002-ATTESTED-AI-REVIEW-BOUNDARIES.md` |
-| `docs/old/plans/EXEC-001-AI-REVIEW-TDD-HARNESS.md` | [WORKLOG.md](WORKLOG.md#統合済み履歴plan-exec-001) | 履歴原本を同じ場所に保持 |
-| `docs/old/plans/EXEC-003-SEARCH-FLOW-V2-BACKEND.md` | [WORKLOG.md](WORKLOG.md#統合済み履歴plan-exec-003) | 履歴原本を同じ場所に保持 |
-| 旧 `docs/SEARCH-FLOW.md` | [BACKEND.md](BACKEND.md#13-次期検索バックエンド-v2基盤を一部実装)、[DEVELOPMENT.md](DEVELOPMENT.md#統合済みテスト方針) | `docs/old/SEARCH-FLOW.md` |
-| 旧 `UI-FLOW.md` | [SEARCH-FLOW.md](../SEARCH-FLOW.md#ui操作フロー) | `docs/old/UI-FLOW.md` |
+| `docs/QUICKSTART.md` | [README.md](../README.md#起動方法) | `bin/docs/old/QUICKSTART.md` |
+| `docs/CONSTRAINTS.md` | [REQUIREMENTS.md](REQUIREMENTS.md#統合済み制約) | `bin/docs/old/CONSTRAINTS.md` |
+| `docs/DESIGN.md` | [BACKEND.md](BACKEND.md#統合済み全体設計) | `bin/docs/old/DESIGN.md` |
+| `docs/UI.md` | [FRONTEND.md](FRONTEND.md#統合済みui設計) | `bin/docs/old/UI.md` |
+| `docs/AI_GUIDE.md` | [DEVELOPMENT.md](DEVELOPMENT.md#統合済みaiレビュー規約)、[SECURITY.md](SECURITY.md) | `bin/docs/old/AI_GUIDE.md` |
+| `docs/PLANS.md` | [DEVELOPMENT.md](DEVELOPMENT.md#統合済みexecution-plan規約) | `bin/docs/old/PLANS.md` |
+| `docs/TROUBLESHOOTING.md` | [DEVELOPMENT.md](DEVELOPMENT.md#統合済みトラブルシューティング) | `bin/docs/old/TROUBLESHOOTING.md` |
+| `docs/MEMORY.md` | [WORKLOG.md](WORKLOG.md#統合済みプロジェクトメモリ) | `bin/docs/old/MEMORY.md` |
+| `docs/TASKS.md` | [GOAL.md](GOAL.md#統合済み大規模タスク一覧) | `bin/docs/old/TASKS.md` |
+| `docs/TODO.md` | [GOAL.md](GOAL.md#統合済み小規模タスク一覧) | `bin/docs/old/TODO.md` |
+| `docs/TECH-DEBT-TRACKER.md` | [ISSUES.md](ISSUES.md#統合済み技術的負債トラッカー) | `bin/docs/old/TECH-DEBT-TRACKER.md` |
+| `docs/INDEX.md` | [AGENTS.md](../AGENTS.md)、[統合済み旧ドキュメント索引](#統合済み旧ドキュメント索引) | `bin/docs/old/INDEX.md` |
+| `docs/TESTING.md` | [DEVELOPMENT.md](DEVELOPMENT.md#統合済みテスト方針) | `bin/docs/old/TESTING.md` |
+| `docs/plans/EXEC-002-ATTESTED-AI-REVIEW-BOUNDARIES.md` | [GOAL.md](GOAL.md#exec-002-attested-ai-review境界の実装) | `bin/docs/old/plans/EXEC-002-ATTESTED-AI-REVIEW-BOUNDARIES.md` |
+| `bin/docs/old/plans/EXEC-001-AI-REVIEW-TDD-HARNESS.md` | [WORKLOG.md](WORKLOG.md#統合済み履歴plan-exec-001) | 履歴原本をbin内に保持 |
+| `bin/docs/old/plans/EXEC-003-SEARCH-FLOW-V2-BACKEND.md` | [WORKLOG.md](WORKLOG.md#統合済み履歴plan-exec-003) | 履歴原本をbin内に保持 |
+| 旧 `docs/SEARCH-FLOW.md` | [BACKEND.md](BACKEND.md#13-次期検索バックエンド-v2基盤を一部実装)、[DEVELOPMENT.md](DEVELOPMENT.md#統合済みテスト方針) | `bin/docs/old/SEARCH-FLOW.md` |
+| 旧 `UI-FLOW.md` | [SEARCH-FLOW.md](../SEARCH-FLOW.md#ui操作フロー) | `bin/docs/old/UI-FLOW.md` |
 | `docs/HARNESS-RUNBOOK.md` | 同ファイル | 統合・移動対象外 |
 
 2026-08-15に削除された次の旧設計文書は、削除直前版を保持する。内容は現在の [BACKEND.md](BACKEND.md)、[REQUIREMENTS.md](REQUIREMENTS.md)、[DB-SCHEMA.md](DB-SCHEMA.md)、[SECURITY.md](SECURITY.md)、[ISSUES.md](ISSUES.md) へ統合済みである。
 
 | 旧設計文書 |
 |---|
-| `docs/old/CACHE_DESIGN.md` |
-| `docs/old/DATA_MODEL_SPEC.md` |
-| `docs/old/ENVIRONMENT_VARIABLES.md` |
-| `docs/old/EXTERNAL_API_SPEC.md` |
-| `docs/old/PRODUCTION_DESIGN_GUIDE.md` |
-| `docs/old/README_dev.md` |
+| `bin/docs/old/CACHE_DESIGN.md` |
+| `bin/docs/old/DATA_MODEL_SPEC.md` |
+| `bin/docs/old/ENVIRONMENT_VARIABLES.md` |
+| `bin/docs/old/EXTERNAL_API_SPEC.md` |
+| `bin/docs/old/PRODUCTION_DESIGN_GUIDE.md` |
+| `bin/docs/old/README_dev.md` |
 
-段階別検証資料の本文は [WORKLOG.mdの統合済み旧検証資料](WORKLOG.md#統合済み旧検証資料) へ履歴として統合した。現行コードと回帰テストの根拠にはせず、[BACKEND.md](BACKEND.md) に残した現行結論だけを通常の開発判断に使う。元Markdownはパス構造を保って `docs/old/examples/` に保存する。
+段階別検証資料の本文は [WORKLOG.mdの統合済み旧検証資料](WORKLOG.md#統合済み旧検証資料) へ履歴として統合した。現行コードと回帰テストの根拠にはせず、[BACKEND.md](BACKEND.md) に残した現行結論だけを通常の開発判断に使う。元Markdownはパス構造を保って `bin/docs/old/examples/` に保存する。未使用の旧Pythonサンプル6件は `bin/examples/legacy-phases/` に退避する。
 
 | 旧検証資料 |
 |---|
-| `examples/README.md` |
-| `examples/legacy-phases/phase1_bonsai_attribute_extraction/Add.md` |
-| `examples/legacy-phases/phase1_bonsai_attribute_extraction/PREREQUISITES.md` |
-| `examples/legacy-phases/phase1_bonsai_attribute_extraction/README.md` |
-| `examples/legacy-phases/phase2_outscraper_amazon_products_request/README.md` |
-| `examples/legacy-phases/phase3_outscraper_response_normalization/README.md` |
-| `examples/legacy-phases/phase4_product_scoring/README.md` |
+| `bin/docs/old/examples/README.md` |
+| `bin/docs/old/examples/legacy-phases/phase1_bonsai_attribute_extraction/Add.md` |
+| `bin/docs/old/examples/legacy-phases/phase1_bonsai_attribute_extraction/PREREQUISITES.md` |
+| `bin/docs/old/examples/legacy-phases/phase1_bonsai_attribute_extraction/README.md` |
+| `bin/docs/old/examples/legacy-phases/phase2_outscraper_amazon_products_request/README.md` |
+| `bin/docs/old/examples/legacy-phases/phase3_outscraper_response_normalization/README.md` |
+| `bin/docs/old/examples/legacy-phases/phase4_product_scoring/README.md` |
 
-実行時に読み込むpromptは説明文書ではないため、内容を [BACKEND.md](BACKEND.md#統合済みbonsai-system-prompt) または [DEVELOPMENT.md](DEVELOPMENT.md#統合済みindependent-reviewer-prompt) に統合した上で、実行用ファイルをMarkdown以外へ分離する。元Markdownは `docs/old/runtime/` に保存する。
+実行時に読み込むpromptは説明文書ではないため、内容を [BACKEND.md](BACKEND.md#統合済みbonsai-system-prompt) または [DEVELOPMENT.md](DEVELOPMENT.md#統合済みindependent-reviewer-prompt) に統合した上で、実行用ファイルをMarkdown以外へ分離する。元Markdownは `bin/docs/old/runtime/` に保存する。
 
 | 旧Markdown | 実行時の正本 |
 |---|---|
@@ -286,27 +292,27 @@ SHA-256 `b8cd685aae7251792700ce312c7ddc410c55e0bda5416abef68de83ce55429ea` の20
 - `GOAL.md` はこれらの作業台帳を横断する到達点と現在状態をまとめる。
 - `CHANGELOG.md` は統合済み変更を利用者・運用者向けにまとめ、詳細な検証履歴は `WORKLOG.md` に残す。
 - `MEMORY.md` は安定した知識だけを残し、日々の進捗は `WORKLOG.md` へ記録する。
-- `docs/old/` は統合済み旧資料と完了済みPlanの履歴アーカイブであり、現行の仕様、規約、手順、進行状態を上書きしない。
+- `bin/docs/old/` は統合済み旧資料と完了済みPlanの履歴アーカイブであり、現行の仕様、規約、手順、進行状態を上書きしない。
 
 #### 旧文書アーカイブ
 
-アーカイブ全体の出典と取扱規則は [old/README.md](old/README.md) を参照する。2026-08-15の再編で内容を分配統合した旧文書は、削除直前版を `docs/old/` に保存する。現行判断には右列の統合先を使う。
+アーカイブ全体の出典と取扱規則は [old/README.md](REFERENCES.md#統合元文書とアーカイブ) を参照する。2026-08-15の再編で内容を分配統合した旧文書は、削除直前版を `bin/docs/old/` に保存する。現行判断には右列の統合先を使う。
 
 | 旧ファイル | 主な統合先 |
 |---|---|
-| [CACHE_DESIGN.md](old/CACHE_DESIGN.md) | [DESIGN.md](BACKEND.md#統合済み全体設計)、[DB-SCHEMA.md](DB-SCHEMA.md)、[SECURITY.md](SECURITY.md)、[TECH-DEBT-TRACKER.md](ISSUES.md#統合済み技術的負債トラッカー) |
-| [DATA_MODEL_SPEC.md](old/DATA_MODEL_SPEC.md) | [BACKEND.md](BACKEND.md)、[DB-SCHEMA.md](DB-SCHEMA.md)、[REQUIREMENTS.md](REQUIREMENTS.md) |
-| [ENVIRONMENT_VARIABLES.md](old/ENVIRONMENT_VARIABLES.md) | [BACKEND.md](BACKEND.md)、[QUICKSTART.md](../README.md#起動方法)、[CONSTRAINTS.md](REQUIREMENTS.md#統合済み制約)、[SECURITY.md](SECURITY.md) |
-| [EXTERNAL_API_SPEC.md](old/EXTERNAL_API_SPEC.md) | [BACKEND.md](BACKEND.md)、[SECURITY.md](SECURITY.md)、[TROUBLESHOOTING.md](DEVELOPMENT.md#統合済みトラブルシューティング)、[REFERENCES.md](REFERENCES.md) |
-| [PRODUCTION_DESIGN_GUIDE.md](old/PRODUCTION_DESIGN_GUIDE.md) | [DESIGN.md](BACKEND.md#統合済み全体設計)、[SECURITY.md](SECURITY.md)、[TECH-DEBT-TRACKER.md](ISSUES.md#統合済み技術的負債トラッカー)、[TASKS.md](GOAL.md#統合済み大規模タスク一覧) |
-| [README_dev.md](old/README_dev.md) | [DESIGN.md](BACKEND.md#統合済み全体設計)、[BACKEND.md](BACKEND.md)、[FRONTEND.md](FRONTEND.md)、[QUICKSTART.md](../README.md#起動方法) |
+| `bin/docs/old/CACHE_DESIGN.md` | [DESIGN.md](BACKEND.md#統合済み全体設計)、[DB-SCHEMA.md](DB-SCHEMA.md)、[SECURITY.md](SECURITY.md)、[TECH-DEBT-TRACKER.md](ISSUES.md#統合済み技術的負債トラッカー) |
+| `bin/docs/old/DATA_MODEL_SPEC.md` | [BACKEND.md](BACKEND.md)、[DB-SCHEMA.md](DB-SCHEMA.md)、[REQUIREMENTS.md](REQUIREMENTS.md) |
+| `bin/docs/old/ENVIRONMENT_VARIABLES.md` | [BACKEND.md](BACKEND.md)、[QUICKSTART.md](../README.md#起動方法)、[CONSTRAINTS.md](REQUIREMENTS.md#統合済み制約)、[SECURITY.md](SECURITY.md) |
+| `bin/docs/old/EXTERNAL_API_SPEC.md` | [BACKEND.md](BACKEND.md)、[SECURITY.md](SECURITY.md)、[TROUBLESHOOTING.md](DEVELOPMENT.md#統合済みトラブルシューティング)、[REFERENCES.md](REFERENCES.md) |
+| `bin/docs/old/PRODUCTION_DESIGN_GUIDE.md` | [DESIGN.md](BACKEND.md#統合済み全体設計)、[SECURITY.md](SECURITY.md)、[TECH-DEBT-TRACKER.md](ISSUES.md#統合済み技術的負債トラッカー)、[TASKS.md](GOAL.md#統合済み大規模タスク一覧) |
+| `bin/docs/old/README_dev.md` | [DESIGN.md](BACKEND.md#統合済み全体設計)、[BACKEND.md](BACKEND.md)、[FRONTEND.md](FRONTEND.md)、[QUICKSTART.md](../README.md#起動方法) |
 
-完了済みPlanも、現行の進行状態と混同しないよう `docs/old/plans/` に保存する。
+完了済みPlanも、現行の進行状態と混同しないよう `bin/docs/old/plans/` に保存する。
 
 | 完了済みPlan | 位置付け | 現行の参照先 |
 |---|---|---|
-| [EXEC-001](old/plans/EXEC-001-AI-REVIEW-TDD-HARNESS.md) | TASK-006 bootstrapとTDDパイロットの履歴 | [EXEC-002](GOAL.md#exec-002-attested-ai-review境界の実装)、[HARNESS-RUNBOOK.md](HARNESS-RUNBOOK.md) |
-| [EXEC-003](old/plans/EXEC-003-SEARCH-FLOW-V2-BACKEND.md) | TASK-008第1マイルストーンと置換済みprovider判断の履歴 | [BACKEND.md](BACKEND.md#13-次期検索バックエンド-v2基盤を一部実装)、[TASKS.md](GOAL.md#統合済み大規模タスク一覧) |
+| [EXEC-001](WORKLOG.md#統合済み履歴plan-exec-001) | TASK-006 bootstrapとTDDパイロットの履歴 | [EXEC-002](GOAL.md#exec-002-attested-ai-review境界の実装)、[HARNESS-RUNBOOK.md](HARNESS-RUNBOOK.md) |
+| [EXEC-003](WORKLOG.md#統合済み履歴plan-exec-003) | TASK-008第1マイルストーンと置換済みprovider判断の履歴 | [BACKEND.md](BACKEND.md#13-次期検索バックエンド-v2基盤を一部実装)、[TASKS.md](GOAL.md#統合済み大規模タスク一覧) |
 
 #### 変更時の更新先
 
@@ -433,3 +439,23 @@ uv run --frozen --offline --no-sync pytest -m 'not live_api'
 - [Weather Icons採用revisionの宣言](https://github.com/erikflowers/weather-icons/blob/bb80982bf1f43f2d57f9dd753e7413bf88beb9ed/README.md#licensing): アイコンのOFL、コードのMIT、文書のCC BY 3.0を区別した。
 - React等の通常依存・推移依存とNoto Sans JPは、インストール済み固定版のLICENSEとpackage.jsonを照合した。著作権表示とライセンス全文は [THIRD-PARTY-NOTICES.txt](../frontend/public/THIRD-PARTY-NOTICES.txt) に記載する。
 - case1〜case3のPNGは現在Git追跡対象であり、上記の過去記録にある「Git未追跡」は現在の状態を表さない。個別の利用・再配布許諾が確認された記録は見つからず、今回の第三者通知では許諾済みとしない。
+
+## 対比指示用WordNet（EXEC-153、2026-09-13確認）
+
+- [Princeton WordNet 3.0配布](https://wordnetcode.princeton.edu/3.0/): WNdb-3.0.tar.gzのdata.adjを既存日本語WordNet 1.1の語義offsetと組み合わせる。公開資材を別directoryへ取得し、data.adj SHA-256は `f24b635368be441501c9b8001e9271fd3b30b203f00d91e332979e6f8fe35646`。モデル推論や商品検索ではない。
+- [WordNetデータ形式](https://wordnet.princeton.edu/documentation/wndb5wn): 形容詞の反対語pointerとsource/target語番号の読み取りに使用。語義内の任意の同義語へ反対語関係を拡張しない。
+- [WordNetライセンス](https://wordnet.princeton.edu/license-and-commercial-use): 取得した辞書と同じdirectoryへ公式LICENSEを保存した。辞書資材をリポジトリやfrontend配布物へ同梱していない。
+
+## 文章分解・画像生成・採点の技術解説（2026-09-13確認）
+
+[TEXT-TO-IMAGE-FLOW.md](../TEXT-TO-IMAGE-FLOW.md) の技術説明に使用した一次資料。一般的な仕組みを以下で確認し、このアプリでの入出力・設定・用途制限は現行コードと照合した。この確認でモデル推論、商品取得、画像生成は実行していない。
+
+- [SudachiPy公式API](https://worksapplications.github.io/sudachi.rs/python/api/sudachipy.html): 分割モード、辞書形・正規化形、原文位置の役割を確認した。
+- [GiNZA公式リポジトリ](https://github.com/megagonlabs/ginza): spaCyを使った日本語の係り受け解析とUniversal Dependenciesに基づくラベルの説明に使用した。
+- [JMdict公式説明](https://www.edrdg.org/jmdict/j_jmdict.html): 見出し・読み・語義・訳語を持つXML辞書の説明に使用した。
+- [日本語WordNet公式リポジトリ](https://github.com/bond-lab/wnja)と[Princeton WordNetの入力形式](https://wordnet.princeton.edu/documentation/wninput5wn): synset、語と語義の関係、直接反対語と類似関係の区別を確認した。
+- [日本語rerankerの公開モデルカード](https://huggingface.co/hotchpotch/japanese-reranker-xsmall-v2)と[ONNX Runtime公式説明](https://onnxruntime.ai/docs/): ModernBERTを使うCrossEncoderとONNX推論の役割を確認した。アプリ固有の語義選択の閾値はコードを根拠とする。
+- [Bonsai-8Bの公開モデルカード](https://huggingface.co/prism-ml/Bonsai-8B-gguf)と[llama.cpp公式リポジトリ](https://github.com/ggml-org/llama.cpp): モデル、GGUF、量子化、推論ソフトの違いの説明に使用した。配布元の量子化表記を、未検査のローカル資材の保証に読み替えない。
+- [OPUS-MT日本語→英語のモデルカード](https://huggingface.co/Helsinki-NLP/opus-mt-ja-en)、[SentencePiece公式リポジトリ](https://github.com/google/sentencepiece)、[CTranslate2の量子化説明](https://opennmt.net/CTranslate2/quantization.html): 翻訳モデル・文字列分割・推論実行とint8_float32の分担を確認した。
+- [Cloudflare Workers AIのFLUX.2 [klein] 9B仕様](https://developers.cloudflare.com/workers-ai/models/flux-2-klein-9b/): モデル識別子、画像入力、multipart、Base64応答の説明に使用した。実際の呼出し上限と確認操作はリポジトリ実装を根拠とする。
+- [SigLIP 2の公式モデルカード](https://huggingface.co/google/siglip2-base-patch16-224): 画像特徴の取得と画像・文章のモデル構成を確認した。このアプリの画像同士の比較式は独自の実装であり、モデルの標準出力や確率とは区別した。

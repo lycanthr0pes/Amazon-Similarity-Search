@@ -183,7 +183,10 @@ test("every delete action has danger styling in the list, saved results, and con
   ).toBeVisible();
   await expectDangerButton(remove, page);
   await remove.click();
-  const dialog = page.getByRole("dialog", { name: "履歴を削除", exact: true });
+  const dialog = page.getByRole("dialog", {
+    name: "この履歴を削除しますか？",
+    exact: true,
+  });
   const confirm = dialog.getByRole("button", { name: "削除", exact: true });
   await expectDangerButton(confirm, page);
   await expect(confirm).toHaveCSS("width", "176px");
@@ -214,7 +217,10 @@ test("windows and buttons use circular corners and integer frame positions", asy
   }
   await openSyntheticHistory(page);
   await page.getByRole("button", { name: "削除", exact: true }).click();
-  const dialog = page.getByRole("dialog", { name: "履歴を削除", exact: true });
+  const dialog = page.getByRole("dialog", {
+    name: "この履歴を削除しますか？",
+    exact: true,
+  });
   await expect.soft(dialog).toHaveCSS("corner-shape", "superellipse(1)");
   await expect(dialog).toHaveCSS("border-radius", "15px");
 });

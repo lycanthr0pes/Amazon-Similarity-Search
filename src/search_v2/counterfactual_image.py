@@ -18,6 +18,7 @@ from pydantic import ValidationError
 from pydantic import model_validator
 from pydantic import model_serializer
 
+from src.search_v2.visual_contrast import VisualContrast
 from src.search_v2.image_similarity import PHASH_DUPLICATE_MAX_DISTANCE
 from src.search_v2.image_similarity import ClipEmbedding
 from src.search_v2.image_similarity import ImagePerceptualHash
@@ -104,12 +105,15 @@ class VisualConditionDraft(_StrictFrozenContract):
     strength: RequirementStrength
     attribute_key: AttributeName | None = None
     focus: VisualFocus | None = None
+    contrast: VisualContrast | None = None
 
     @model_serializer(mode="wrap")
     def serialize_focus(self, handler):
         result = handler(self)
         if self.focus is None:
             result.pop("focus", None)
+        if self.contrast is None:
+            result.pop("contrast", None)
         return result
 
 
@@ -124,6 +128,7 @@ class VisualCondition(_StrictFrozenContract):
     attribute_key: AttributeKey | None
     registry_sha256: Digest
     focus: VisualFocus | None = None
+    contrast: VisualContrast | None = None
 
     @model_validator(mode="after")
     def validate_span(self) -> VisualCondition:
@@ -138,6 +143,8 @@ class VisualCondition(_StrictFrozenContract):
         result = handler(self)
         if self.focus is None:
             result.pop("focus", None)
+        if self.contrast is None:
+            result.pop("contrast", None)
         return result
 
 
@@ -396,6 +403,7 @@ def build_visual_condition_set(
                     attribute_key=attribute_key,
                     registry_sha256=registry_digest,
                     focus=current.focus,
+                    contrast=current.contrast,
                 )
             )
         return VisualConditionSet(

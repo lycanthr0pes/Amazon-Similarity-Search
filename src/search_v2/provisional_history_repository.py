@@ -31,7 +31,10 @@ from pydantic import TypeAdapter
 from pydantic import ValidationError
 from pydantic import field_validator
 from pydantic import model_validator
+from pydantic import model_serializer
 
+from src.search_v2.candidate_bilingual import BilingualTitleScore, BilingualConditionScore
+from src.search_v2.history_content import HistoryContent, validate_thumbnail
 from src.search_v2.usage_ledger import Digest
 from src.search_v2.usage_ledger import SubjectId
 
@@ -53,7 +56,7 @@ HistoryLocator = Annotated[
 DisplayText = Annotated[str, StringConstraints(min_length=1, max_length=500)]
 HttpsUrl = Annotated[str, StringConstraints(min_length=1, max_length=2_048)]
 ImageTarget = Literal["desired", "counterfactual"]
-ImageComponentStatus = Literal["available", "missing", "unknown"]
+ImageComponentStatus = Literal["available", "missing", "unknown", "not_used"]
 
 _OWNER_ADAPTER = TypeAdapter(SubjectId)
 _LOCATOR_ADAPTER = TypeAdapter(HistoryLocator)
@@ -135,7 +138,15 @@ def _validate_product_url(value: str | None) -> str | None:
 class ProvisionalHistoryProductView(_StrictFrozenContract):
     schema_version: Literal["5.0"]
     rank: Annotated[int, Field(ge=1, le=MAX_PROVISIONAL_HISTORY_PRODUCTS)]
+    thumbnail_png: str | None = Field(default=None, max_length=180000, repr=False)
     title: DisplayText = Field(repr=False)
+    title_en: DisplayText | None = Field(default=None, repr=False)
+    title_en_status: Literal["available", "unavailable"] | None = None
+    review_rating: Annotated[float, Field(ge=0.0, le=5.0)] | None = None
+    title_scores: BilingualTitleScore | None = None
+    condition_scores: tuple[BilingualConditionScore, ...] | None = Field(
+        default=None, max_length=64
+    )
     price_jpy: Annotated[int, Field(gt=0, le=1_000_000_000)] | None
     product_url: HttpsUrl | None = Field(repr=False)
     required_status: Literal["confirmed", "uncertain", "contradicted"]
@@ -143,10 +154,26 @@ class ProvisionalHistoryProductView(_StrictFrozenContract):
     image_score: Annotated[float, Field(ge=0.0, le=1.0)] | None
     total_score: Annotated[float, Field(ge=0.0, le=1.0)]
 
-    @field_validator("title")
+    @model_serializer(mode="wrap")
+    def serialize_compatible(self, handler):
+        data = handler(self)
+        for field in ("title_scores", "condition_scores", "review_rating", "thumbnail_png"):
+            if getattr(self, field) is None:
+                data.pop(field, None)
+        if self.title_en_status is None:
+            data.pop("title_en", None)
+            data.pop("title_en_status", None)
+        return data
+
+    @field_validator("thumbnail_png")
     @classmethod
-    def validate_title(cls, value: str) -> str:
-        return _validate_display_text(value)
+    def validate_thumbnail(cls, value):
+        return validate_thumbnail(value)
+
+    @field_validator("title", "title_en")
+    @classmethod
+    def validate_title(cls, value: str | None) -> str | None:
+        return _validate_display_text(value) if value is not None else None
 
     @field_validator("product_url")
     @classmethod
@@ -155,6 +182,8 @@ class ProvisionalHistoryProductView(_StrictFrozenContract):
 
     @model_validator(mode="after")
     def validate_image_component(self) -> ProvisionalHistoryProductView:
+        if (self.title_en_status == "available") != (self.title_en is not None):
+            raise ValueError("English title status is inconsistent")
         if (self.image_component_status == "available") != (self.image_score is not None):
             raise ValueError("provisional history image score is inconsistent")
         return self
@@ -222,6 +251,41 @@ class ProvisionalHistoryReferenceImageRef(_StrictFrozenContract):
 
 
 class _HistoryRankingMetadata(_StrictFrozenContract):
+    product_name: Annotated[str, StringConstraints(min_length=1, max_length=100)] | None = None
+
+    @field_validator("product_name")
+    @classmethod
+    def validate_product_name(cls, value):
+        return _validate_display_text(value) if value is not None else None
+
+    history_content: HistoryContent | None = Field(default=None, repr=False)
+    image_mode: Literal["off"] | None = None
+    image_weight: Literal[0.5] | None = None
+    sort_profile_id: (
+        Literal["title-image-conditions-v1", "excluded-title-conditions-image-review-v1"] | None
+    ) = None
+    text_profile_id: Literal["candidate-text-v1", "candidate-text-bilingual-v2"] | None = None
+    retrieval_provider: Literal["playwright"] | None = None
+
+    @model_serializer(mode="wrap")
+    def serialize_compatible(self, handler):
+        data = handler(self)
+        if self.product_name is None:
+            data.pop("product_name", None)
+        if self.history_content is None:
+            data.pop("history_content", None)
+        if self.image_mode is None:
+            data.pop("image_mode", None)
+        if self.image_weight is None:
+            data.pop("image_weight", None)
+        if self.sort_profile_id is None:
+            data.pop("sort_profile_id", None)
+        if self.text_profile_id is None:
+            data.pop("text_profile_id", None)
+        if self.retrieval_provider is None:
+            data.pop("retrieval_provider", None)
+        return data
+
     provisional_profile_id: Literal[
         "counterfactual-v4-provisional-production-v1",
         "counterfactual-relative-v1",
@@ -229,6 +293,7 @@ class _HistoryRankingMetadata(_StrictFrozenContract):
         "counterfactual-siglip2-appearance-v1",
         "counterfactual-attribute-v1",
         "counterfactual-attribute-v2",
+        "image-free-v1",
     ]
     known_holdout_accuracy: Literal[0.875] | None
     ranking_profile_id: Literal[
@@ -240,10 +305,34 @@ class _HistoryRankingMetadata(_StrictFrozenContract):
         "candidate-siglip2-appearance-v1",
         "candidate-attribute-image-v1",
         "candidate-attribute-image-v2",
+        "candidate-image-free-v1",
     ]
 
     @model_validator(mode="after")
     def validate_ranking_metadata(self):
+        image_free = self.image_mode == "off"
+        if image_free != (self.ranking_profile_id == "candidate-image-free-v1") or image_free != (
+            self.provisional_profile_id == "image-free-v1"
+        ):
+            raise ValueError("History image mode and profile disagree")
+        if image_free and (
+            self.image_weight is not None
+            or self.sort_profile_id != "excluded-title-conditions-image-review-v1"
+        ):
+            raise ValueError("Image-free history cannot use image weighting")
+        if not image_free and self.sort_profile_id is not None and self.image_weight != 0.5:
+            raise ValueError("History sort profile requires current score weighting")
+        if self.image_weight is not None and self.ranking_profile_id in {
+            "typed-ranking-v5-counterfactual-provisional",
+            "candidate-semantic-clip-v1",
+        }:
+            raise ValueError("Legacy history cannot use equal image weighting")
+        if self.text_profile_id is not None and self.ranking_profile_id in {
+            "typed-ranking-v5-counterfactual-provisional",
+            "candidate-semantic-clip-v1",
+            "candidate-lexical-clip-v2",
+        }:
+            raise ValueError("Legacy history cannot use the new text profile")
         if (self.ranking_profile_id == "candidate-siglip2-appearance-v1") != (
             self.provisional_profile_id == "counterfactual-siglip2-appearance-v1"
         ):
@@ -273,6 +362,40 @@ class _HistoryRankingMetadata(_StrictFrozenContract):
             raise ValueError("History accuracy does not belong to its ranking profile")
         return self
 
+    @model_validator(mode="after")
+    def validate_image_evidence(self):
+        if not hasattr(self, "reference_images"):
+            return self
+        if any(p.thumbnail_png is not None for p in self.products) and (
+            self.history_content is None
+        ):
+            raise ValueError("History thumbnails require an image content snapshot")
+        if self.history_content is not None and any(
+            score.requirement_id not in self.history_content.condition_labels
+            for product in self.products
+            for score in (product.condition_scores or ())
+        ):
+            raise ValueError("History condition labels are incomplete")
+        hashes = (self.condition_set_sha256, self.reference_set_sha256, self.runtime_sha256)
+        if self.image_mode == "off":
+            if (
+                self.reference_images
+                or any(h is not None for h in hashes)
+                or any(
+                    p.image_component_status != "not_used" or p.image_score is not None
+                    for p in self.products
+                )
+            ):
+                raise ValueError("Image-free history contains image evidence")
+        elif (
+            not self.products
+            or len(self.reference_images) < 2
+            or any(h is None for h in hashes)
+            or any(p.image_component_status == "not_used" for p in self.products)
+        ):
+            raise ValueError("Image history requires its image evidence")
+        return self
+
 
 class ProvisionalHistoryWrite(_HistoryRankingMetadata):
     schema_version: Literal["5.0"]
@@ -282,16 +405,16 @@ class ProvisionalHistoryWrite(_HistoryRankingMetadata):
     summary: DisplayText
     ranking_profile_sha256: Digest
     source_typed_ranked_product_batch_sha256: Digest
-    condition_set_sha256: Digest
-    reference_set_sha256: Digest
-    runtime_sha256: Digest
+    condition_set_sha256: Digest | None
+    reference_set_sha256: Digest | None
+    runtime_sha256: Digest | None
     reference_images: Annotated[
         tuple[ProvisionalHistoryReferenceImageWrite, ...],
-        Field(min_length=2, max_length=4, exclude=True, repr=False),
+        Field(min_length=0, max_length=4, exclude=True, repr=False),
     ]
     products: Annotated[
         tuple[ProvisionalHistoryProductView, ...],
-        Field(min_length=1, max_length=MAX_PROVISIONAL_HISTORY_PRODUCTS, repr=False),
+        Field(min_length=0, max_length=MAX_PROVISIONAL_HISTORY_PRODUCTS, repr=False),
     ]
 
     @field_validator("completed_at")
@@ -307,6 +430,12 @@ class ProvisionalHistoryWrite(_HistoryRankingMetadata):
     @model_validator(mode="after")
     def validate_order(self) -> ProvisionalHistoryWrite:
         references = self.reference_images
+        if self.image_mode == "off":
+            if tuple(item.rank for item in self.products) != tuple(
+                range(1, len(self.products) + 1)
+            ):
+                raise ValueError("Invalid image-free product order")
+            return self
         expected_ids = tuple(f"visual-condition-{index:03d}" for index in range(1, len(references)))
         if (
             references[0].target != "desired"
@@ -328,15 +457,15 @@ class ProvisionalHistoryDetail(_HistoryRankingMetadata):
     summary: DisplayText
     ranking_profile_sha256: Digest
     source_typed_ranked_product_batch_sha256: Digest
-    condition_set_sha256: Digest
-    reference_set_sha256: Digest
-    runtime_sha256: Digest
+    condition_set_sha256: Digest | None
+    reference_set_sha256: Digest | None
+    runtime_sha256: Digest | None
     reference_images: Annotated[
-        tuple[ProvisionalHistoryReferenceImageRef, ...], Field(min_length=2, max_length=4)
+        tuple[ProvisionalHistoryReferenceImageRef, ...], Field(min_length=0, max_length=4)
     ]
     products: Annotated[
         tuple[ProvisionalHistoryProductView, ...],
-        Field(min_length=1, max_length=MAX_PROVISIONAL_HISTORY_PRODUCTS, repr=False),
+        Field(min_length=0, max_length=MAX_PROVISIONAL_HISTORY_PRODUCTS, repr=False),
     ]
 
     @field_validator("completed_at", "expires_at")
@@ -354,13 +483,14 @@ class ProvisionalHistoryDetail(_HistoryRankingMetadata):
 
 
 class ProvisionalHistoryListItem(_StrictFrozenContract):
+    product_name: Annotated[str, StringConstraints(min_length=1, max_length=100)] | None = None
     schema_version: Literal["5.0"]
     locator: HistoryLocator
     completed_at: datetime
     expires_at: datetime
     summary: DisplayText
     known_holdout_accuracy: Literal[0.875] | None
-    compared_count: Annotated[int, Field(ge=1, le=MAX_PROVISIONAL_HISTORY_PRODUCTS)]
+    compared_count: Annotated[int, Field(ge=0, le=MAX_PROVISIONAL_HISTORY_PRODUCTS)]
 
     @field_validator("completed_at", "expires_at")
     @classmethod
@@ -417,17 +547,22 @@ def _detail_sha256(value: str) -> str:
 class SqliteProvisionalHistoryRepository:
     """Owner-scoped schema-5 history; never migrates legacy schema-2 rows."""
 
-    def __init__(self, path: Path) -> None:
+    def __init__(self, path: Path, *, read_only: bool = False, existing_only: bool = False) -> None:
+        self._existing_only = existing_only
+        self._read_only = read_only
         try:
             requested = Path(path)
             if requested.is_symlink():
                 raise ProvisionalHistoryStorageError(_STORAGE_MESSAGE)
-            requested.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+            if not read_only and not existing_only:
+                requested.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
             resolved = requested.resolve()
             if resolved.exists():
                 mode = resolved.stat(follow_symlinks=False).st_mode
                 if not stat.S_ISREG(mode) or (os.name == "posix" and stat.S_IMODE(mode) & 0o077):
                     raise ProvisionalHistoryStorageError(_STORAGE_MESSAGE)
+            elif read_only or existing_only:
+                raise ProvisionalHistoryStorageError(_STORAGE_MESSAGE)
             else:
                 flags = os.O_CREAT | os.O_EXCL | os.O_RDWR | getattr(os, "O_NOFOLLOW", 0)
                 descriptor = os.open(resolved, flags, 0o600)
@@ -443,7 +578,14 @@ class SqliteProvisionalHistoryRepository:
     def _connection(self) -> Iterator[sqlite3.Connection]:
         connection: sqlite3.Connection | None = None
         try:
-            connection = sqlite3.connect(self.path, timeout=5.0, isolation_level=None)
+            connection = sqlite3.connect(
+                self.path.as_uri() + ("?mode=ro" if self._read_only else "?mode=rw")
+                if self._read_only or self._existing_only
+                else self.path,
+                uri=self._read_only or self._existing_only,
+                timeout=0.25 if self._existing_only else 5.0,
+                isolation_level=None,
+            )
             connection.row_factory = sqlite3.Row
             connection.execute("PRAGMA foreign_keys = ON")
             yield connection
@@ -454,7 +596,9 @@ class SqliteProvisionalHistoryRepository:
     def _initialize(self) -> None:
         with self._connection() as connection:
             version = connection.execute("PRAGMA user_version").fetchone()[0]
-            if version not in {0, _SCHEMA_VERSION}:
+            if version not in {0, _SCHEMA_VERSION} or (
+                (self._read_only or self._existing_only) and version != _SCHEMA_VERSION
+            ):
                 raise ProvisionalHistoryStorageError(_STORAGE_MESSAGE)
             if version == _SCHEMA_VERSION:
                 self._validate_schema(connection)
@@ -664,9 +808,16 @@ class SqliteProvisionalHistoryRepository:
                     completed_at=validated.completed_at,
                     expires_at=expires,
                     summary=validated.summary,
+                    product_name=validated.product_name,
+                    history_content=validated.history_content,
                     provisional_profile_id=validated.provisional_profile_id,
                     known_holdout_accuracy=validated.known_holdout_accuracy,
                     ranking_profile_id=validated.ranking_profile_id,
+                    text_profile_id=validated.text_profile_id,
+                    image_mode=validated.image_mode,
+                    image_weight=validated.image_weight,
+                    sort_profile_id=validated.sort_profile_id,
+                    retrieval_provider=validated.retrieval_provider,
                     ranking_profile_sha256=validated.ranking_profile_sha256,
                     source_typed_ranked_product_batch_sha256=(
                         validated.source_typed_ranked_product_batch_sha256
@@ -783,7 +934,7 @@ class SqliteProvisionalHistoryRepository:
                     """,
                     (owner, _time_text(current)),
                 ).fetchall()
-                details = tuple(self._load_detail(connection, row) for row in rows)
+                details = (self._load_detail(connection, row) for row in rows)
                 return tuple(
                     ProvisionalHistoryListItem(
                         schema_version="5.0",
@@ -791,6 +942,7 @@ class SqliteProvisionalHistoryRepository:
                         completed_at=detail.completed_at,
                         expires_at=detail.expires_at,
                         summary=detail.summary,
+                        product_name=detail.product_name,
                         known_holdout_accuracy=detail.known_holdout_accuracy,
                         compared_count=len(detail.products),
                     )
@@ -865,6 +1017,7 @@ class SqliteProvisionalHistoryRepository:
             raise ProvisionalHistoryInputError(_INVALID_INPUT_MESSAGE) from exc
         try:
             with self._connection() as connection:
+                connection.execute("PRAGMA secure_delete = ON")
                 connection.execute("BEGIN IMMEDIATE")
                 deleted = connection.execute(
                     "DELETE FROM provisional_history WHERE owner_id = ? AND locator = ?",
@@ -879,17 +1032,22 @@ class SqliteProvisionalHistoryRepository:
         except (OSError, sqlite3.Error) as exc:
             raise ProvisionalHistoryStorageError(_STORAGE_MESSAGE) from exc
 
-    def purge_expired(self, *, now: datetime) -> int:
+    def purge_expired(self, *, now: datetime, owner_id: str | None = None) -> int:
         try:
             current = _utc_datetime(now, field_name="now")
+            owner = (
+                None if owner_id is None else _OWNER_ADAPTER.validate_python(owner_id, strict=True)
+            )
         except (TypeError, ValueError) as exc:
             raise ProvisionalHistoryInputError(_INVALID_INPUT_MESSAGE) from exc
         try:
             with self._connection() as connection:
+                connection.execute("PRAGMA secure_delete = ON")
                 connection.execute("BEGIN IMMEDIATE")
                 deleted = connection.execute(
-                    "DELETE FROM provisional_history WHERE expires_at <= ?",
-                    (_time_text(current),),
+                    "DELETE FROM provisional_history WHERE expires_at <= ?"
+                    + (" AND owner_id = ?" if owner is not None else ""),
+                    (_time_text(current), owner) if owner is not None else (_time_text(current),),
                 ).rowcount
                 connection.execute("COMMIT")
                 return deleted

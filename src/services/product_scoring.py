@@ -488,6 +488,8 @@ def score_product(
     return ProductScore(
         asin=product.asin,
         title=str(product.title or ""),
+        title_en=product.title_en,
+        title_en_status=product.title_en_status,
         price_jpy=product.price_jpy,
         rating=product.rating,
         review_count=product.review_count,
@@ -587,7 +589,7 @@ def scoring(
 
     # JSONに書き込む
     scored_dump = [product.model_dump() for product in scored_products]
-    output_path = settings.cache_dir / "outscraper" / "scored" / f"{query_hash}.json"
+    output_path = settings.cache_dir / "playwright-v3" / "scored" / f"{query_hash}.json"
     write_json(output_path, scored_dump)
     print(f"Scored products written to: {output_path}")
 

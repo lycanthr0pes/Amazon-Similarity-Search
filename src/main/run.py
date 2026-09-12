@@ -75,6 +75,28 @@ def build_outscraper_cache_key(query: str, *, cache_scope: str = "local-cli") ->
     )
 
 
+def build_playwright_cache_key(query: str, *, cache_scope: str = "local-cli") -> str:
+    from src.config import settings
+    from src.utilities.build_hash import build_cache_key
+
+    return build_cache_key(
+        {
+            "type": "playwright_raw",
+            "version": "3",
+            "cache_scope": cache_scope,
+            "query": query,
+            "domain": "amazon.co.jp",
+            "language": "ja_JP",
+            "english_titles": True,
+            "english_details": True,
+            "delivery_location": "amazon_default",
+            "limit": settings.playwright_limit,
+            "maximum_search_pages": 3,
+            "details": True,
+        }
+    )
+
+
 def build_normalized_cache_key(
     raw_response: object,
     *,
@@ -139,12 +161,12 @@ def run_product_search(
     cache_scope: str = "local-cli",
 ) -> list["ProductScore"]:
     from src.clients.bonsai_client import call_bonsai
-    from src.clients.outscraper_client import call_outscraper
+    from src.clients.playwright_client import call_playwright
     from src.config import settings
     from src.repositories.cache_repository import JsonCacheRepository
-    from src.repositories.cache_repository import OUTSCRAPER_NORMALIZED_CACHE
-    from src.repositories.cache_repository import OUTSCRAPER_RAW_CACHE
-    from src.repositories.cache_repository import OUTSCRAPER_SCORED_CACHE
+    from src.repositories.cache_repository import PLAYWRIGHT_NORMALIZED_CACHE
+    from src.repositories.cache_repository import PLAYWRIGHT_RAW_CACHE
+    from src.repositories.cache_repository import PLAYWRIGHT_SCORED_CACHE
     from src.repositories.cache_repository import PRODUCT_ATTRIBUTES_CACHE
     from src.services.amazon_product_normalization import normalize
     from src.services.outscraper_search_select import select_outscraper_query
@@ -193,32 +215,32 @@ def run_product_search(
     else:
         print("Product attributes loaded from cache.")
 
-    print("Step 2/4: Outscraperへ渡す検索クエリを選択します")
+    print("Step 2/4: Playwrightへ渡す検索クエリを選択します")
     query = select_outscraper_query(attrs)
-    outscraper_cache_key = build_outscraper_cache_key(query, cache_scope=normalized_scope)
+    product_cache_key = build_playwright_cache_key(query, cache_scope=normalized_scope)
     print("Search query prepared.")
 
-    print("Step 3/4: OutscraperでAmazon商品候補を取得します")
+    print("Step 3/4: PlaywrightでAmazon商品候補を取得します")
     raw_products_path = None
     raw_response = None
     if cache_enabled:
         raw_products_path = repository.fresh_path(
-            OUTSCRAPER_RAW_CACHE,
-            outscraper_cache_key,
-            max_age_seconds=settings.outscraper_cache_ttl_seconds,
+            PLAYWRIGHT_RAW_CACHE,
+            product_cache_key,
+            max_age_seconds=settings.playwright_cache_ttl_seconds,
         )
         if raw_products_path is not None:
             cached_raw_response = repository.load(
-                OUTSCRAPER_RAW_CACHE,
-                outscraper_cache_key,
-                max_age_seconds=settings.outscraper_cache_ttl_seconds,
+                PLAYWRIGHT_RAW_CACHE,
+                product_cache_key,
+                max_age_seconds=settings.playwright_cache_ttl_seconds,
             )
             if isinstance(cached_raw_response, dict):
                 raw_response = cached_raw_response
             else:
                 raw_products_path = None
     if raw_products_path is None:
-        raw_products_path = call_outscraper(query, outscraper_cache_key)
+        raw_products_path = call_playwright(query, product_cache_key)
         loaded_raw_response = read_json(raw_products_path)
         if not isinstance(loaded_raw_response, dict):
             raise ValueError("Outscraper cache must contain a JSON object.")
@@ -232,7 +254,7 @@ def run_product_search(
         cache_scope=normalized_scope,
     )
     cached_normalized = (
-        repository.load(OUTSCRAPER_NORMALIZED_CACHE, normalized_cache_key)
+        repository.load(PLAYWRIGHT_NORMALIZED_CACHE, normalized_cache_key)
         if cache_enabled
         else None
     )
@@ -245,7 +267,7 @@ def run_product_search(
     print("Step 4/4: 商品候補をスコアリングします")
     scored_cache_key = build_scored_cache_key(attrs, normalized_cache_key)
     cached_scored = (
-        repository.load(OUTSCRAPER_SCORED_CACHE, scored_cache_key) if cache_enabled else None
+        repository.load(PLAYWRIGHT_SCORED_CACHE, scored_cache_key) if cache_enabled else None
     )
     scored_products = _validated_model_list(ProductScore, cached_scored)
     if scored_products is not None:

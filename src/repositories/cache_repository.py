@@ -13,6 +13,9 @@ PRODUCT_ATTRIBUTES_CACHE = "product_attributes"
 OUTSCRAPER_RAW_CACHE = "outscraper/raw"
 OUTSCRAPER_NORMALIZED_CACHE = "outscraper/normalized"
 OUTSCRAPER_SCORED_CACHE = "outscraper/scored"
+PLAYWRIGHT_RAW_CACHE = "playwright-v3/raw"
+PLAYWRIGHT_NORMALIZED_CACHE = "playwright-v3/normalized"
+PLAYWRIGHT_SCORED_CACHE = "playwright-v3/scored"
 
 
 class JsonCacheRepository:

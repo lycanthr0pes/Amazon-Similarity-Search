@@ -1,5 +1,6 @@
 import { useState } from "react";
 import * as stylex from "@stylexjs/stylex";
+import { BackToTop, ResultCount } from "./search-chrome";
 import {
   Actions,
   Button,
@@ -23,7 +24,6 @@ export const fieldLabels: Record<keyof Conditions, string> = {
 export function ConditionSummary({
   conditions,
   input,
-  useImages,
   variant = "plain",
   columns = 1,
 }: {
@@ -59,7 +59,6 @@ export function ConditionSummary({
           </div>
         ))}
       </dl>
-      <p>参考画像：{useImages ? "使用" : "なし"}</p>
       <details>
         <summary>入力した文章</summary>
         <p
@@ -174,21 +173,7 @@ export function Results({
     <div {...stylex.props(layout.stack)}>
       <div {...stylex.props(layout.resultToolbar)}>
         <p>{products.length}件の合成商品 · 条件に近い順（固定）</p>
-        <label>
-          表示件数{" "}
-          <select
-            aria-label="表示件数"
-            value={count}
-            onChange={(event) => onCount(Number(event.target.value))}
-            {...stylex.props(layout.select)}
-          >
-            {Array.from({ length: 30 }, (_, i) => (
-              <option key={i + 1} value={i + 1}>
-                {i + 1}件
-              </option>
-            ))}
-          </select>
-        </label>
+        <ResultCount count={count} onCount={onCount} />
       </div>
       {products.length === 0 ? (
         <section {...stylex.props(layout.panel)}>
@@ -200,30 +185,35 @@ export function Results({
       ) : (
         <ul aria-label="検索結果" {...stylex.props(layout.resultGrid)}>
           {products.slice(0, count).map((item, index) => (
-            <li key={item.id} {...stylex.props(layout.product)}>
-              <div {...stylex.props(layout.resultToolbar)}>
-                <span {...stylex.props(layout.rank)}>#{index + 1}</span>
-                <span {...stylex.props(layout.small)}>合成商品</span>
+            <li
+              key={item.id}
+              {...stylex.props(layout.product, layout.resultCard)}
+            >
+              <div {...stylex.props(layout.productOverview)}>
+                <div {...stylex.props(layout.resultToolbar)}>
+                  <span {...stylex.props(layout.rank)}>#{index + 1}</span>
+                  <span {...stylex.props(layout.small)}>合成商品</span>
+                </div>
+                <ImageZoom label={item.name} onOpen={() => setImage(item)}>
+                  <img
+                    src={item.image}
+                    alt={item.name}
+                    width={304}
+                    height={200}
+                    {...stylex.props(layout.productImage)}
+                  />
+                </ImageZoom>
+                <ProductName name={item.name} url={productUrl?.(item)} />
+                <p {...stylex.props(layout.price)}>
+                  ¥{item.price.toLocaleString("ja-JP")}
+                </p>
+                <p {...stylex.props(layout.small)}>
+                  評価 {item.rating.toFixed(1)} / 5 · {item.reviews}件（デモ）
+                </p>
               </div>
-              <ImageZoom label={item.name} onOpen={() => setImage(item)}>
-                <img
-                  src={item.image}
-                  alt={item.name}
-                  width={304}
-                  height={200}
-                  {...stylex.props(layout.productImage)}
-                />
-              </ImageZoom>
-              <ProductName name={item.name} url={productUrl?.(item)} />
-              <p {...stylex.props(layout.price)}>
-                ¥{item.price.toLocaleString("ja-JP")}
-              </p>
-              <p {...stylex.props(layout.small)}>
-                評価 {item.rating.toFixed(1)} / 5 · {item.reviews}件（デモ）
-              </p>
               <details {...stylex.props(layout.productEvidence)}>
                 <summary {...stylex.props(layout.evidenceSummary)}>
-                  検索条件
+                  検索詳細
                 </summary>
                 <div {...stylex.props(layout.evidenceContent)}>
                   <p>一致：{item.matched.join("・") || "なし"}</p>
@@ -235,37 +225,7 @@ export function Results({
           ))}
         </ul>
       )}
-      <button
-        type="button"
-        aria-label="トップに戻る"
-        title="トップに戻る"
-        onClick={() =>
-          window.scrollTo({
-            top: 0,
-            behavior: window.matchMedia("(prefers-reduced-motion: reduce)")
-              .matches
-              ? "instant"
-              : "smooth",
-          })
-        }
-        {...stylex.props(layout.backToTop)}
-      >
-        <svg
-          aria-hidden="true"
-          width="28"
-          height="28"
-          viewBox="0 0 24 24"
-          fill="none"
-        >
-          <path
-            d="M12 20V4m-7 7 7-7 7 7"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-      </button>
+      <BackToTop />
       {image && (
         <Dialog title={image.name} onClose={() => setImage(null)}>
           <img
@@ -379,6 +339,12 @@ export const layout = stylex.create({
     borderRadius: theme.radius,
     padding: 16,
   },
+  imageGallery: {
+    display: "flex",
+    alignItems: "stretch",
+    flexWrap: "wrap",
+    gap: 32,
+  },
   imageRow: { display: "flex", alignItems: "center", gap: 32 },
   footer: {
     borderTopWidth: 1,
@@ -407,6 +373,8 @@ export const layout = stylex.create({
   },
   select: {
     outlineStyle: "none",
+    outlineWidth: 0,
+    outlineOffset: 0,
     marginLeft: 12,
     backgroundColor: theme.black,
     borderWidth: 0,
@@ -422,6 +390,18 @@ export const layout = stylex.create({
     display: "flex",
     flexDirection: "column",
     gap: 16,
+  },
+  resultCard: {
+    display: "grid",
+    gridTemplateRows: "subgrid",
+    gridRow: "span 2",
+    alignItems: "start",
+  },
+  productOverview: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 16,
+    minWidth: 0,
   },
   rank: {
     position: "relative",

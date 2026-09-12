@@ -8,7 +8,7 @@ import re
 from typing import Annotated
 from typing import Literal
 import unicodedata
-from urllib.parse import urlsplit
+from urllib.parse import urlencode, urlsplit
 
 from pydantic import BaseModel
 from pydantic import ConfigDict
@@ -100,7 +100,7 @@ class OutscraperQuery(StrictFrozenContract):
 
 
 class OutscraperAmazonProductsRequest(StrictFrozenContract):
-    schema_version: Literal["2.0"]
+    schema_version: Literal["2.0", "2.1"]
     provider: Literal["outscraper"]
     method: Literal["GET"]
     endpoint: Endpoint
@@ -137,9 +137,14 @@ class OutscraperAmazonProductsRequest(StrictFrozenContract):
             raise ValueError("Outscraper candidate ceiling does not match the query batch")
         return self
 
+    def provider_queries(self) -> tuple[str, ...]:
+        if self.schema_version == "2.0":
+            return tuple(query.value for query in self.queries)
+        return tuple(japanese_search_url(query.value) for query in self.queries)
+
     def query_parameters(self) -> tuple[tuple[str, str], ...]:
         return (
-            *(("query", query.value) for query in self.queries),
+            *(("query", value) for value in self.provider_queries()),
             ("domain", self.domain),
             ("language", self.language),
             ("postal_code", self.postal_code),
@@ -148,19 +153,26 @@ class OutscraperAmazonProductsRequest(StrictFrozenContract):
         )
 
 
+def japanese_search_url(query: str) -> str:
+    return "https://www.amazon.co.jp/s?" + urlencode({"k": query, "language": "ja_JP"})
+
+
 def build_outscraper_request(
     query_plan: SearchQueryPlan,
     *,
     endpoint: str = OUTSCRAPER_AMAZON_PRODUCTS_ENDPOINT,
     postal_code: str,
+    japanese_search_urls: bool = False,
 ) -> OutscraperAmazonProductsRequest:
+    if type(japanese_search_urls) is not bool:
+        raise ValueError("Invalid Japanese search URL option")
     validated_plan = SearchQueryPlan.model_validate(query_plan)
     queries = tuple(
         OutscraperQuery(language=query.language, value=query.value)
         for query in validated_plan.queries
     )
     return OutscraperAmazonProductsRequest(
-        schema_version="2.0",
+        schema_version="2.1" if japanese_search_urls else "2.0",
         provider="outscraper",
         method="GET",
         endpoint=endpoint,
@@ -176,6 +188,11 @@ def build_outscraper_request(
 
 
 def outscraper_request_sha256(request: OutscraperAmazonProductsRequest) -> str:
+    # Compatibility for existing callers; new digests include a distinct provider domain.
+    from src.search_v2.product_request import PlaywrightSearchRequest, product_request_sha256
+
+    if isinstance(request, PlaywrightSearchRequest):
+        return product_request_sha256(request)
     validated = OutscraperAmazonProductsRequest.model_validate(request)
     canonical = json.dumps(
         validated.model_dump(mode="json"),

@@ -28,6 +28,8 @@ class Settings(BaseSettings):
     outscraper_language: str = "ja"
     outscraper_postal_code: str = "100-0001"
     outscraper_limit: int = Field(default=100, gt=0)
+    playwright_limit: int = Field(default=100, ge=1, le=100)
+    playwright_cache_ttl_seconds: int = Field(default=3600, gt=0)
     usd_to_jpy_rate: int = Field(default=160, gt=0)
     # 結果取得のチェック間隔と上限
     outscraper_poll_interval_seconds: int = Field(default=30, gt=0)

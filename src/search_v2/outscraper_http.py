@@ -11,12 +11,13 @@ import unicodedata
 from typing import Any
 from typing import Literal
 from typing import Protocol
-from urllib.parse import urlsplit
+from urllib.parse import parse_qsl, urlsplit
 
 from pydantic import ValidationError
 import requests
 from requests.adapters import HTTPAdapter
 
+from src.search_v2.outscraper_contract import japanese_search_url
 from src.search_v2.outscraper_request import OUTSCRAPER_DOMAIN
 from src.search_v2.outscraper_request import OUTSCRAPER_LANGUAGE
 from src.search_v2.outscraper_request import OUTSCRAPER_LIMIT_PER_QUERY
@@ -189,6 +190,12 @@ def _validated_transport_url(value: object) -> str:
 
 
 def _validated_query_value(value: str) -> None:
+    if value.startswith("https://www.amazon.co.jp/s?"):
+        params = parse_qsl(urlsplit(value).query, keep_blank_values=True)
+        query = params[0][1] if params else ""
+        if value != japanese_search_url(query):
+            raise ValueError("query URL is not canonical Japanese search")
+        value = query
     if (
         not value
         or len(value) > 200
@@ -810,7 +817,9 @@ def execute_outscraper_request(
     if not callable(now) or not callable(sleep) or not callable(getattr(transport, "get", None)):
         _raise_invalid_execution()
     try:
-        validated_key = _validated_api_key(api_key)
+        from src.search_v2.playwright_compat import uses_playwright
+
+        validated_key = "" if uses_playwright(transport) else _validated_api_key(api_key)
     except (AttributeError, TypeError, UnicodeError, ValueError):
         _finish_usage(
             usage_ledger,

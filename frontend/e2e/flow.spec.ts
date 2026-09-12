@@ -168,7 +168,10 @@ test("the image-free flow preserves input, renders fixed results, and records on
   await expect(
     page.getByRole("heading", { name: "検索履歴", exact: true }),
   ).toBeVisible();
-  await expect(page.getByText(exampleQuery, { exact: true })).toHaveCount(1);
+  await expect(page.getByText(exampleQuery, { exact: true })).toHaveCount(0);
+  await expect(
+    page.getByRole("heading", { name: "メカニカルキーボード", exact: true }),
+  ).toHaveCount(1);
   await page.getByRole("button", { name: "検索へ戻る", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "条件に近い商品", exact: true }),
@@ -180,6 +183,10 @@ test("reference and comparison images require separate explicit approval before 
 }, testInfo) => {
   await reviewConditions(page);
   await page.getByRole("switch", { name: /参考画像を使う/ }).check();
+  await page.getByRole("button", { name: "変更を反映", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "参考画像を生成", exact: true }),
+  ).toBeEnabled();
   await expect(
     page.getByRole("heading", { name: "まず1枚、見た目を確認", exact: true }),
   ).toHaveCount(0);
@@ -295,7 +302,10 @@ test("reference and comparison images require separate explicit approval before 
   ).toBeVisible();
   await completeSearch(page);
   await page.getByRole("button", { name: "検索履歴", exact: true }).click();
-  await expect(page.getByText(exampleQuery, { exact: true })).toHaveCount(1);
+  await expect(page.getByText(exampleQuery, { exact: true })).toHaveCount(0);
+  await expect(
+    page.getByRole("heading", { name: "メカニカルキーボード", exact: true }),
+  ).toHaveCount(1);
 });
 
 test("history deletion is separated on the left and requires confirmation", async ({
@@ -309,7 +319,10 @@ test("history deletion is separated on the left and requires confirmation", asyn
   await page.getByRole("button", { name: "検索履歴", exact: true }).click();
   const remove = page.getByRole("button", { name: "削除", exact: true });
   await remove.click();
-  const dialog = page.getByRole("dialog", { name: "履歴を削除", exact: true });
+  const dialog = page.getByRole("dialog", {
+    name: "この履歴を削除しますか？",
+    exact: true,
+  });
   const confirm = dialog.getByRole("button", { name: "削除", exact: true });
   const cancel = dialog.getByRole("button", {
     name: "キャンセル",
@@ -334,7 +347,10 @@ test("history deletion is separated on the left and requires confirmation", asyn
   await cancel.click();
   await expect(dialog).toHaveCount(0);
   await expect(remove).toBeFocused();
-  await expect(page.getByText(exampleQuery, { exact: true })).toHaveCount(1);
+  await expect(page.getByText(exampleQuery, { exact: true })).toHaveCount(0);
+  await expect(
+    page.getByRole("heading", { name: "メカニカルキーボード", exact: true }),
+  ).toHaveCount(1);
   await page.getByRole("button", { name: "開く", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "保存した検索結果", exact: true }),
@@ -346,4 +362,7 @@ test("history deletion is separated on the left and requires confirmation", asyn
     page.getByRole("heading", { name: "検索履歴", exact: true }),
   ).toBeVisible();
   await expect(page.getByText(exampleQuery, { exact: true })).toHaveCount(0);
+  await expect(
+    page.getByRole("heading", { name: "メカニカルキーボード", exact: true }),
+  ).toHaveCount(0);
 });

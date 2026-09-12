@@ -23,7 +23,7 @@ class ProductTransport:
         from src.search_v2.outscraper_contract import outscraper_request_sha256
 
         self.calls.append(request)
-        response = {"data": [{**p, "query": request.queries[0].value} for p in self.products]}
+        response = {"data": [{**p, "query": request.provider_queries()[0]} for p in self.products]}
         write_private(self.root / f"products-{len(self.calls)}.json", json.dumps(response).encode())
         return module().FetchedCandidates(
             outscraper_request_sha256(request), "fixture-task", response

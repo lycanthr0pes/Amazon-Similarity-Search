@@ -5,6 +5,7 @@ data, not permissions to resume generation, fetch products or consume approvals.
 """
 
 from dataclasses import dataclass
+from datetime import timedelta
 from threading import RLock
 import secrets
 
@@ -18,6 +19,10 @@ from src.search_v2.candidate_completion import (
 )
 from src.search_v2.counterfactual_cloudflare_request import (
     build_counterfactual_cloudflare_desired_request,
+    _desired_prompt,
+    _counterfactual_prompt,
+    validate_image_prompt,
+    validate_comparison_prompts,
 )
 from src.search_v2.counterfactual_cloudflare_http import (
     CounterfactualCloudflareImageArtifact,
@@ -67,12 +72,22 @@ class CandidateSearchFlow:
         visual_extractor,
         query_expander=None,
         lexical_expander=None,
+        condition_expander=None,
+        contrast_resolver=None,
         source_parser=None,
         reference_region_extractor=None,
         image_score_mode="siglip2_appearance",
+        plan_lifetime=timedelta(minutes=15),
+        japanese_search_urls=False,
+        allow_image_free=False,
+        image_settings=None,
+        image_mode="on",
     ):
         if image_score_mode not in {"siglip2_appearance", "appearance", "relative"}:
             raise ValueError("Invalid candidate image score mode")
+        self._allow_image_free = allow_image_free
+        self._image_free = False
+        self._image_settings = image_settings
         self._image_score_mode = image_score_mode
         self._policy, _ = _policy_and_ledger(policy, usage_ledger)
         self._now = now
@@ -86,10 +101,16 @@ class CandidateSearchFlow:
             visual_extractor=visual_extractor,
             query_expander=query_expander,
             lexical_expander=lexical_expander,
+            condition_expander=condition_expander,
+            contrast_resolver=contrast_resolver,
             source_parser=source_parser,
+            plan_lifetime=plan_lifetime,
+            japanese_search_urls=japanese_search_urls,
+            allow_empty_visual=allow_image_free,
+            image_mode=image_mode,
         )
         self._plan = self._candidate.plan
-        if self._plan.visual_conditions is None:
+        if self._plan.visual_conditions is None and not allow_image_free:
             raise CandidatePreparationError("empty_conditions")
         self._source = source
         self._intent = build_candidate_queries(
@@ -111,6 +132,10 @@ class CandidateSearchFlow:
         self._pending = self._ranking = None
         self._reference_regions = reference_region_extractor
         self._reference_quality = ()
+        self._reference_prompt = None
+        self._comparison_prompts = {}
+        self._comparison_nonce = None
+        self._comparison_attempts = 0
 
     @property
     def reference_quality(self):
@@ -135,6 +160,18 @@ class CandidateSearchFlow:
             )
             return self.plan
 
+    def skip_images(self, *, owner_id, plan_sha256, human_confirmed):
+        with self._lock:
+            self._check(
+                owner_id,
+                {"planned", "reference_review", "images_review", "images_approved", "image_failed"},
+            )
+            if human_confirmed is not True or plan_sha256 != self.plan_sha256:
+                raise ValueError("Invalid image-free confirmation")
+            self._image_free = True
+            self._reference = self._approved = self._execution = self._approval_review = None
+            self._state = "images_skipped"
+
     @property
     def reference_images(self):
         with self._lock:
@@ -147,7 +184,8 @@ class CandidateSearchFlow:
         if (
             owner_id != self._plan.owner_id
             or self._state not in states
-            or not self._plan.created_at <= now < self._plan.expires_at
+            or now < self._plan.created_at
+            or (self._plan.expires_at is not None and now >= self._plan.expires_at)
         ):
             raise ValueError("Candidate operation does not match owner, lifetime, or state")
         return now
@@ -182,26 +220,49 @@ class CandidateSearchFlow:
             now=_time(self._now()),
         )
 
-    def generate_reference(self, *, owner_id, plan_sha256, human_confirmed):
-        return self._generate(owner_id, plan_sha256, human_confirmed, {"planned"})
+    @property
+    def image_prompts(self):
+        with self._lock:
+            conditions = self._plan.visual_conditions
+            if conditions is None or self._plan.image_preparation == "text-only-v1":
+                return None
+            return {
+                "reference": self._reference_prompt or _desired_prompt(self._intent, conditions),
+                "comparison": {
+                    c.condition_id: self._comparison_prompts.get(c.condition_id)
+                    or _counterfactual_prompt(self._intent, conditions, c.condition_id)
+                    for c in conditions.conditions
+                },
+            }
 
-    def regenerate_reference(self, *, owner_id, plan_sha256, human_confirmed):
+    def generate_reference(self, *, owner_id, plan_sha256, human_confirmed, prompt=None):
+        return self._generate(owner_id, plan_sha256, human_confirmed, {"planned"}, prompt=prompt)
+
+    def regenerate_reference(self, *, owner_id, plan_sha256, human_confirmed, prompt=None):
         return self._generate(
             owner_id,
             plan_sha256,
             human_confirmed,
             {"reference_review", "images_review", "images_approved", "image_failed"},
+            prompt=prompt,
         )
 
-    def _generate(self, owner_id, plan_sha256, human_confirmed, states):
+    def _generate(self, owner_id, plan_sha256, human_confirmed, states, *, prompt=None):
+        if prompt is not None:
+            prompt = validate_image_prompt(prompt)
         with self._lock:
             self._check(owner_id, states)
             if (
                 human_confirmed is not True
+                or self._plan.visual_conditions is None
+                or self._plan.image_preparation == "text-only-v1"
                 or plan_sha256 != self.plan_sha256
                 or self._attempt >= MAX_REFERENCE_ATTEMPTS
             ):
                 raise ValueError("Candidate reference approval is invalid")
+            if prompt is not None:
+                self._reference_prompt = prompt
+            self._comparison_nonce = None
             self._state = "generating"
             self._attempt += 1
             self._reference = self._approved = self._execution = self._approval_review = None
@@ -220,10 +281,14 @@ class CandidateSearchFlow:
             )
         reservation = None
         try:
+            if self._image_settings is not None:
+                self._account, self._token = self._image_settings()
+                self._image_settings = None
             request = build_counterfactual_cloudflare_desired_request(
                 intent=self._intent,
                 condition_set=self._plan.visual_conditions,
                 preimage_plan_sha256=self._image_binding,
+                prompt=self._reference_prompt,
             )
             reservation = self._reserve("reference_image", 1)
             image = execute_counterfactual_desired_image(
@@ -249,11 +314,37 @@ class CandidateSearchFlow:
             self._state = "image_failed"
             raise ValueError("Candidate reference generation failed") from None
 
-    def approve_reference(self, *, owner_id, reference_sha256, human_confirmed):
+    def regenerate_comparisons(self, *, owner_id, plan_sha256, human_confirmed, prompts=None):
+        overrides = validate_comparison_prompts(prompts, self._plan.visual_conditions)
+        with self._lock:
+            self._check(owner_id, {"images_review", "images_approved", "image_failed"})
+            if (
+                human_confirmed is not True
+                or plan_sha256 != self.plan_sha256
+                or self._reference is None
+                or self._comparison_attempts >= MAX_REFERENCE_ATTEMPTS
+            ):
+                raise ValueError("Invalid comparison regeneration")
+            self._comparison_nonce = secrets.token_hex(32)
+            self._execution = self._approved = self._approval_review = None
+            self._state = "reference_review"
+        return self.approve_reference(
+            owner_id=owner_id,
+            reference_sha256=self._reference.sha256,
+            human_confirmed=True,
+            prompts=overrides,
+        )
+
+    def approve_reference(self, *, owner_id, reference_sha256, human_confirmed, prompts=None):
+        overrides = validate_comparison_prompts(prompts, self._plan.visual_conditions)
         with self._lock:
             self._check(owner_id, {"reference_review"})
             if human_confirmed is not True or reference_sha256 != self._reference.sha256:
                 raise ValueError("Candidate reference approval is invalid")
+            if self._comparison_attempts >= MAX_REFERENCE_ATTEMPTS:
+                raise ValueError("Comparison generation limit reached")
+            self._comparison_prompts.update(overrides)
+            self._comparison_attempts += 1
             self._state = "deriving"
         reservation = None
         try:
@@ -272,6 +363,9 @@ class CandidateSearchFlow:
                 api_token=self._token,
                 transport=self._transport,
                 now=self._now,
+                reference_prompt=self._reference_prompt,
+                comparison_prompts=self._comparison_prompts,
+                comparison_nonce=self._comparison_nonce,
             )
             if self._image_score_mode == "relative":
                 self._reference_quality = assess_bulge_references(
@@ -339,7 +433,7 @@ class CandidateSearchFlow:
 
     def approve_and_fetch(self, *, owner_id, plan_sha256, transport):
         with self._lock:
-            now = self._check(owner_id, {"images_approved"})
+            now = self._check(owner_id, {"images_approved", "images_skipped"})
             if plan_sha256 != self.plan_sha256:
                 raise ValueError("Candidate retrieval plan changed")
             self._state = "fetching"
@@ -365,27 +459,93 @@ class CandidateSearchFlow:
             self._state = "confirmed"
             return receipt
 
-    def complete(self, *, owner_id, proxy_service, asset_root, encoder, region_extractor=None):
+    def complete(
+        self,
+        *,
+        owner_id,
+        proxy_service=None,
+        asset_root=None,
+        encoder=None,
+        region_extractor=None,
+        history_content=None,
+        progress=None,
+    ):
         with self._lock:
             now = self._check(owner_id, {"confirmed"})
             self._state = "evaluating"
         stage = "candidate_ranking"
         try:
             source = self._candidate.rank(owner_id=owner_id, now=now)
-            stage = "visual_evaluation"
-            ranking = complete_candidate_ranking(
-                source,
-                self._approved,
-                proxy_service=proxy_service,
-                asset_root=asset_root,
-                encoder=encoder,
-                region_extractor=region_extractor,
-                image_score_mode=self._image_score_mode,
-            )
-            stage = "history_snapshot"
-            pending = candidate_history_snapshot(
-                ranking, self._approved, source_text=self._source, completed_at=_time(self._now())
-            )
+            if self._image_free:
+                from src.search_v2.candidate_image_free import (
+                    complete_image_free,
+                    image_free_history,
+                )
+
+                ranking = complete_image_free(source)
+                if progress is not None:
+                    progress(4)
+                stage = "history_snapshot"
+                pending = image_free_history(
+                    ranking, source_text=self._source, completed_at=_time(self._now())
+                )
+            else:
+                stage = "visual_evaluation"
+                ranking = complete_candidate_ranking(
+                    source,
+                    self._approved,
+                    proxy_service=proxy_service,
+                    asset_root=asset_root,
+                    encoder=encoder,
+                    region_extractor=region_extractor,
+                    image_score_mode=self._image_score_mode,
+                )
+                if progress is not None:
+                    progress(4)
+                stage = "history_snapshot"
+                pending = candidate_history_snapshot(
+                    ranking,
+                    self._approved,
+                    source_text=self._source,
+                    completed_at=_time(self._now()),
+                )
+            if history_content is not None:
+                if history_content.source_text != self._source:
+                    raise ValueError("History source does not match the completed search")
+                import hashlib
+                from src.search_v2.provisional_history_repository import ProvisionalHistoryWrite
+
+                if self._image_free and proxy_service is not None:
+                    proxy_service.load_previews(row.product.image_urls for row in ranking.products)
+                preview = getattr(proxy_service, "preview", None)
+                products = tuple(
+                    product.model_copy(
+                        update={
+                            "thumbnail_png": (
+                                preview(
+                                    row.product.image_urls
+                                    if self._image_free
+                                    else row.candidate.product.image_urls
+                                )
+                                if preview is not None
+                                else None
+                            )
+                        }
+                    )
+                    for product, row in zip(pending.products, ranking.products, strict=True)
+                )
+                key = hashlib.sha256(
+                    b"history-content-v1\0" + pending.completion_key.encode("ascii")
+                ).hexdigest()
+                pending = ProvisionalHistoryWrite.model_validate(
+                    pending.model_copy(
+                        update={
+                            "history_content": history_content,
+                            "products": products,
+                            "completion_key": key,
+                        }
+                    )
+                )
         except (CandidateEvaluationError, CandidatePreparationError):
             self._state = "failed"
             raise

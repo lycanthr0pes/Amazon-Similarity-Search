@@ -52,7 +52,7 @@ def test_cache_keys_include_input_attributes_and_scoring_settings(monkeypatch, t
 
 def test_product_search_reuses_complete_cache(monkeypatch, tmp_path):
     import src.clients.bonsai_client as bonsai_client
-    import src.clients.outscraper_client as outscraper_client
+    import src.clients.playwright_client as playwright_client
 
     calls = {"bonsai": 0, "outscraper": 0}
 
@@ -63,7 +63,7 @@ def test_product_search_reuses_complete_cache(monkeypatch, tmp_path):
 
     def fake_call_outscraper(query: str, cache_key: str):
         calls["outscraper"] += 1
-        path = tmp_path / "outscraper" / "raw" / f"{cache_key}.json"
+        path = tmp_path / "playwright-v3" / "raw" / f"{cache_key}.json"
         write_json(
             path,
             {
@@ -86,7 +86,7 @@ def test_product_search_reuses_complete_cache(monkeypatch, tmp_path):
     monkeypatch.setattr(settings, "cache_dir", tmp_path)
     monkeypatch.setattr(settings, "enable_cache", True)
     monkeypatch.setattr(bonsai_client, "call_bonsai", fake_call_bonsai)
-    monkeypatch.setattr(outscraper_client, "call_outscraper", fake_call_outscraper)
+    monkeypatch.setattr(playwright_client, "call_playwright", fake_call_outscraper)
 
     first_result = run_product_search("静かなワイヤレスキーボード")
     second_result = run_product_search("静かなワイヤレスキーボード")
@@ -95,7 +95,7 @@ def test_product_search_reuses_complete_cache(monkeypatch, tmp_path):
     assert len(first_result) == 1
     assert calls == {"bonsai": 1, "outscraper": 1}
 
-    raw_cache_path = next((tmp_path / "outscraper" / "raw").glob("*.json"))
+    raw_cache_path = next((tmp_path / "playwright-v3" / "raw").glob("*.json"))
     raw_cache_path.write_text("broken", encoding="utf-8")
     repaired_result = run_product_search("静かなワイヤレスキーボード")
 

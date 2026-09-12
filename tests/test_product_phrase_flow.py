@@ -32,7 +32,8 @@ def test_product_preparation_precedes_visuals_and_reaches_confirmation_and_histo
             return (mug,) if dictionary_hit else ()
 
         def lookup_contextual(self, product):
-            pytest.fail("Dictionary miss must use inference alone")
+            assert product != "マグカップ", "Product inference must not re-query the dictionary"
+            return ()  # Independent condition preparation follows product inference.
 
     scorer = SimpleNamespace(sha256="c" * 64, scores=lambda source, senses: [0.95])
     evaluator = Evaluator(
@@ -75,7 +76,10 @@ def test_product_preparation_precedes_visuals_and_reaches_confirmation_and_histo
     assert saved["product_review"]["structure"]["original_source"] == source
     assert saved["request"]["queries"][0]["value"] == expected_query
     if translator:
-        assert translator.calls == ([] if dictionary_hit else [("マグカップ",)])
+        product_calls = [batch for batch in translator.calls if "マグカップ" in batch]
+        assert product_calls == ([] if dictionary_hit else [("マグカップ",)])
+        assert any("丸みのある形" in batch for batch in translator.calls)
+    assert saved["condition_terms"]["profile_id"] == "condition-terms-v1"
     assert len(evaluator.requests) == (0 if dictionary_hit else 1)
     assert saved["query_expansion"]["resolution_method"] == (
         "cross_encoder" if dictionary_hit else "bonsai_inference"

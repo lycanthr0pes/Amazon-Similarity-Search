@@ -16,7 +16,7 @@ from src.search_v2.intent import NormalizedSearchIntent
 from src.search_v2.intent import search_intent_sha256
 
 
-CLOUDFLARE_IMAGE_MODEL_ID = "@cf/black-forest-labs/flux-2-klein-4b"
+CLOUDFLARE_IMAGE_MODEL_ID = "@cf/black-forest-labs/flux-2-klein-9b"
 CLOUDFLARE_OUTPUT_DIMENSION = 512
 MAX_REFERENCE_IMAGE_DIMENSION = 511
 MAX_REFERENCE_IMAGE_BYTES = 8 * 1024 * 1024
@@ -259,7 +259,9 @@ class CloudflareImageRequest(StrictFrozenContract):
     schema_version: Literal["2.0", "3.0"]
     method: Literal["POST"]
     provider: Literal["cloudflare"]
-    model_id: Literal["@cf/black-forest-labs/flux-2-klein-4b"]
+    model_id: Literal[
+        "@cf/black-forest-labs/flux-2-klein-4b", "@cf/black-forest-labs/flux-2-klein-9b"
+    ]
     intent_sha256: Digest
     preimage_plan_sha256: Digest
     prompt_contract_sha256: Digest
@@ -342,7 +344,8 @@ class CloudflareRequestSet(StrictFrozenContract):
             raise ValueError("image requests are not in the required angle order")
         for request in self.requests:
             if (
-                request.schema_version != self.schema_version
+                request.model_id != self.requests[0].model_id
+                or request.schema_version != self.schema_version
                 or request.intent_sha256 != self.intent_sha256
                 or request.preimage_plan_sha256 != self.preimage_plan_sha256
                 or request.prompt_contract_sha256 != self.prompt_contract_sha256

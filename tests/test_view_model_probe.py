@@ -44,7 +44,7 @@ def test_probe_sends_only_failed_view_and_records_actual_model(tmp_path):
     assert root.stat().st_mode & 0o777 == 0o700
     assert all(p.stat().st_mode & 0o777 == 0o600 for p in root.iterdir())
     assert json.loads((root / "summary.json").read_text()) == result
-    assert CLOUDFLARE_IMAGE_MODEL_ID.endswith("klein-4b")
+    assert CLOUDFLARE_IMAGE_MODEL_ID.endswith("klein-9b")
 
 
 def test_probe_failure_has_one_call_without_retry_or_secret(tmp_path):

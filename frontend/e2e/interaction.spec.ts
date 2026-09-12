@@ -52,7 +52,7 @@ test("dismissing the cancellation dialog leaves the running research active", as
   const stop = page.getByRole("button", { name: "検索を中止", exact: true });
   await stop.click();
   const dialog = page.getByRole("dialog", {
-    name: "商品調査を中止",
+    name: "検索を中止しますか？",
     exact: true,
   });
   const cancel = dialog.getByRole("button", {
@@ -105,7 +105,10 @@ test("opening history during research preserves the running search and saves it 
   await expect(
     page.getByRole("list", { name: "検索履歴一覧" }).getByRole("listitem"),
   ).toHaveCount(1);
-  await expect(page.getByText(exampleQuery, { exact: true })).toBeVisible();
+  await expect(page.getByText(exampleQuery, { exact: true })).toHaveCount(0);
+  await expect(
+    page.getByRole("heading", { name: "メカニカルキーボード", exact: true }),
+  ).toHaveCount(1);
 });
 
 test("cancelling discard keeps unsaved results available for a save retry", async ({
@@ -121,7 +124,7 @@ test("cancelling discard keeps unsaved results available for a save retry", asyn
   });
   await newSearch.click();
   const dialog = page.getByRole("dialog", {
-    name: "未保存の結果を破棄",
+    name: "保存されていない結果を破棄しますか？",
     exact: true,
   });
   const cancel = dialog.getByRole("button", {
@@ -157,7 +160,7 @@ test("result conditions expand inside their card while the other candidates rema
   const secondName = await cards.nth(1).getByRole("heading").textContent();
   const conditions = firstCard
     .locator("summary")
-    .filter({ hasText: "検索条件" });
+    .filter({ hasText: "検索詳細" });
   await conditions.click();
   await expect(cards).toHaveCount(10);
   await expect(
@@ -167,8 +170,10 @@ test("result conditions expand inside their card while the other candidates rema
   await expect(cards.nth(1).getByRole("heading")).toHaveText(secondName!);
   await expect(firstCard.locator("details")).toHaveAttribute("open", "");
   await expect(firstCard).toContainText("一致");
-  await expect(firstCard).toContainText("未確認");
-  await expect(firstCard).toContainText("不一致");
+  await expect(
+    firstCard.getByRole("table", { name: "点数の内訳" }),
+  ).toBeVisible();
+  await expect(firstCard).toContainText("画像評価：未使用");
   await conditions.click();
   await expect(firstCard.locator("details")).not.toHaveAttribute("open");
   await expect(

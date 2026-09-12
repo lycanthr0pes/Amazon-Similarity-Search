@@ -1,4 +1,4 @@
-"""Query suggestions stay separate from verified conditions and product scoring."""
+"""Query selection preserves conditions and original-first synonym scoring."""
 
 from datetime import timedelta
 import importlib
@@ -178,7 +178,7 @@ def test_selected_query_changes_retrieval_but_not_product_scoring(tmp_path, inde
         owner_id="owner-1", review_sha256=review.sha256, selections={}, now=candidate.flow.NOW
     )
     result = service.rank(owner_id="owner-1", now=candidate.flow.NOW)
-    assert [p.lexical_score for p in result.products] == [1.0, 0.0]
+    assert [p.lexical_score for p in result.products] == [1.0, 0.25]
     assert [p.evaluation.required_status for p in result.products] == ["confirmed", "contradicted"]
     assert len(vision.calls) == len(query.calls) == 1
     with pytest.raises(ValueError):

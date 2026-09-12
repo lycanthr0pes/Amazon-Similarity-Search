@@ -76,11 +76,11 @@ def test_generic_visual_request_does_not_require_geometry_selection():
     from src.search_v2.bonsai_visual_conditions import build_visual_request
 
     request = json.loads(build_visual_request("上着。袖が丸い形。"))
-    focus = request["response_format"]["schema"]["properties"]["conditions"]["items"]["properties"][
-        "focus"
-    ]["anyOf"][0]
-    assert focus["properties"]["measure"]["type"] == "null"
-    assert focus["properties"]["direction"]["type"] == "null"
+    variants = request["response_format"]["schema"]["properties"]["conditions"]["items"]["anyOf"]
+    for variant in variants:
+        focus = variant["properties"]["focus"]["anyOf"][0]
+        assert focus["properties"]["measure"]["type"] == "null"
+        assert focus["properties"]["direction"]["type"] == "null"
 
 
 @pytest.mark.parametrize("failure", ["missing_image", "indistinguishable_references"])

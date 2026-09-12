@@ -95,7 +95,7 @@ def test_legacy_use_cache_false_recomputes_even_when_files_exist(monkeypatch, tm
     """use_cache=Falseは既存fileを読まず、外部adapterを毎回呼ぶ。"""
 
     import src.clients.bonsai_client as bonsai_client
-    import src.clients.outscraper_client as outscraper_client
+    import src.clients.playwright_client as playwright_client
 
     calls = {"bonsai": 0, "outscraper": 0}
 
@@ -111,7 +111,7 @@ def test_legacy_use_cache_false_recomputes_even_when_files_exist(monkeypatch, tm
 
     def fake_call_outscraper(query: str, cache_key: str):
         calls["outscraper"] += 1
-        path = tmp_path / "outscraper" / "raw" / f"{cache_key}.json"
+        path = tmp_path / "playwright-v3" / "raw" / f"{cache_key}.json"
         write_json(
             path,
             {
@@ -124,7 +124,7 @@ def test_legacy_use_cache_false_recomputes_even_when_files_exist(monkeypatch, tm
     monkeypatch.setattr(settings, "cache_dir", tmp_path)
     monkeypatch.setattr(settings, "enable_cache", True)
     monkeypatch.setattr(bonsai_client, "call_bonsai", fake_call_bonsai)
-    monkeypatch.setattr(outscraper_client, "call_outscraper", fake_call_outscraper)
+    monkeypatch.setattr(playwright_client, "call_playwright", fake_call_outscraper)
 
     first = run_product_search("静音マウス", use_cache=False)
     second = run_product_search("静音マウス", use_cache=False)

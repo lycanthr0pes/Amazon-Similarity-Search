@@ -110,8 +110,11 @@ class QueryExpansion(BaseModel):
     def validate_status(self):
         product_proposal = self.profile_id == "product-query-terms-v1"
         if self.translation is not None:
-            if not product_proposal or self.resolution_method != "bonsai_inference":
-                raise ValueError("MT is limited to direct product inference")
+            if not product_proposal or self.resolution_method not in {
+                "bonsai_inference",
+                "bonsai_proposal",
+            }:
+                raise ValueError("MT is limited to generated product names")
             if (
                 self.translation.status == "unavailable"
                 and self.terms is not None

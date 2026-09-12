@@ -30,9 +30,7 @@ test("primary button text stays legible while disabled, hovered, and organizing"
   await expect(
     page.getByText(/オフラインモック · 入力内容の理解/),
   ).toBeVisible();
-  await expect(page.locator("#query-help")).toContainText(
-    "同じキーボードのデモ条件",
-  );
+  await expect(page.getByText(/固定の合成条件・画像・商品/)).toBeVisible();
   const input = page.getByRole("textbox", { name: "探している商品" });
   await expect.soft(input).toHaveCSS("color", "rgb(255, 255, 255)");
   await expect(input).toHaveCSS("background-color", "rgb(33, 33, 33)");
@@ -40,7 +38,9 @@ test("primary button text stays legible while disabled, hovered, and organizing"
     (element) => getComputedStyle(element, "::placeholder").color,
   );
   expect.soft(placeholder).toBe("rgb(160, 160, 160)");
-  const description = await page.locator('label[for="query"]').boundingBox();
+  const description = await page
+    .locator('label[for="connected-query"]')
+    .boundingBox();
   const inputBox = await input.boundingBox();
   expect.soft(inputBox!.y - description!.y - description!.height).toBe(16);
   const primary = page.getByRole("button", { name: "条件を整理", exact: true });

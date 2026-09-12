@@ -42,7 +42,37 @@ class VisualBonsai:
 
 
 def draft(phrase, strength="required", key=None):
-    return {"source_phrase": phrase, "strength": strength, "attribute_key": key}
+    pairs = {
+        "高級感のある見た目": {
+            "matching": "An ornate polished appearance",
+            "opposite": "An undecorated utilitarian appearance",
+        },
+        "高級感のある見た目を希望": {
+            "matching": "An ornate polished appearance",
+            "opposite": "An undecorated utilitarian appearance",
+        },
+        "なめらかな質感": {
+            "matching": "A smooth even surface",
+            "opposite": "A rough visibly textured surface",
+        },
+        "木目調を除外": {
+            "matching": "A visible wood grain pattern",
+            "opposite": "A plain surface without wood grain",
+        },
+    }
+    # Synthetic model output for v2; the retired v1 table is only fixture material.
+    from src.search_v2.visual_contrast import local_contrast
+
+    legacy = local_contrast(phrase)
+    contrast = pairs.get(phrase)
+    if legacy is not None:
+        contrast = {"matching": legacy.matching, "opposite": legacy.opposite}
+    return {
+        "source_phrase": phrase,
+        "strength": strength,
+        "attribute_key": key,
+        "contrast": contrast,
+    }
 
 
 def prepare(tmp_path, source=SOURCE, conditions=None, status="ready"):

@@ -20,7 +20,7 @@ from tools.bonsai_response_log import write_private
 OWNER = "candidate-owner"
 
 
-def start(root, named=True, condition_count=1, image_score_mode="appearance"):
+def start(root, named=True, condition_count=1, image_score_mode="appearance", **flow_options):
     module = importlib.import_module("src.search_v2.candidate_flow")
     phrases = ["丸みのある形", "高級感のある見た目", "なめらかな質感"][:condition_count]
     source = (
@@ -61,6 +61,7 @@ def start(root, named=True, condition_count=1, image_score_mode="appearance"):
         now=lambda: clock[0],
         image_score_mode=image_score_mode,
         visual_extractor=visual.VisualBonsai(root, [visual.draft(phrase) for phrase in phrases]),
+        **flow_options,
     )
     return flow, images, ledger, history, clock
 
@@ -167,32 +168,47 @@ def test_candidate_input_to_images_ranking_and_history(tmp_path, monkeypatch, na
     reopened = SqliteProvisionalHistoryRepository(history.path)
     detail = reopened.get(owner_id=OWNER, locator=result.history.locator, now=candidate.flow.NOW)
     assert detail == result.history
+    assert detail.product_name == "スキャナー"
     listed = reopened.list(owner_id=OWNER, now=candidate.flow.NOW)
     assert len(listed) == 1 and listed[0].locator == detail.locator
     assert listed[0].known_holdout_accuracy is None
+    assert listed[0].product_name == "スキャナー"
     assert detail.known_holdout_accuracy is None
     assert detail.ranking_profile_id == "candidate-appearance-v1"
-    assert [p.required_status for p in detail.products] == [
-        "confirmed",
-        "confirmed",
-        "uncertain",
-        "contradicted",
-    ]
+    assert detail.sort_profile_id == "excluded-title-conditions-image-review-v1"
     if uniform:
+        assert [p.required_status for p in detail.products] == [
+            "confirmed",
+            "confirmed",
+            "contradicted",
+            "uncertain",
+        ]
+        assert [p.title for p in detail.products] == [
+            "スキャナーB",
+            "スキャナーD",
+            "スキャナーA",
+            "スキャナーC",
+        ]
         assert all(
             p.image_score == 1.0 and p.image_component_status == "available"
             for p in detail.products
         )
         assert [p.total_score for p in detail.products] == [1.0, 1.0, 1.0, 1.0]
     else:
+        assert [p.required_status for p in detail.products] == [
+            "confirmed",
+            "confirmed",
+            "contradicted",
+            "uncertain",
+        ]
         assert [p.title for p in detail.products] == [
             "スキャナーD",
             "スキャナーB",
-            "スキャナーC",
             "スキャナーA",
+            "スキャナーC",
         ]
-        assert [p.image_score for p in detail.products] == pytest.approx([0.4, 0.0, 0.6, 1.0])
-        assert [p.total_score for p in detail.products] == pytest.approx([0.88, 0.8, 0.92, 1.0])
+        assert [p.image_score for p in detail.products] == pytest.approx([0.4, 0.0, 1.0, 0.6])
+        assert [p.total_score for p in detail.products] == pytest.approx([0.7, 0.5, 1.0, 0.8])
     assert result.ranking.source.visual_evaluation_status == "pending"
     assert result.ranking.visual_evaluation_status == "evaluated"
     assert (

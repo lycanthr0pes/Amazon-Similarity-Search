@@ -183,6 +183,22 @@ def normalize_product(item: dict[str, Any]) -> NormalizedAmazonProduct | None:
         # ASINから前後の空白を削除
         asin=as_non_empty_string(item.get("asin")),
         title=title,
+        description_en=as_non_empty_string(item.get("description_en"))
+        if item.get("details_en_status") == "available"
+        else None,
+        features_en=[v for v in item.get("features_en", []) if isinstance(v, str)]
+        if item.get("details_en_status") == "available"
+        and isinstance(item.get("features_en"), list)
+        else [],
+        details_en_status=item.get("details_en_status")
+        if item.get("details_en_status") in ("available", "unavailable")
+        else None,
+        title_en=as_non_empty_string(item.get("name_en"))
+        if item.get("title_en_status") == "available"
+        else None,
+        title_en_status=item.get("title_en_status")
+        if item.get("title_en_status") in ("available", "unavailable")
+        else None,
         # ストア名から前後の空白を削除
         brand_or_store=as_non_empty_string(item.get("store_title")),
         # 価格をintに
@@ -253,7 +269,7 @@ def normalize(path: Path, query_hash: str) -> list[NormalizedAmazonProduct]:
 
     # list[NormalizedAmazonProduct]をJSON化して書き込む
     normalized_dump = [product.model_dump() for product in normalize_products]
-    output_path = settings.cache_dir / "outscraper" / "normalized" / f"{query_hash}.json"
+    output_path = settings.cache_dir / "playwright-v3" / "normalized" / f"{query_hash}.json"
     write_json(output_path, normalized_dump)
     print(f"Normalized products written to: {output_path}")
 
