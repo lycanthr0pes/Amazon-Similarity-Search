@@ -1,5 +1,119 @@
 import { expect, test } from "@playwright/test";
 
+for (const [kind, message] of [
+  ["network", "通信に失敗しました（network）"],
+  ["json", "応答をJSONとして読み取れませんでした（json）"],
+  ["schema", "schema：段階・更新番号"],
+] as const) {
+  test(`connection diagnosis distinguishes ${kind} errors`, async ({
+    page,
+  }) => {
+    await page.route("**/api/state", (route) => {
+      if (kind === "network") {
+        return route.abort("failed");
+      }
+      return route.fulfill(
+        kind === "json"
+          ? { body: "private response" }
+          : { json: { stage: "private stage", revision: 0 } },
+      );
+    });
+    await page.goto("/?mode=connected");
+    await expect(page.getByRole("alert")).toContainText(message);
+    expect(
+      await page.evaluate(() => JSON.stringify(sessionStorage)),
+    ).not.toContain("private");
+  });
+}
+
+test("connection diagnosis survives recovery and reload without repeating a command", async ({
+  page,
+}) => {
+  let failed = true;
+  let posts = 0;
+  page.on("request", (request) => {
+    if (request.method() === "POST") {
+      posts += 1;
+    }
+  });
+  await page.route("**/api/state", (route) =>
+    route.fulfill(
+      failed
+        ? { status: 503, body: "private response must not be recorded" }
+        : {
+            json: {
+              stage: "idle",
+              revision: 0,
+              editable: true,
+              input: "合成入力",
+            },
+          },
+    ),
+  );
+  await page.goto("/?mode=connected");
+  await expect(page.getByRole("alert")).toContainText("HTTP 503");
+  failed = false;
+  await expect(
+    page.getByRole("button", { name: "条件を整理", exact: true }),
+  ).toBeEnabled();
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  await page.getByText("接続診断", { exact: true }).press("Enter");
+  await expect(page.getByLabel("接続診断")).toContainText("HTTP 503");
+  await page.reload();
+  await page.getByText("接続診断", { exact: true }).press("Enter");
+  await expect(page.getByLabel("接続診断")).toContainText("HTTP 503");
+  const stored = await page.evaluate(() => JSON.stringify(sessionStorage));
+  expect(stored).not.toContain("private");
+  expect(stored).not.toContain("合成入力");
+  expect(posts).toBe(0);
+});
+
+test("an open browser recovers when the server restarts its revision counter", async ({
+  page,
+}) => {
+  let restarted = false;
+  const commands: Record<string, unknown>[] = [];
+  await page.route("**/api/state", async (route) => {
+    await route.fulfill({
+      json: {
+        stage: restarted ? "idle" : "working",
+        workingAction: restarted ? undefined : "start",
+        revision: restarted ? 0 : 5,
+        instanceId: restarted ? "b".repeat(32) : "a".repeat(32),
+        editable: true,
+        input: "マグカップ。丸みのある形。",
+      },
+    });
+  });
+  await page.route("**/api/command", async (route) => {
+    commands.push(route.request().postDataJSON());
+    await route.fulfill({
+      json: {
+        stage: "working",
+        workingAction: "start",
+        revision: 1,
+        instanceId: "b".repeat(32),
+        editable: true,
+      },
+    });
+  });
+  await page.goto("/?mode=connected");
+  await expect(
+    page.getByText("条件を整理しています", { exact: true }),
+  ).toBeVisible();
+  restarted = true;
+  const organize = page.getByRole("button", {
+    name: "条件を整理",
+    exact: true,
+  });
+  await expect(organize).toBeEnabled();
+  expect(commands).toHaveLength(0);
+  await organize.press("Enter");
+  await expect.poll(() => commands.length).toBe(1);
+  expect(commands[0].revision).toBe(0);
+  expect(commands[0].instanceId).toBe("b".repeat(32));
+});
+
 test("an expired server confirmation hides execution controls and retains the preview", async ({
   page,
 }) => {
@@ -163,9 +277,9 @@ test("browser confirmations reach a local API result without duplicate submissio
   ).toBeVisible();
   await page.getByText("検索詳細", { exact: true }).click();
   await expect(page.getByRole("table")).toContainText("タイトル一致");
-  await expect(page.getByText("画像評価：75.0", { exact: true })).toBeVisible();
+  await expect(page.getByText("画像同士：75.0", { exact: true })).toBeVisible();
   await expect(
-    page.getByText("参考合成点：87.5", { exact: true }),
+    page.getByText("文章と画像：85.0", { exact: true }),
   ).toBeVisible();
   await page.reload();
   await page.getByRole("button", { name: "結果を見る", exact: true }).click();
@@ -753,4 +867,56 @@ test("image preference reaches preparation and enabling images requires reorgani
     ["start", "off"],
     ["revise", "on"],
   ]);
+});
+
+test("source-order weights survive real fixture scoring and saved history", async ({
+  page,
+}) => {
+  await page.route("**/*", async (route) => {
+    if (new URL(route.request().url()).origin !== "http://127.0.0.1:8764") {
+      throw new Error("Unexpected external request");
+    }
+    await route.continue();
+  });
+  await page.goto("http://127.0.0.1:8764/?mode=connected");
+  await page
+    .getByRole("button", { name: "新しく検索", exact: true })
+    .press("Enter");
+  await page
+    .getByRole("textbox", { name: "探している商品・条件" })
+    .fill("マグカップ。電子レンジ対応。食洗機対応。");
+  for (const name of ["条件を整理", "画像なしで進む", "検索", "結果を見る"]) {
+    const button = page.getByRole("button", { name, exact: true });
+    await expect(button).toBeEnabled();
+    await button.press("Enter");
+  }
+  await page.getByText("検索詳細", { exact: true }).press("Enter");
+  const table = page.getByRole("table", { name: "点数の内訳" });
+  await expect(
+    table.getByRole("columnheader", { name: "重み", exact: true }),
+  ).toBeVisible();
+  await expect(
+    table.getByRole("row").filter({ hasText: "電子レンジ" }),
+  ).toContainText("2倍");
+  await expect(
+    table.getByRole("row").filter({ hasText: "食洗機" }),
+  ).toContainText("1倍");
+  await page
+    .getByRole("button", { name: "検索履歴", exact: true })
+    .press("Enter");
+  await page
+    .getByRole("button", { name: "開く", exact: true })
+    .first()
+    .press("Enter");
+  await page.reload();
+  await page
+    .getByRole("main")
+    .getByText("検索詳細", { exact: true })
+    .press("Enter");
+  await expect(
+    table.getByRole("row").filter({ hasText: "電子レンジ" }),
+  ).toContainText("2倍");
+  await expect(
+    table.getByRole("row").filter({ hasText: "食洗機" }),
+  ).toContainText("1倍");
 });

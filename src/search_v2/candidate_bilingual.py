@@ -20,6 +20,7 @@ from src.search_v2.candidate_text import (
     score_conditions,
 )
 from src.search_v2.candidate_title import score_title
+from src.search_v2.condition_weighting import condition_weights
 
 
 PROFILE_ID = "candidate-text-bilingual-v2"
@@ -182,7 +183,7 @@ def _language_score(product, requirement, definition, terms, label, language):
     )
 
 
-def score_bilingual(product, requirements, registry, evaluation, labels, bundle):
+def score_bilingual(product, requirements, registry, evaluation, labels, bundle, *, weighting=None):
     original = score_conditions(product, requirements, registry, evaluation, labels)
     originals = {r.requirement_id: r for r in original.conditions}
     definitions = {d.attribute_key: d for d in registry.definitions}
@@ -240,6 +241,10 @@ def score_bilingual(product, requirements, registry, evaluation, labels, bundle)
                 selected_language="en" if (en or 0) > ja else "ja",
             )
         )
+
+    weights = condition_weights(rows, weights, weighting)
+    if weighting is not None:
+        rows = [r.model_copy(update={"weight": weights[r.requirement_id]}) for r in rows]
 
     def ratio(strength):
         selected = [r for r in rows if r.strength == strength]

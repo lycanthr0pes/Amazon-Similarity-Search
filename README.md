@@ -37,6 +37,10 @@ CLIの既存検索と、`src/search_v2/` の画像比較・辞書を使う候補
 
 React・StyleX等はMIT License、css-mediaqueryはBSD-3-Clause、Weather IconsはSIL Open Font License 1.1で提供されています。使用資材の著作権表示・ライセンス全文・変更通知は [THIRD-PARTY-NOTICES.txt](frontend/public/THIRD-PARTY-NOTICES.txt) に記載しています。
 
+## 画像の採点
+
+新規SigLIP 2検索では、視覚条件の文章と商品画像の比較、参考/対比画像と商品画像の比較を別々に採点します。否定・タイトル・優先・希望条件を比較した後、文章と画像の点数を優先し、同点なら画像同士の点数、レビューの順で並べます。モックと本番の検索詳細・履歴に2つの点数を表示します。旧履歴の順位は維持します。[採点方式](docs/BACKEND.md#視覚条件の文章対画像を優先する2経路exec-162)を参照してください。
+
 ## 起動方法
 
 ### フロントエンドの接続試験
@@ -48,6 +52,20 @@ uv run --frozen --offline --no-sync python -m tools.browser_search_server --offl
 ```
 
 `http://127.0.0.1:8765/?mode=connected` でローカルAPIとの接続を確認できます。上の起動は合成応答のみです。実モデル・APIを使う起動条件と上限は [接続試験の仕様](docs/BACKEND.md#ブラウザからの接続試験exec-124) を参照してください。任意入力・画像なし・条件編集・履歴一覧の実接続は後続です。
+
+### Bonsaiビルドの切り替え
+
+接続画面は条件整理の間だけBonsaiを自動起動・終了します。別ターミナルで18080番へBonsaiを起動する必要はありません。Linux/WSLではアプリ終了時の子process回収と起動排他を行います。使用中の表示が出た場合は、別のBonsai処理を終了してから再整理してください。詳細は [プロセス管理](docs/BACKEND.md#bonsaiのプロセス所有と起動競合exec-163) を参照してください。
+
+実モデルを使う接続画面は、[bonsai-runtime.toml](bonsai-runtime.toml) の `active` を読みます。既定は `"igpu"` です。変更は次の条件整理から反映されます。
+
+| active | 実行ファイル | 内容 |
+|---|---|---|
+| `original` | `/home/llama.cpp/build-original/bin/llama-server` | 元のCPUビルドを保持 |
+| `optimized` | `/home/llama.cpp/build-optimized/bin/llama-server` | 前回試したOpenBLAS有効版。速度向上の保証ではありません |
+| `igpu` | `/home/llama.cpp/build-igpu/bin/llama-server` | Intel Arc 140Vを指定したVulkan版 |
+
+3ビルドは同じBonsaiモデルを使います。iGPU版は設定したGPUを起動前に照合し、GPUが使えなければ停止します。詳細は [実行設定](docs/BACKEND.md#bonsaiビルドの選択exec-161) を参照してください。上のオフラインモックはモデルを起動しません。
 
 ### オフラインモック
 

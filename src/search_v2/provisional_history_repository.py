@@ -33,7 +33,9 @@ from pydantic import field_validator
 from pydantic import model_validator
 from pydantic import model_serializer
 
+from src.search_v2.visual_text_scoring import VisualTextComponent
 from src.search_v2.candidate_bilingual import BilingualTitleScore, BilingualConditionScore
+from src.search_v2.condition_weighting import ConditionWeighting, condition_weights
 from src.search_v2.history_content import HistoryContent, validate_thumbnail
 from src.search_v2.usage_ledger import Digest
 from src.search_v2.usage_ledger import SubjectId
@@ -152,12 +154,19 @@ class ProvisionalHistoryProductView(_StrictFrozenContract):
     required_status: Literal["confirmed", "uncertain", "contradicted"]
     image_component_status: ImageComponentStatus
     image_score: Annotated[float, Field(ge=0.0, le=1.0)] | None
+    visual_text: VisualTextComponent | None = None
     total_score: Annotated[float, Field(ge=0.0, le=1.0)]
 
     @model_serializer(mode="wrap")
     def serialize_compatible(self, handler):
         data = handler(self)
-        for field in ("title_scores", "condition_scores", "review_rating", "thumbnail_png"):
+        for field in (
+            "title_scores",
+            "condition_scores",
+            "review_rating",
+            "thumbnail_png",
+            "visual_text",
+        ):
             if getattr(self, field) is None:
                 data.pop(field, None)
         if self.title_en_status is None:
@@ -251,6 +260,7 @@ class ProvisionalHistoryReferenceImageRef(_StrictFrozenContract):
 
 
 class _HistoryRankingMetadata(_StrictFrozenContract):
+    condition_weighting: ConditionWeighting | None = None
     product_name: Annotated[str, StringConstraints(min_length=1, max_length=100)] | None = None
 
     @field_validator("product_name")
@@ -262,7 +272,12 @@ class _HistoryRankingMetadata(_StrictFrozenContract):
     image_mode: Literal["off"] | None = None
     image_weight: Literal[0.5] | None = None
     sort_profile_id: (
-        Literal["title-image-conditions-v1", "excluded-title-conditions-image-review-v1"] | None
+        Literal[
+            "title-image-conditions-v1",
+            "excluded-title-conditions-image-review-v1",
+            "excluded-title-conditions-text-image-review-v2",
+        ]
+        | None
     ) = None
     text_profile_id: Literal["candidate-text-v1", "candidate-text-bilingual-v2"] | None = None
     retrieval_provider: Literal["playwright"] | None = None
@@ -270,6 +285,8 @@ class _HistoryRankingMetadata(_StrictFrozenContract):
     @model_serializer(mode="wrap")
     def serialize_compatible(self, handler):
         data = handler(self)
+        if self.condition_weighting is None:
+            data.pop("condition_weighting", None)
         if self.product_name is None:
             data.pop("product_name", None)
         if self.history_content is None:
@@ -291,6 +308,7 @@ class _HistoryRankingMetadata(_StrictFrozenContract):
         "counterfactual-relative-v1",
         "counterfactual-appearance-v1",
         "counterfactual-siglip2-appearance-v1",
+        "counterfactual-siglip2-dual-v2",
         "counterfactual-attribute-v1",
         "counterfactual-attribute-v2",
         "image-free-v1",
@@ -303,6 +321,7 @@ class _HistoryRankingMetadata(_StrictFrozenContract):
         "candidate-lexical-clip-v3",
         "candidate-appearance-v1",
         "candidate-siglip2-appearance-v1",
+        "candidate-siglip2-dual-v2",
         "candidate-attribute-image-v1",
         "candidate-attribute-image-v2",
         "candidate-image-free-v1",
@@ -310,6 +329,13 @@ class _HistoryRankingMetadata(_StrictFrozenContract):
 
     @model_validator(mode="after")
     def validate_ranking_metadata(self):
+        if self.condition_weighting is not None and self.text_profile_id is None:
+            raise ValueError("Condition weighting requires text scoring")
+        dual = self.ranking_profile_id == "candidate-siglip2-dual-v2"
+        if dual != (self.provisional_profile_id == "counterfactual-siglip2-dual-v2") or dual != (
+            self.sort_profile_id == "excluded-title-conditions-text-image-review-v2"
+        ):
+            raise ValueError("History visual text profile mismatch")
         image_free = self.image_mode == "off"
         if image_free != (self.ranking_profile_id == "candidate-image-free-v1") or image_free != (
             self.provisional_profile_id == "image-free-v1"
@@ -366,6 +392,15 @@ class _HistoryRankingMetadata(_StrictFrozenContract):
     def validate_image_evidence(self):
         if not hasattr(self, "reference_images"):
             return self
+        for product in self.products:
+            rows = product.condition_scores or ()
+            if self.condition_weighting is None:
+                if any(row.weight is not None for row in rows):
+                    raise ValueError("Legacy history cannot contain condition weights")
+            elif rows:
+                weights = condition_weights(rows, {}, self.condition_weighting)
+                if any(row.weight != weights[row.requirement_id] for row in rows):
+                    raise ValueError("History condition weights changed")
         if any(p.thumbnail_png is not None for p in self.products) and (
             self.history_content is None
         ):
@@ -376,6 +411,9 @@ class _HistoryRankingMetadata(_StrictFrozenContract):
             for score in (product.condition_scores or ())
         ):
             raise ValueError("History condition labels are incomplete")
+        dual = self.ranking_profile_id == "candidate-siglip2-dual-v2"
+        if any((p.visual_text is not None) != dual for p in self.products):
+            raise ValueError("History visual text evidence mismatch")
         hashes = (self.condition_set_sha256, self.reference_set_sha256, self.runtime_sha256)
         if self.image_mode == "off":
             if (
@@ -814,6 +852,7 @@ class SqliteProvisionalHistoryRepository:
                     known_holdout_accuracy=validated.known_holdout_accuracy,
                     ranking_profile_id=validated.ranking_profile_id,
                     text_profile_id=validated.text_profile_id,
+                    condition_weighting=validated.condition_weighting,
                     image_mode=validated.image_mode,
                     image_weight=validated.image_weight,
                     sort_profile_id=validated.sort_profile_id,

@@ -7,7 +7,10 @@ import base64
 import hashlib
 from io import BytesIO
 import os
+import re
 import threading
+
+from tools.bonsai_profiles import load_bonsai_config
 
 from src.search_v2.browser_candidate import (
     BrowserImages,
@@ -21,7 +24,6 @@ OWNER = "local-user"
 ASSETS = Path("/home/products/models/siglip2-base-patch16-224-75de2d55")
 IMAGE_PYTHON = Path("/home/products/model-envs/mobile-sam-eval-01/bin/python")
 MODEL = Path("/home/products/models/Bonsai-8B.gguf")
-SERVER = Path("/home/llama.cpp/build/bin/llama-server")
 LEXICAL_ASSETS = Path("/home/products/models/search-lexical-context-v2")
 WORDNET_DB = Path("/home/products/models/search-lexical-v1/wnjpn.db")
 WORDNET_ADJECTIVES = Path("/home/products/models/wordnet-3.0-visual/data.adj")
@@ -80,7 +82,12 @@ def browser_bonsai(config):
     """Own the model during preparation; each inference has a separate timeout."""
     from tools import bonsai_live_e2e as runtime
 
-    process = runtime._launch_server(config)
+    from src.search_v2.browser_search import BrowserModelBusy
+
+    try:
+        process = runtime._launch_server(config)
+    except runtime.BonsaiPortBusyError:
+        raise BrowserModelBusy() from None
     try:
         runtime._wait_until_ready(process, config.port)
         yield BrowserBonsai(runtime.RequestsBonsaiTransport(), stop=process.kill)
@@ -88,7 +95,9 @@ def browser_bonsai(config):
         runtime._stop_server(process, config.port)
 
 
-def live_steps(output, *, source=CANARY_INPUT, attempt=0, progress=None, batch=0, image_mode="on"):
+def live_steps(
+    output, *, source=CANARY_INPUT, attempt=0, progress=None, batch=0, image_mode="on", run_id=None
+):
     from src.search_v2.browser_search import validate_browser_source
     from src.config import CloudflareLiveSettings
     from src.search_v2.candidate_flow import CandidateSearchFlow
@@ -101,7 +110,8 @@ def live_steps(output, *, source=CANARY_INPUT, attempt=0, progress=None, batch=0
     from src.search_v2.playwright_products import PlaywrightProducts
     from src.search_v2.provisional_approval_repository import SqliteCounterfactualApprovalRepository
     from src.search_v2.provisional_history_repository import SqliteProvisionalHistoryRepository
-    from src.search_v2.siglip2 import LocalSiglip2ImageEncoder, verify_assets
+    from src.search_v2.siglip2 import verify_assets
+    from src.search_v2.visual_text_scoring import LocalSiglip2MultimodalEncoder
     from tools import backend_search_live_e2e as shared
 
     source = validate_browser_source(source)
@@ -119,6 +129,16 @@ def live_steps(output, *, source=CANARY_INPUT, attempt=0, progress=None, batch=0
         raise ValueError("Use a new private directory outside the repository")
     if type(batch) is not int or not 0 <= batch <= 1000000:
         raise ValueError("Invalid search batch")
+    if run_id is not None:
+        if type(run_id) is not str or re.fullmatch(r"[0-9a-f]{32}", run_id) is None:
+            raise ValueError("Invalid browser run identity")
+        output.mkdir(mode=0o700, parents=False, exist_ok=True)
+        if output.stat().st_mode & 0o777 != 0o700:
+            raise ValueError("Use a private run directory")
+        # History stays at the configured root; preparations belong to this startup.
+        output = output / f"session-{run_id}"
+        if output.resolve() != output:
+            raise ValueError("Use a private run directory")
     if batch:
         output.mkdir(mode=0o700, parents=False, exist_ok=True)
         if output.stat().st_mode & 0o777 != 0o700:
@@ -145,7 +165,7 @@ def live_steps(output, *, source=CANARY_INPUT, attempt=0, progress=None, batch=0
         settings = CloudflareLiveSettings()
         return settings.cloudflare_account_id, settings.cloudflare_api_token.get_secret_value()
 
-    runtime = shared.bonsai_runtime.BonsaiLiveE2EConfig(SERVER, MODEL, 18080)
+    runtime = load_bonsai_config(MODEL, 18080)
     policy, ledger = shared._policy_and_ledger()
     images = BrowserImages(shared.RequestsBackendImageTransport())
 
@@ -156,7 +176,7 @@ def live_steps(output, *, source=CANARY_INPUT, attempt=0, progress=None, batch=0
         return (
             thumbnail_factory(),
             ASSETS,
-            shared._CountedEncoder(LocalSiglip2ImageEncoder(IMAGE_PYTHON)),
+            shared._CountedEncoder(LocalSiglip2MultimodalEncoder(IMAGE_PYTHON)),
         )
 
     history = SqliteProvisionalHistoryRepository(history_root / "history.sqlite3")
@@ -201,7 +221,7 @@ def live_steps(output, *, source=CANARY_INPUT, attempt=0, progress=None, batch=0
             if image_mode == "on"
             else None,
             source_parser=syntax,
-            image_score_mode="siglip2_appearance",
+            image_score_mode="siglip2_text_image",
             plan_lifetime=None,
         )
     yield from candidate_browser_steps(
@@ -313,7 +333,7 @@ def fixture_steps(*, source=CANARY_INPUT, image_mode="on"):
         **(
             {"imageMode": "off", "sortProfile": "excluded-title-conditions-image-review-v1"}
             if skip
-            else {}
+            else {"sortProfile": "excluded-title-conditions-text-image-review-v2"}
         ),
         "products": [
             {
@@ -326,6 +346,7 @@ def fixture_steps(*, source=CANARY_INPUT, image_mode="on"):
                 "scores": {
                     "title": {"score_ja": 1.0, "score_en": 0.8, "score": 1.0},
                     "image": None if skip else 0.75,
+                    **({"textImage": 0.85} if not skip else {}),
                     "total": 1.0 if skip else 0.875,
                     "conditions": [
                         {

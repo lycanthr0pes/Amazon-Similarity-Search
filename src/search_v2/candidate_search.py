@@ -72,6 +72,7 @@ from src.search_v2.query_planner import SearchQuery, SearchQueryPlan
 from src.search_v2.ranking import _title_score
 from src.search_v2.candidate_title import TitleComparison, build_title_comparison, score_title
 from src.search_v2.condition_terms import ConditionTermBundle
+from src.search_v2.condition_weighting import ConditionWeighting, build_condition_weighting
 from src.search_v2.candidate_bilingual import (
     BilingualTextScore,
     BilingualTitleScore,
@@ -153,6 +154,7 @@ class CandidatePlan(_Frozen):
     selected_query_index: int = Field(default=0, ge=0, le=MAX_QUERY_OPTIONS - 1)
     title_comparison: TitleComparison | None = Field(default=None, repr=False)
     condition_terms: ConditionTermBundle | None = Field(default=None, repr=False)
+    condition_weighting: ConditionWeighting | None = None
     condition_language_profile: Literal["condition-language-v1"] | None = None
     condition_language_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     normalization_profile_sha256: str
@@ -162,6 +164,8 @@ class CandidatePlan(_Frozen):
     @model_serializer(mode="wrap")
     def serialize_compatible(self, handler):
         data = handler(self)
+        if self.condition_weighting is None:
+            data.pop("condition_weighting", None)
         if self.image_preparation is None:
             data.pop("image_preparation", None)
         if self.condition_language_profile is None:
@@ -297,6 +301,15 @@ class CandidateRanking(_Frozen):
 
     @model_validator(mode="after")
     def validate_text_scoring(self):
+        weighting = self.retrieval_plan.condition_weighting
+        if weighting is not None:
+            ids = {c["condition_id"] for c in self.attribute_review.conditions}
+            if self.retrieval_plan.visual_conditions:
+                ids.update(c.condition_id for c in self.retrieval_plan.visual_conditions.conditions)
+            if set(dict(weighting.positions)) != ids or self.retrieval_plan_sha256 != _digest(
+                self.retrieval_plan
+            ):
+                raise ValueError("Candidate condition positions do not match its plan")
         comparison = self.retrieval_plan.title_comparison
         if (
             self.profile_id in {"candidate-confirmed-lexical-v4", "candidate-confirmed-lexical-v5"}
@@ -332,11 +345,22 @@ class CandidateRanking(_Frozen):
                 continue
             expected = (
                 score_bilingual(
-                    row.product, self.requirements, self.registry, row.evaluation, labels, bundle
+                    row.product,
+                    self.requirements,
+                    self.registry,
+                    row.evaluation,
+                    labels,
+                    bundle,
+                    weighting=self.retrieval_plan.condition_weighting,
                 )
                 if bundle
                 else score_conditions(
-                    row.product, self.requirements, self.registry, row.evaluation, labels
+                    row.product,
+                    self.requirements,
+                    self.registry,
+                    row.evaluation,
+                    labels,
+                    weighting=self.retrieval_plan.condition_weighting,
                 )
             )
             title = title_scores(comparison, row.product) if bundle else None
@@ -597,6 +621,15 @@ class CandidateSearch:
             expires_at=None if plan_lifetime is None else now + plan_lifetime,
         )
         self._initialize_evaluation()
+        self._plan = CandidatePlan.model_validate(
+            self._plan.model_copy(
+                update={
+                    "condition_weighting": build_condition_weighting(
+                        source, self._conditions, conditions
+                    ),
+                }
+            )
+        )
         expand_conditions = (
             condition_expander.prepare
             if condition_expander is not None
@@ -677,6 +710,12 @@ class CandidateSearch:
             )
         )
         instance._initialize_evaluation()
+        if (
+            plan.condition_weighting is not None
+            and plan.condition_weighting
+            != build_condition_weighting(source, instance._conditions, plan.visual_conditions)
+        ):
+            raise ValueError("Saved condition positions changed")
         return instance
 
     def _initialize_evaluation(self):
@@ -1079,11 +1118,22 @@ class CandidateSearch:
                         if comparison
                         else _title_score(scoring_intent, p)[0].score or 0.0,
                         text_score=score_bilingual(
-                            p, requirements, registry, evaluation, condition_labels, bundle
+                            p,
+                            requirements,
+                            registry,
+                            evaluation,
+                            condition_labels,
+                            bundle,
+                            weighting=self._plan.condition_weighting,
                         )
                         if bundle
                         else score_conditions(
-                            p, requirements, registry, evaluation, condition_labels
+                            p,
+                            requirements,
+                            registry,
+                            evaluation,
+                            condition_labels,
+                            weighting=self._plan.condition_weighting,
                         )
                         if comparison
                         else None,

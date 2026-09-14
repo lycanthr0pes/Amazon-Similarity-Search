@@ -35,6 +35,9 @@ from src.search_v2.relative_image_ranking import (
 )
 
 
+from src.search_v2.visual_text_scoring import Siglip2DualImageBatch, score_visual_text
+
+
 MINIMUM_EVALUATION_PRODUCTS = 4
 MAXIMUM_EVALUATION_PRODUCTS = 32
 CLIP_EVALUATION_BATCH_SIZE = 4
@@ -145,7 +148,7 @@ def evaluate_counterfactual_product_images(
     asset_root: Path,
     encoder: LocalClipImageEncoder,
     score_mode: Literal[
-        "calibrated", "relative", "appearance", "siglip2_appearance"
+        "calibrated", "relative", "appearance", "siglip2_appearance", "siglip2_text_image"
     ] = "calibrated",
     region_extractor=None,
 ) -> ProvisionalCounterfactualBatch | RelativeImageBatch | AttributeImageBatch:
@@ -154,7 +157,13 @@ def evaluate_counterfactual_product_images(
         products = NormalizedProductBatch.model_validate(product_batch)
         conditions = VisualConditionSet.model_validate(condition_set)
         references = CounterfactualReferenceSet.model_validate(reference_set)
-        if score_mode not in {"calibrated", "relative", "appearance", "siglip2_appearance"}:
+        if score_mode not in {
+            "calibrated",
+            "relative",
+            "appearance",
+            "siglip2_appearance",
+            "siglip2_text_image",
+        }:
             raise ValueError("Invalid visual score mode")
         minimum = 1 if score_mode != "calibrated" else MINIMUM_EVALUATION_PRODUCTS
         if not (minimum <= len(products.products) <= MAXIMUM_EVALUATION_PRODUCTS):
@@ -185,7 +194,7 @@ def evaluate_counterfactual_product_images(
             failure_substage="image_validation",
         ) from None
 
-    siglip2 = score_mode == "siglip2_appearance"
+    siglip2 = score_mode in {"siglip2_appearance", "siglip2_text_image"}
     score_conditions = score_siglip2_conditions if siglip2 else score_minimum_positive_conditions
     try:
         reference_embeddings, reference_clip_batch_count = _encode_batches(
@@ -295,6 +304,19 @@ def evaluate_counterfactual_product_images(
         ) from None
 
     try:
+        if score_mode == "siglip2_text_image":
+            image_batch = build_siglip2_appearance_batch(tuple(candidate_inputs))
+            text_batch = score_visual_text(
+                conditions,
+                fetched_by_product,
+                candidate_embeddings,
+                asset_root=asset_root,
+                encoder=encoder,
+            )
+            return Siglip2DualImageBatch(
+                **{name: getattr(image_batch, name) for name in type(image_batch).model_fields},
+                text_batch=text_batch,
+            )
         if score_mode == "siglip2_appearance":
             return build_siglip2_appearance_batch(tuple(candidate_inputs))
         if score_mode == "appearance":

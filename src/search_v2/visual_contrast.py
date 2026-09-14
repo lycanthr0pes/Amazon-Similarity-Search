@@ -1,4 +1,4 @@
-"""Bounded visual opposites for image generation, never search or ranking terms."""
+"""Bounded visual descriptions for generated references and visual text/image comparison."""
 
 from typing import Annotated, Literal
 import re

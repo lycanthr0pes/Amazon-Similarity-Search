@@ -1,0 +1,19 @@
+# Build selection: original / optimized / igpu.
+# Read again when the browser starts its next condition preparation.
+version = 1
+active = "igpu"
+
+[profiles.original]
+server_binary = "/home/llama.cpp/build-original/bin/llama-server"
+
+# OpenBLAS build from EXEC-160; the name does not guarantee a speedup.
+[profiles.optimized]
+server_binary = "/home/llama.cpp/build-optimized/bin/llama-server"
+
+[profiles.igpu]
+# WSL compatibility: FP32 compute and synchronous GPU transfers are enforced.
+server_binary = "/home/llama.cpp/build-igpu/bin/llama-server"
+device = "Vulkan0"
+device_name = "Microsoft Direct3D12 (Intel(R) Arc(TM) 140V GPU (16GB))"
+vulkan_driver = "/usr/share/vulkan/icd.d/dzn_icd.json"
+library_paths = ["/usr/lib/wsl/lib"]

@@ -32,6 +32,14 @@ import { ConnectedHistory } from "./ConnectedHistory";
 import { type SearchStage, type SearchView } from "./connected-api";
 
 import { useSearchClient } from "./search-client";
+import {
+  connectionDiagnostic,
+  describeConnectionError,
+  loadConnectionDiagnostics,
+  saveConnectionDiagnostics,
+  MAX_CONNECTION_DIAGNOSTICS,
+  type ConnectionOperation,
+} from "./connection-diagnostics";
 
 const TITLES: Record<SearchStage, string> = {
   idle: "探しているものを、言葉で。",
@@ -56,6 +64,28 @@ export default function ConnectedApp() {
   );
   const [view, setView] = useState<SearchView | null>(null);
   const [error, setError] = useState("");
+  const [connectionTimedOut, setConnectionTimedOut] = useState(false);
+  const [diagnostics, setDiagnostics] = useState(() =>
+    offline ? [] : loadConnectionDiagnostics(),
+  );
+  useEffect(() => {
+    if (!offline) {
+      saveConnectionDiagnostics(diagnostics);
+    }
+  }, [diagnostics, offline]);
+  function recordConnectionError(
+    cause: unknown,
+    operation: ConnectionOperation,
+  ) {
+    const diagnostic = connectionDiagnostic(cause, operation);
+    setConnectionTimedOut(diagnostic.code === "timeout");
+    if (!offline) {
+      setDiagnostics((previous) =>
+        [...previous, diagnostic].slice(-MAX_CONNECTION_DIAGNOSTICS),
+      );
+    }
+    return describeConnectionError(diagnostic);
+  }
   const [pending, setPending] = useState(false);
   const query = 0;
   const [productDraft, setProductDraft] = useState("");
@@ -88,25 +118,32 @@ export default function ConnectedApp() {
       JSON.stringify(view?.imagePrompts?.comparison);
   const invalidPrompts = !!prompts && !validPrompts(prompts);
   const sending = useRef(false);
+  const commandVersion = useRef(0);
   const heading = useRef<HTMLHeadingElement>(null);
   useEffect(() => {
     let active = true;
     let timer: ReturnType<typeof setTimeout>;
     async function refresh() {
+      const version = commandVersion.current;
       try {
+        if (sending.current) {
+          return;
+        }
         const current = await readSearch();
-        if (active) {
+        if (active && version === commandVersion.current) {
           setView((previous) =>
-            previous && previous.revision > current.revision
+            previous &&
+            previous.instanceId === current.instanceId &&
+            previous.revision > current.revision
               ? previous
               : current,
           );
           setError("");
         }
-      } catch {
-        if (active) {
+      } catch (cause) {
+        if (active && version === commandVersion.current) {
           setError(
-            "接続状態を確認できません。処理を再送せず、状態の再取得を待っています。",
+            `${recordConnectionError(cause, "state")} 処理を再送せず、状態の再取得を待っています。`,
           );
         }
       } finally {
@@ -178,6 +215,7 @@ export default function ConnectedApp() {
       return;
     }
     sending.current = true;
+    commandVersion.current += 1;
     setPending(true);
     try {
       const next = await sendSearch(action, view, {
@@ -196,9 +234,9 @@ export default function ConnectedApp() {
         history.replaceState(null, "", location.pathname + location.search);
         setHistoryOpen(false);
       }
-    } catch {
+    } catch (cause) {
       setError(
-        "受付状態を確認しています。画面を再読込しても同じ処理を繰り返しません。",
+        `${recordConnectionError(cause, "command")} 受付状態を確認しています。処理は再送しません。`,
       );
     } finally {
       sending.current = false;
@@ -350,10 +388,26 @@ export default function ConnectedApp() {
                     : "確認した条件でAmazon.co.jpの商品を比較します。"}
             </Note>
           </div>
-          {error && (
+          {error && !(organizing && connectionTimedOut) && (
             <p role="alert" {...stylex.props(layout.error)}>
               {error}
             </p>
+          )}
+          {!offline && diagnostics.length > 0 && (
+            <details aria-label="接続診断" {...stylex.props(layout.intro)}>
+              <summary>接続診断</summary>
+              <p>このタブの直近10件。接続が回復しても記録は残ります。</p>
+              <ol>
+                {[...diagnostics].reverse().map((diagnostic, index) => (
+                  <li key={`${diagnostic.occurredAt}-${index}`}>
+                    <time dateTime={diagnostic.occurredAt}>
+                      {new Date(diagnostic.occurredAt).toLocaleString("ja-JP")}
+                    </time>
+                    {` · ${diagnostic.operation === "state" ? "状態取得" : "操作受付"} · ${diagnostic.elapsedMs}ms · ${describeConnectionError(diagnostic)}`}
+                  </li>
+                ))}
+              </ol>
+            </details>
           )}
           {view?.canRetrySave && (
             <div role="alert" {...stylex.props(layout.error)}>

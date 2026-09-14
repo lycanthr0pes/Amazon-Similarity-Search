@@ -37,8 +37,9 @@ def test_browser_images_allow_two_full_sets_and_count_failed_calls(monkeypatch, 
 
 
 @pytest.mark.parametrize("condition_count", [1, 3])
+@pytest.mark.parametrize("run_id", [None, "d" * 32])
 def test_live_composition_does_not_reuse_the_two_image_canary_limit(
-    tmp_path, monkeypatch, condition_count
+    tmp_path, monkeypatch, condition_count, run_id
 ):
     from contextlib import nullcontext
     from io import BytesIO
@@ -60,12 +61,13 @@ def test_live_composition_does_not_reuse_the_two_image_canary_limit(
             return None
 
     def prepared_flow(*_, **kwargs):
+        assert kwargs["history_repository"].path == tmp_path / "run" / "history.sqlite3"
         flow._transport = kwargs["image_transport"]
         return flow
 
     monkeypatch.setattr(runtime, "MODEL", SimpleNamespace(open=lambda *_: BytesIO(b"fixture")))
     monkeypatch.setattr(runtime, "browser_bonsai", lambda *_: nullcontext(None))
-    monkeypatch.setattr("tools.bonsai_live_e2e.BonsaiLiveE2EConfig", lambda *_: None)
+    monkeypatch.setattr(runtime, "load_bonsai_config", lambda *_: None)
     monkeypatch.setattr(runtime, "OWNER", connected.OWNER)
     monkeypatch.setattr("src.search_v2.lexical_expansion.ContextualQueryExpander", Expander)
     monkeypatch.setattr(
@@ -85,7 +87,7 @@ def test_live_composition_does_not_reuse_the_two_image_canary_limit(
     monkeypatch.setattr(
         "src.config.CloudflareLiveSettings", lambda: pytest.fail("credentials loaded")
     )
-    steps = runtime.live_steps(tmp_path / "run", source="マグカップ。丸みのある形。")
+    steps = runtime.live_steps(tmp_path / "run", source="マグカップ。丸みのある形。", run_id=run_id)
     assert next(steps)["stage"] == "query"
     assert steps.send({"index": 0})["stage"] == "reference"
     assert steps.send({})["stage"] == "comparison"
@@ -191,10 +193,12 @@ def test_live_server_revision_after_local_clarification_creates_private_parent(
     from src.search_v2.candidate_diagnostics import CandidatePreparationError
 
     root = tmp_path / "new-run"
+    session = root / ("session-" + "a" * 32)
     checks, states = [], []
+    monkeypatch.setattr(server, "uuid4", lambda: SimpleNamespace(hex="a" * 32))
 
     def asset_boundary(*_):
-        checks.append((root / "revision-1").is_dir())
+        checks.append((session / "revision-1").is_dir())
         raise CandidatePreparationError("empty_conditions")
 
     monkeypatch.setattr("tools.browser_search_runtime.MODEL", SimpleNamespace(open=asset_boundary))
@@ -244,7 +248,8 @@ def test_live_server_revision_after_local_clarification_creates_private_parent(
     assert [s["stage"] for s in states] == ["clarification", "clarification"]
     assert checks == [True]
     assert (root.stat().st_mode & 0o777) == 0o700
-    assert ((root / "revision-1").stat().st_mode & 0o777) == 0o700
+    assert (session.stat().st_mode & 0o777) == 0o700
+    assert ((session / "revision-1").stat().st_mode & 0o777) == 0o700
 
 
 @pytest.mark.parametrize(

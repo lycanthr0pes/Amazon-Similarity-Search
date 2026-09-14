@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 import http.client
+from contextlib import ExitStack
+import errno
 import json
 import math
 import os
+import re
 import socket
 import stat
 import subprocess
+import sys
 import threading
 import time
 from dataclasses import dataclass
@@ -64,6 +68,10 @@ class BonsaiLiveE2EError(RuntimeError):
     pass
 
 
+class BonsaiPortBusyError(BonsaiLiveE2EError):
+    """A listener or another managed startup already owns the selected port."""
+
+
 def _raise_configuration_error() -> None:
     raise BonsaiLiveE2EError(_CONFIGURATION_ERROR)
 
@@ -87,6 +95,10 @@ class BonsaiLiveE2EConfig:
     server_binary: Path
     model_path: Path
     port: int
+    device: str | None = None
+    device_name: str | None = None
+    vulkan_driver: Path | None = None
+    library_paths: tuple[Path, ...] = ()
 
     def __post_init__(self) -> None:
         _validated_regular_file(self.server_binary, executable=True)
@@ -97,6 +109,27 @@ class BonsaiLiveE2EConfig:
             or self.port > BONSAI_E2E_MAX_PORT
         ):
             _raise_configuration_error()
+        if type(self.library_paths) is not tuple or len(self.library_paths) > 5:
+            _raise_configuration_error()
+        for path in self.library_paths:
+            if not isinstance(path, Path) or not path.is_absolute() or not path.is_dir():
+                _raise_configuration_error()
+            if ":" in str(path):
+                _raise_configuration_error()
+        if self.device is None:
+            if self.device_name is not None or self.vulkan_driver is not None:
+                _raise_configuration_error()
+        else:
+            if type(self.device) is not str or not re.fullmatch(r"Vulkan[0-9]+", self.device):
+                _raise_configuration_error()
+            if (
+                type(self.device_name) is not str
+                or not 1 <= len(self.device_name) <= 200
+                or "intel" not in self.device_name.lower()
+                or any(s in self.device_name.lower() for s in ("llvmpipe", "software", "\n"))
+            ):
+                _raise_configuration_error()
+            _validated_regular_file(self.vulkan_driver, executable=False)
 
 
 @dataclass(frozen=True, slots=True)
@@ -133,7 +166,7 @@ class BonsaiLiveE2EResult:
 def build_llama_server_command(config: BonsaiLiveE2EConfig) -> tuple[str, ...]:
     if type(config) is not BonsaiLiveE2EConfig:
         _raise_configuration_error()
-    return (
+    command = (
         str(config.server_binary),
         "-m",
         str(config.model_path),
@@ -148,6 +181,46 @@ def build_llama_server_command(config: BonsaiLiveE2EConfig) -> tuple[str, ...]:
         str(config.port),
         "--log-disable",
     )
+    if config.device is not None:
+        command += ("--device", config.device, "--n-gpu-layers", "99", "--fit", "off")
+    return command
+
+
+def server_environment(config: BonsaiLiveE2EConfig) -> dict[str, str]:
+    env = {"LC_ALL": "C"}
+    if config.library_paths:
+        env["LD_LIBRARY_PATH"] = ":".join(str(p) for p in config.library_paths)
+    if config.device is not None:
+        env["VK_DRIVER_FILES"] = str(config.vulkan_driver)
+        env["GGML_VK_DISABLE_F16"] = "1"
+        # WSL's D3D12 bridge stalled while using asynchronous Vulkan transfers.
+        env["GGML_VK_DISABLE_ASYNC"] = "1"
+    return env
+
+
+def _verify_gpu(config: BonsaiLiveE2EConfig) -> None:
+    if config.device is None:
+        return
+    error = "Bonsai configured GPU is unavailable"
+    try:
+        result = subprocess.run(
+            (str(config.server_binary), "--list-devices"),
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            env=server_environment(config),
+            timeout=30,
+            check=False,
+        )
+        if result.returncode != 0 or len(result.stdout) > 65_536:
+            raise BonsaiLiveE2EError(error)
+        expected = f"{config.device}: {config.device_name} ("
+        if not any(
+            line.strip().startswith(expected) for line in result.stdout.decode().splitlines()
+        ):
+            raise BonsaiLiveE2EError(error)
+    except (OSError, UnicodeError, subprocess.TimeoutExpired):
+        raise BonsaiLiveE2EError(error) from None
 
 
 def _strict_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
@@ -388,20 +461,43 @@ def _stop_server(process: subprocess.Popen[bytes], port: int) -> None:
 
 
 def _launch_server(config: BonsaiLiveE2EConfig) -> subprocess.Popen[bytes]:
-    if _port_is_listening(config.port):
-        raise BonsaiLiveE2EError(_PORT_IN_USE_ERROR)
-    try:
-        return subprocess.Popen(
-            build_llama_server_command(config),
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            env={"LC_ALL": "C"},
-            close_fds=True,
-            start_new_session=True,
-        )
-    except OSError:
-        raise BonsaiLiveE2EError(_STARTUP_ERROR) from None
+    with ExitStack() as cleanup:
+        command = build_llama_server_command(config)
+        options = {}
+        if sys.platform == "linux":
+            lease = cleanup.enter_context(socket.socket(socket.AF_UNIX, socket.SOCK_STREAM))
+            try:
+                lease.bind(f"\0amazon-explorer.bonsai.{os.getuid()}.{config.port}")
+            except OSError as error:
+                if error.errno == errno.EADDRINUSE:
+                    raise BonsaiPortBusyError(_PORT_IN_USE_ERROR) from None
+                raise BonsaiLiveE2EError(_STARTUP_ERROR) from None
+            options["pass_fds"] = (lease.fileno(),)
+            command = (
+                sys.executable,
+                "-I",
+                "-S",
+                str(Path(__file__).with_name("bonsai_child.py").resolve()),
+                str(os.getpid()),
+                str(lease.fileno()),
+                *command,
+            )
+        if _port_is_listening(config.port):
+            raise BonsaiPortBusyError(_PORT_IN_USE_ERROR)
+        _verify_gpu(config)
+        try:
+            return subprocess.Popen(
+                command,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                env=server_environment(config),
+                close_fds=True,
+                start_new_session=True,
+                **options,
+            )
+        except OSError:
+            raise BonsaiLiveE2EError(_STARTUP_ERROR) from None
 
 
 def _usage_ledger(

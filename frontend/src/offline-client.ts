@@ -180,11 +180,23 @@ export function createOfflineClient(
             score_en: null,
             score: 1 - index * 0.03,
           },
+          ...(view.imageMode === "off"
+            ? {}
+            : { textImage: 0.95 - index * 0.025 }),
           image: view.imageMode === "off" ? null : 0.9 - index * 0.02,
           conditions: (view.conditionReview ?? [])
             .filter((r) => r.strength !== "neutral")
             .map((row, i) => ({
               requirement_id: `condition-${i}`,
+              weight: new Set(
+                (view.conditionReview ?? [])
+                  .filter(
+                    (other) =>
+                      other.strength === row.strength &&
+                      other.start >= row.start,
+                  )
+                  .map((other) => other.start),
+              ).size,
               strength: row.strength as "required" | "preferred" | "excluded",
               score_ja: row.strength === "excluded" ? index / 20 : 0.7,
               score_en: row.strength === "excluded" ? index / 20 : 0.8,
@@ -194,7 +206,10 @@ export function createOfflineClient(
       })),
       researchStep: 5,
       historyContentAvailable: true,
-      sortProfile: "excluded-title-conditions-image-review-v1",
+      sortProfile:
+        view.imageMode === "off"
+          ? "excluded-title-conditions-image-review-v1"
+          : "excluded-title-conditions-text-image-review-v2",
       expiresAt: undefined,
     });
     ready("complete");

@@ -14,7 +14,11 @@ from src.search_v2.visual_contrast import (
     presence_condition,
     local_contrast,
 )
-from src.search_v2.condition_language import analyze_conditions, interpret_clause
+from src.search_v2.condition_language import (
+    analyze_conditions,
+    interpret_clause,
+    ConditionLanguageError,
+)
 from src.search_v2.counterfactual_image import (
     MAX_VISUAL_CONDITIONS,
     VisualConditionDraft,
@@ -43,10 +47,25 @@ def _visual_clauses(source, structure=None, *, natural=True):
         candidates = []
         for span in structure.fragments:
             phrase = span.text(structure.source)
-            expression = interpret_clause(phrase) if natural else None
-            if expression and expression.strength == "neutral":
+            if not phrase.strip():
                 continue
-            facts, uncertain = _source_facts(phrase, natural=natural)
+            try:
+                expression = interpret_clause(phrase) if natural else None
+                if expression and expression.strength == "neutral":
+                    continue
+                facts, uncertain = _source_facts(phrase, natural=natural)
+            except ConditionLanguageError as error:
+                # Fragment parsers use local offsets; the browser displays full-source ranges.
+                raise ConditionLanguageError(
+                    [
+                        {
+                            **issue,
+                            "start": span.start + issue["start"],
+                            "end": span.start + issue["end"],
+                        }
+                        for issue in error.issues
+                    ]
+                ) from None
             if (
                 uncertain
                 or re.search(r"[0-9]", phrase)

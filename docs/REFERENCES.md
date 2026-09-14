@@ -1,5 +1,16 @@
 # 参考資料
 
+## Bonsaiの親終了連動（EXEC-163、2026-09-13確認）
+
+- [Linux PR_SET_PDEATHSIG](https://man7.org/linux/man-pages/man2/PR_SET_PDEATHSIG.2const.html): 親thread終了時のsignal、登録前に親が終了した場合、execでの保持と特権付きexecでの解除を確認。
+- [Python subprocess](https://docs.python.org/3/library/subprocess.html): threaded processでpreexec_fnを使わず、独立helperとpass_fdsで起動する設計の参照。
+
+
+- EXEC-162: [Transformers SigLIP 2公式資料](https://huggingface.co/docs/transformers/v4.57.1/en/model_doc/siglip2)（2026-09-13参照）。text features、lowercase、padding=max_length/max_length=64の前処理を確認。実装は既存固定4.57.6/固定モデル資材を継続し、cosine類似度を確率として扱わない。
+
+
+EXEC-161（2026-09-13）: [llama.cppの固定sourceのVulkan実装](https://github.com/ggml-org/llama.cpp/blob/f12cc6d0fa96d6a3c33952f06b7439ac43a3c3fe/ggml/src/ggml-vulkan/ggml-vulkan.cpp)でQ1_0とGGML_VK_DISABLE_F16を確認。同revisionのSYCL実装はQ1_0を未実装として拒否する。[Intel compute-runtimeの対応表](https://github.com/intel/compute-runtime#supported-platforms)はLunar LakeのWSL対応を掲載するが、今回の実行はWSL D3D12を使うMesa Dozen/Vulkanで検証する。
+
 日本語の商品名取得（2026-09-12）: [Outscraper公式API仕様](https://app.outscraper.cloud/api-docs-data.json)の `/amazon-products` は商品・検索・一覧ページURLを `query` に受け付け、`language` の列挙値に `ja` があることを確認した。検索URLの日本語指定によるタイトル取得は別途実APIで検証する。[公式料金](https://outscraper.com/amazon-scraper/)では月間先頭500商品が無料、501〜5000商品は1000件あたり2 USD。24件試験の従量分の見積りは0〜0.048 USDで、実計上額は未確認。
 
 EXEC-124準備（2026-09-12）: [Cloudflare FLUX.2 klein 4B](https://developers.cloudflare.com/workers-ai/models/flux-2-klein-4b/)の入力512px tile単価0.000059 USD/出力単価0.000287 USDと、[Outscraper Amazon料金](https://outscraper.com/amazon-scraper/)の有料枠2 USD/1000商品を再確認した。2出力/1入力tileと24商品は約0.048633 USD。無料枠・実計上額・税・既存月額を確認した結果ではなく、実行回数上限に基づく従量分の見積りである。

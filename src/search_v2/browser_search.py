@@ -4,12 +4,17 @@ from copy import deepcopy
 from datetime import datetime, timezone
 from threading import RLock
 import re
+from uuid import uuid4
 
 from src.search_v2.product_links import japanese_product_url
 
 
 class BrowserCancelled(Exception):
     """A cooperative stop before the next search phase."""
+
+
+class BrowserModelBusy(Exception):
+    """Preparation could not acquire its local model runtime."""
 
 
 class BrowserCommandError(ValueError):
@@ -49,6 +54,7 @@ class BrowserSearch:
         self._execute = execute
         self._worker = worker
         self._lock = RLock()
+        self._instance_id = uuid4().hex
         self._view = {"stage": "idle", "revision": 0, **(initial or {})}
         self._commands = {}
         self._deadline = None
@@ -73,6 +79,7 @@ class BrowserSearch:
         with self._lock:
             self._expire()
             view = deepcopy(self._view)
+            view["instanceId"] = self._instance_id
             if self._editable:
                 view["canRevise"] = (
                     view["stage"]
@@ -107,6 +114,11 @@ class BrowserSearch:
         if type(command) is not dict:
             raise BrowserCommandError()
         action = command.get("action")
+        envelope = {"action", "revision", "operation"}
+        if "instanceId" in command:
+            if command["instanceId"] != self._instance_id:
+                raise BrowserCommandError()
+            envelope.add("instanceId")
         extra = (
             {"source"}
             if self._editable and action in {"start", "revise"}
@@ -147,7 +159,7 @@ class BrowserSearch:
                 raise BrowserCommandError()
             extra = extra | {"imageMode"}
         if (
-            set(command) != {"action", "revision", "operation"} | extra
+            set(command) != envelope | extra
             or type(command.get("revision")) is not int
             or type(command.get("operation")) is not str
             or not re.fullmatch(r"[A-Za-z0-9_-]{12,80}", command["operation"])
@@ -276,6 +288,13 @@ class BrowserSearch:
                 "stage": "cancelled",
                 "canSkipImages": False,
                 "message": "検索を中止しました。取得後の比較と保存は行っていません。",
+            }
+        except BrowserModelBusy:
+            view = {
+                "stage": "failed",
+                "canSkipImages": False,
+                "message": "Bonsaiが別の処理で使用中のため、条件を整理できませんでした。"
+                "その処理の終了後に、もう一度条件を整理してください。",
             }
         except Exception:
             deadline = None

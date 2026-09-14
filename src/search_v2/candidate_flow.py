@@ -76,14 +76,19 @@ class CandidateSearchFlow:
         contrast_resolver=None,
         source_parser=None,
         reference_region_extractor=None,
-        image_score_mode="siglip2_appearance",
+        image_score_mode="siglip2_text_image",
         plan_lifetime=timedelta(minutes=15),
         japanese_search_urls=False,
         allow_image_free=False,
         image_settings=None,
         image_mode="on",
     ):
-        if image_score_mode not in {"siglip2_appearance", "appearance", "relative"}:
+        if image_score_mode not in {
+            "siglip2_text_image",
+            "siglip2_appearance",
+            "appearance",
+            "relative",
+        }:
             raise ValueError("Invalid candidate image score mode")
         self._allow_image_free = allow_image_free
         self._image_free = False

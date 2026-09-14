@@ -224,6 +224,13 @@ class _CountedEncoder:
     def __init__(self, inner):
         self.inner = inner
         self.calls = 0
+        self.text_calls = 0
+
+    def encode_texts(self, **kwargs):
+        if self.text_calls >= 1:
+            raise BackendSearchE2EError("visual_text_limit")
+        self.text_calls += 1
+        return self.inner.encode_texts(**kwargs)
 
     def encode_images(self, **kwargs):
         if self.calls >= _MAX_CLIP_BATCHES:

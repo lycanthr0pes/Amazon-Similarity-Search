@@ -137,6 +137,11 @@ def history_product(product):
                     "title": product.title_scores.model_dump(mode="json"),
                     "conditions": [s.model_dump(mode="json") for s in product.condition_scores],
                     "image": product.image_score,
+                    **(
+                        {"textImage": product.visual_text.score}
+                        if product.visual_text is not None
+                        else {}
+                    ),
                     "total": product.total_score,
                 }
             }
@@ -148,7 +153,9 @@ def history_product(product):
         "required": {"confirmed": "一致", "uncertain": "未確認", "contradicted": "不一致"}[
             product.required_status
         ],
-        "appearance": "参考画像による外観補助"
+        "appearance": "視覚条件の文章・参考画像による外観補助"
+        if product.visual_text is not None and product.visual_text.score is not None
+        else "参考画像による外観補助"
         if product.image_component_status == "available"
         else "画像比較は使用していません"
         if product.image_component_status == "not_used"

@@ -8,6 +8,7 @@ import mimetypes
 import time
 from pathlib import Path
 from urllib.parse import urlsplit, unquote
+from uuid import uuid4
 
 from src.search_v2.browser_search import BrowserCommandError, BrowserSearch
 
@@ -181,7 +182,7 @@ def main(*, initial_source=None):
     if not 1024 <= args.port <= 65535:
         parser.error("Use an unprivileged local port")
     if args.run_live_api and args.output_dir is None:
-        parser.error("Live mode requires a new private --output-dir and prior human authorization")
+        parser.error("Live mode requires a private --output-dir and prior human authorization")
     if len(args.history_db) > 29 or any(not p.is_file() or p.is_symlink() for p in args.history_db):
         parser.error("Use up to 29 existing history database files")
     from src.search_v2.browser_history import BrowserHistory
@@ -214,6 +215,8 @@ def main(*, initial_source=None):
     from src.search_v2.browser_candidate import BrowserCandidateRun
     from tools.browser_search_runtime import live_steps, fixture_steps, CANARY_INPUT
 
+    run_id = uuid4().hex
+
     def steps(source, attempt, *, image_mode="on"):
         if args.offline_fixture:
             return fixture_steps(source=source, image_mode=image_mode)
@@ -223,6 +226,7 @@ def main(*, initial_source=None):
             attempt=attempt % 3,
             image_mode=image_mode,
             batch=attempt // 3,
+            run_id=run_id,
             progress=run.progress,
         )
 

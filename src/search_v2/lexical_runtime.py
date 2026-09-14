@@ -115,9 +115,9 @@ class GinzaProductParser:
             groups.append(group)
         fragments = []
         for group in groups:
-            while group and group[0].pos_ in {"ADP", "SCONJ"}:
+            while group and (group[0].pos_ in {"ADP", "SCONJ"} or group[0].text.isspace()):
                 group.pop(0)
-            while group and group[-1].pos_ in {"ADP", "SCONJ"}:
+            while group and (group[-1].pos_ in {"ADP", "SCONJ"} or group[-1].text.isspace()):
                 group.pop()
             if group:
                 fragments.append(TextSpan(group[0].idx, group[-1].idx + len(group[-1])))

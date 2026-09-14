@@ -238,7 +238,7 @@ def run_candidate_e2e(
     source_parser=None,
     sense_resolver_factory=None,
     region_extractor=None,
-    image_score_mode="siglip2_appearance",
+    image_score_mode="siglip2_text_image",
 ):
     """Call only after the human has approved the displayed execution scope."""
     identity = shared._new_output(config)
@@ -507,10 +507,11 @@ def main():
             args.server_bin, args.model_path, config.bonsai_port
         )
         if args.image_model == "siglip2":
-            from src.search_v2.siglip2 import LocalSiglip2ImageEncoder, verify_assets
+            from src.search_v2.siglip2 import verify_assets
+            from src.search_v2.visual_text_scoring import LocalSiglip2MultimodalEncoder
 
             verify_assets(config.asset_root)
-            image_encoder = LocalSiglip2ImageEncoder(args.image_python)
+            image_encoder = LocalSiglip2MultimodalEncoder(args.image_python)
         else:
             verify_clip_asset_directory(config.asset_root)
             image_encoder = ProcessIsolatedClipImageEncoder()
@@ -580,7 +581,7 @@ def main():
                     sleep=time.sleep,
                     confirm=confirm,
                 ),
-                image_score_mode="siglip2_appearance"
+                image_score_mode="siglip2_text_image"
                 if args.image_model == "siglip2"
                 else "appearance",
                 select_query=select_query,

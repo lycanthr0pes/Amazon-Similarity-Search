@@ -243,7 +243,7 @@ def test_live_composition_image_free_never_loads_image_settings(tmp_path, monkey
         runtime, "MODEL", SimpleNamespace(open=lambda *_: BytesIO(b"synthetic model"))
     )
     monkeypatch.setattr(runtime, "browser_bonsai", model)
-    monkeypatch.setattr("tools.bonsai_live_e2e.BonsaiLiveE2EConfig", lambda *_: None)
+    monkeypatch.setattr(runtime, "load_bonsai_config", lambda *_: None)
     monkeypatch.setattr("src.search_v2.lexical_assets.load_lexical_services", lexical)
     monkeypatch.setattr(
         "src.search_v2.wordnet_contrast.WordNetContrastDictionary",

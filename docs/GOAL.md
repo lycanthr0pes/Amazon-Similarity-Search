@@ -1,5 +1,219 @@
 # 開発目標
 
+## EXEC-167: 条件を入力順で重み付けする
+
+状態: 実装・対象回帰完了。全体gateに既知失敗、一般ブラウザ回帰に未完を残す。作成/更新: 2026-09-14。
+
+目的: 同じ分類の条件では原文で先に記した語句を重くし、条件の並べ替えを順位へ反映する。対象はcandidateの日本語/日英最大値採点、画像あり/なしの順位、保存・表示と回帰。否定、タイトル、優先、希望、文章対画像、画像対画像、レビューの分類順と各条件の一致点は維持する。画像自体の採点とproviderは変更しない。
+
+判断: 分類内の入力位置順にN..1の重みを用いた正規化加重平均とする。同じ入力位置は同じ重みとし、欠損も分母へ含める。source-order-linear-v1を任意の集約profileとしてplan/履歴へ保存し、新digestで旧形式と分離する。旧planは従来平均を使い、旧履歴を補完・再採点しない。
+
+手順: 入力順逆転と分類ごとのREDを記録し、位置の固定・採点・履歴・表示を実装する。同じtestのGREEN、日英/価格/外観混在、互換性、改変拒否、offline全体、Ruff/format/lock/Markdown/diff、frontend型/単体/build/fixtureを検証する。実検索、実推論、画像生成、外部送信、課金は実施しない。
+
+互換性/復旧: schema5の任意fieldと省略serializerを使い、保存済みJSON/digestを保持する。今回の差分だけでrollbackし、作業開始時の未コミット変更を残す。結果、RED/GREENのhash、未検証範囲は完了時に記録する。
+
+
+実装結果: condition_weighting.pyで入力開始位置を固定し、candidate_text/candidate_bilingualで分類内のN..1平均を計算する。日本語/日英それぞれの個別一致点は維持。新規plan/履歴の任意集約profileとweightをdigestへ含め、画像あり/なしの履歴保存・再読込で保持する。旧fieldなしのplanでは従来平均とJSONを保持し、保存planの位置改変と保存点のweight改変を拒否する。共通内訳の「重み」列は新規条件だけへ出し、既存の説明文非表示方針を維持した。
+
+RED: `uv run --frozen --offline --no-sync pytest tests/test_condition_order.py -q --tb=short` はexit1・12 failed。一致点が2/3となる期待に対して既存平均の0.5だった。初回test SHA-256は375f492a5b691d1160c52c40e88f3403c4ba8af2c970457a54fd57df6df3e887。同一12例を変えず実装後は成功。追加境界テストを含む最終同コマンドはexit0・20 passed。最終hash=d3dfb0e651fdd18d967a9ab6df906294c1e897c9df47238406dcd69f87d5079a。追加例の初回失敗2件はfixtureのJPY currency不足と、既存の同位置からの構造/外観2条件を考慮しない期待値だったためfixtureを修正した。
+
+画面RED: frontendの `npm test -- src/condition-weights.test.ts` は重み列なしでexit1・1 failed/1 passed、初回hash=bac5c2c16815a75e41e858c123c024a2d1c0c3ca8905de0801cb144fd8ba98f8。実装後exit0・2 passed。最終hash=8691b052ae780b4ca6a6d94911dc6fb7e8dae763ea1cbddf483281560d43bffb。重み・元の一致点・旧形式の列省略を検証する。途中の説明文の期待は、既存の説明非表示方針に合わせて除去した。
+
+検証:
+
+- `uv run --frozen --offline --no-sync pytest tests/test_condition_order.py tests/test_candidate_text_scoring.py tests/test_candidate_bilingual_scoring.py tests/test_candidate_text_boundaries.py tests/test_candidate_connected_flow.py tests/test_candidate_search_retry.py tests/test_image_free_browser.py tests/test_candidate_priority.py tests/test_candidate_exclusion_priority.py tests/test_visual_text_priority.py tests/test_siglip2.py -q --tb=short`: exit0、158 passed。最後に追加した保存plan位置改変1例は上記20件で別途成功。
+- `uv run --frozen --offline --no-sync pytest -m 'not live_api' -q --tb=short`: exit1、3497 passed/22 skipped/30 deselected/1 failed（最終境界8例の追加前）。test_graph_root_evidence_tolerates_only_runtime_managed_leaf_ctime_driftがos.utime前後のctime不変で失敗。既知の無関係な環境依存失敗であり全体合格とはしない。
+- frontendの `npm run check`、`npm test`（112 passed）、`npm run build`: exit0。途中にe2eの整形不一致があり、対象ファイルのPrettier後にcheckを再実行。
+- `npm run test:e2e -- --config playwright.connected.config.ts connected.spec.ts -g 'source-order weights'`: exit0、1 passed。実candidateコードと一時SQLiteの合成fixtureで、日本語条件2倍/1倍、結果・履歴・再読込をキーボード操作で確認。
+- `npm run test:e2e -- visual-scores.spec.ts`: exit0、1 passed。キーボード操作でモックの結果と履歴の重み列を確認。
+- 一般のconnected-parityはクリック前のvisible/enabled/stable待ちで2件timeout、5 passed/1 interrupted/9未実行として停止。mock visual-scoresも同じ待ちと撮影の待ちで失敗したため、採点表示の対象testをキーボード操作とDOMの表示検査に限定し、撮影を除去。マウス操作一般とスクリーンショットの成功は主張しない。
+- Ruff check/format425 files、offline lock、Markdown/diff: exit0。
+
+境界: 実モデル推論、商品検索、画像生成、credential利用、課金、commit/push、稼働serverの再起動は未実行。稼働serverのGETではquery（確認待ち）を確認したため、その準備済み検索を保持して再起動していない。変更適用済みprocessで新しく準備する検索から有効。既存process/準備済みplan/保存履歴の点を切り替えない。全体ctime検査と一般ブラウザ回帰の残件はISSUESに引き継ぐ。
+
+## EXEC-166: 空行による条件誤判定と修正位置を直す
+
+状態: 修正・関連回帰・稼働serverへの反映完了。作成/更新: 2026-09-14。
+
+目的: 条件整理で空行を曖昧な希望/否定と扱い、無関係な商品名を修正箇所に表示する問題を修正する。関連: [ISSUES.md](ISSUES.md)、[BACKEND.md](BACKEND.md)。
+
+調査: 稼働APIの失敗コードmodifier_scopeを確認し、入力をログ/ファイルへ保存せずローカルGiNZAと視覚条件抽出まで再現した。末尾の空白だけのfragmentをinterpret_clauseが空条件として拒否し、start未指定でoffset=0になっていた。全文の希望/否定解析は正常で、利用者が指摘した商品名の解釈が失敗原因ではない。
+
+範囲: parserの空白だけのfragment除外、視覚条件の空白防御と原文位置保持、合成回帰、文書、ローカル反映。実入力はテスト/文書へ複製せず、独立した合成文で検証する。モデル/分類規則/順位/旧履歴/追加provider実行は変更しない。
+
+手順: 合成parser tokenと注入structureで空行・空白・誤ったエラー位置のRED。最小修正後に同じtestのGREEN、関連と全offlineを実行。稼働中のstateは保持し、処理が進行中でなければ同じ起動設定と入力をメモリ内だけで引き継いでserverへ反映する。自動の条件整理/モデル推論/画像生成/商品検索はしない。
+
+境界/復旧: API GETでの確認とローカル構文解析だけを使い、provider/credential/課金なし。先行する修正を保持し今回の差分だけrollback可能にする。実際の入力全文・例外本文・モデル応答はログへ出さない。結果と残る制約を追記する。
+
+
+実装: GiNZAの条件fragmentの両端から空白tokenを除き、空になったfragmentを返さない。視覚条件側でも空白だけのfragmentを防御的に除外する。断片内でConditionLanguageErrorが発生した場合はstart/endに原文内の開始位置を加え、実際の問題箇所を返す。
+
+RED/GREEN: `uv run --frozen --offline --no-sync pytest -q tests/test_blank_condition_fragments.py --tb=short` は実装前9 failed（exit1、0.38秒）。空行/CRLF/空白/tabの誤解析と、局所offsetが商品名を指す問題を確認。初回SHA-256=e39b72f5e2bc59aaa912192116110cc75929fb531ccd615763a9f7376e028fa5。同一testの修正後は関連4suiteと合わせて100 passed。実GiNZAの合成文回帰1件と整形を追加した最終hash=0ca239ac524873848701acdbe0902b30d10e385a545ce5c9a5bd1324abbef910。
+
+検証: `uv run --frozen --offline --no-sync pytest -q tests/test_blank_condition_fragments.py tests/test_lexical_runtime.py tests/test_condition_language.py tests/test_candidate_visual_conditions.py tests/test_image_free_browser.py --tb=short` は101 passed（exit0、3.70秒）。全offline `uv run --frozen --offline --no-sync pytest -m 'not live_api' -q --tb=short` は3484 passed/22 skipped/30 deselected/1 failed（exit1、98.16秒、最後のGiNZA回帰追加前の収集）。既知のtest_graph_root_evidence_tolerates_only_runtime_managed_leaf_ctime_driftがos.utime前後のctime不変で失敗したため全体合格とはしない。Ruff check/format423 files、offline lock、Markdown/diff成功。
+
+稼働反映: 実入力をメモリ内だけでローカル構文解析し、空fragment0・視覚句抽出成功を確認。停止中のclarificationでinstance/revisionが不変なのを確認し、同じ起動設定と入力をstdin経由で引き継いでserverを再起動した。入力と履歴一覧の一致、新instanceのidleを確認。GETだけを許可したChromiumで入力一致・「条件を整理」有効・pageerror0を確認した。生入力を引数/ファイル/ログへ出していない。
+
+制約: 実モデルの条件整理・画像生成・商品検索は再実行していない。今回の実入力検証は失敗したローカル解析境界までであり、実サービスE2Eの成功は主張しない。frontendは変更しておらず、先行する型/単体/配信検証を維持する。credential利用・課金・commit/pushなし。
+
+
+## EXEC-165: 接続失敗の種類を記録して表示
+
+状態: 実装・関連回帰・稼働serverの配信確認完了。作成/更新: 2026-09-14。
+
+目的: 状態取得失敗の一律表示を改め、一時的に失敗して復帰した場合も通信・timeout・HTTP・JSON・状態検証のどこで失敗したか確認できるようにする。関連: [EXEC-164](#exec-164-条件整理の再起動後の停止を解消)、[ISSUES.md](ISSUES.md)。
+
+範囲: frontendの状態GET/command POSTに固定コードの診断を追加し、現在のエラーと接続診断欄へ表示する。診断は同じタブのsessionStorageへ最大10件だけ保持し、回復・再読込後も参照可能にする。時刻・操作種別・所要時間・HTTP status・固定の検証理由だけを保存する。入力/URL/要求応答本文/例外原文/stack/credential/商品情報は保存しない。新規provider要求、検索再送、既存履歴DB、モデルや順位、サーバーの再起動は対象外。
+
+手順: 注入fetchの異常種別と秘匿、ブラウザの一時障害→復帰→再読込保持→再送なしのREDを確認。typedな固定診断と安全な有界保存・表示を実装し同じtestでGREEN、型/整形/単体/buildと関連ブラウザ回帰を確認する。実障害を起こすために稼働server/推論を停止しない。
+
+判断/復旧: 生例外を出さず、未知の失敗はunknownとして記録する。診断保存不能でも画面内では保持し、検索状態の取得を妨げない。前回の過去障害は記録がなく遡及特定できない。今回のfrontend差分だけでrollbackし、先行変更を保持する。結果・hash・未検証範囲を追記する。
+
+
+実装: connected-apiの状態GET/command POSTを同じ診断付き要求処理へ集約し、ヘッダー待ちと本文読込のtimeout、通信中断、HTTP非成功、JSON構文、状態検証を区別した。schemaには20種類の固定検証項目を対応付け、生例外を引き継がない。ConnectedAppは現在のalertを具体的な原因へ変更し、直近10件の折り畳み「接続診断」を追加。sessionStorageからの読込・保存で許可fieldだけを再構築し、未知情報は保持しない。保存不能時も画面内の診断と検索状態取得を維持する。
+
+RED/GREEN: `npm test -- src/connection-errors.test.ts` は実装前6 failed/1 passed（exit1）、エラーに種別のdiagnosticがないため失敗。初回SHA-256=1d9bee08cdadf11cd75755caf6384925623ba639bf77edd210359e8f26bd94dd。同一testの実装後は7 passed（exit0）。後から中断/本文転送失敗2件と整形を追加した最終hash=3a04ffe6f167c96820408891b7b97fb9fbde47021fa4389a8b057586f65153d0。保存/再読込・10件上限・未知field除去・不正保存値・保存不能・未分類秘匿の4件も追加し、同fileのhash=4cc9645b675f72e99c6aeb5c62c99a9dbc77a9348bc66c0a502b4b32ee58e342。
+
+ブラウザRED: `npm run test:e2e -- --config playwright.connected.config.ts connected.spec.ts -g 'connection diagnosis'` はHTTP 503の具体表示期待に一律エラーで失敗（exit1、5.2秒）。初回test hash=ae29910a94ec756ff48202added8b5028847dc61b7eeeab967e94891a96b5905。テストの期待を維持した整形後に復旧・再読込保持・再送0のGREENを確認し、さらにnetwork/json/schemaの3件を追加。最終hash=2c093ed06c284459f5ff5a80527deaac3b9ef282740e15725bc8917a74e445a7。
+
+検証: `npm run check`、`npm test`（110 passed）、`npm run build` はexit0。`npm run test:e2e -- --config playwright.connected.config.ts connected.spec.ts -g 'connection diagnosis|open browser recovers|expired server'` は6 passed（exit0、7.3秒）。合成APIの各失敗、復帰/再読込後の診断、再送なし、既存の再起動/期限表示を確認した。fixtureの短いテスト終了時に静的資材送信のBrokenPipeが出たが、診断本文や実利用者情報は含まない。Ruff/format422 files、offline lock、Markdown/diffもexit0。
+
+稼働反映: serverの再起動なしでbuildを更新。8765番へ新しいChromiumからGETだけで接続し、新診断bundleの配信・「条件を確認」表示・pageerror0・server instance/revision不変を確認した。既存タブには再読込で適用する。状態/要求本文はログへ出していない。実障害を誘発するための停止、モデル起動/再推論、画像生成、検索、外部API、credential利用、課金、commit/pushなし。
+
+制約: 導入前の一時エラーは遡及特定できない。networkはブラウザが隠す接続拒否/接続断等の内訳を断定せず、ブラウザから確定できる失敗境界を記録する。前段で確認済みのChromium描画フレーム停止が空HTMLでも続くため、クリックを含む全E2Eは未実施。新診断の操作はキーボードで確認した。Python実装は未変更で、Python全機能回帰は再実行していない。
+
+## EXEC-164: 条件整理の再起動後の停止を解消
+
+状態: 修正・合成回帰完了。実際の停止時のエラー照合は未確認。作成/更新: 2026-09-14。
+
+目的: 同じ条件で再試行する際、作業先の残存や画面の古い更新番号によって条件整理が進まなくなる問題を修正する。関連: [ISSUES.md](ISSUES.md)、[BACKEND.md](BACKEND.md)、[FRONTEND.md](FRONTEND.md)。
+
+調査: live_stepsは初回作業先をexist_ok=Falseで作成するため、同じoutput-dirで再起動すると既存directoryで失敗する。ConnectedAppはrevisionの小さい状態を無条件で捨てるため、server再起動後のrevision=0を表示できない。現在8765番のserverは稼働しておらず、利用者の失敗時の状態・エラー本文は未確認。モデル応答の揺らぎやGPU停止を今回の障害原因と断定しない。
+
+範囲: 起動ごとのprivate作業先の分離、履歴保存先の保持、server instance識別と古い状態/commandの拒否、合成回帰と関連文書。モデル設定・プロンプト・日英採点・順位・旧履歴の再取得/再採点・自動推論retryは対象外。
+
+手順: serverを同じ作業先で2回起動するfixtureと、ブラウザを開いたままserver識別子/更新番号が変わる回帰でREDを確認する。最小実装後に同じテストのGREEN、関連Python/UIと標準offline gateを確認する。実サービス・モデル推論・課金を追加しない。fixtureの結果は本番E2Eと区別する。
+
+境界/復旧: 入力・provider応答・credentialをログへ出さず、既存のprivate modeとsymlink拒否、準備3回・worker1本・確認操作を維持する。履歴DBのschemaと保存点は変更しない。今回の差分だけを戻せるよう、先行する未コミット変更を保持する。RED/GREENのコマンド・hash・結果・残る制約を追記する。
+
+実装結果: 起動ごとのsession-ID配下に準備を分離し、同じprivate output-dirで再起動しても前の作業先と衝突しない。履歴DBは元のrootに維持する。BrowserSearchはinstanceIdを状態へ付け、新UIから異なるinstanceIdのcommandを受けた場合はrevisionが一致しても拒否する。画面は同一instance内でのみrevisionを比較し、再起動後のidleを受理する。command開始前のpoll結果は破棄する。旧client/モックの省略形式を維持した。
+
+RED/GREEN: `uv run --frozen --offline --no-sync pytest -q tests/test_browser_restart.py --tb=short` は初回3 failed（exit1、1.18秒）。既存rootで準備境界へ0回しか到達しないこと、instanceIdの欠落を確認した。REDのSHA-256はa8501f93c4771a530eea23283bc121ed097266fe7cfe4d362bfae5793f92c992。同一内容の実装後はtest_browser_runtime/test_browser_searchと合わせて43 passed/旧作業先を期待する既存fixture1 failed。新しいnamespaceへfixtureを同期後44 passed（1.46秒）。その後private root/symlink/上書き拒否4件を追加した最終test SHA-256はa4fd1938f087ac9ef0e6b5eca1ea4ccc7996ba346bd96de4ac0cb1b343287655。
+
+UI RED/GREEN: `npm run build` 後、`npm run test:e2e -- --config playwright.connected.config.ts connected.spec.ts -g 'open browser recovers'` で「整理中」から復帰せず条件整理ボタンが出ないREDを確認（exit1、5.6秒、初回SHA-256=b95de24f1760780cb93c814e2ee34eddcb0064aaa6079a85c5acbee1c61d50a5）。修正後のクリック検証はChromium自体のrequestAnimationFrame停止に阻まれた。空のHTMLの単一ボタンでも再現し、GPU無効/SwiftShader/full Chromium/Xvfbでも解消しなかった。再起動の期待・自動再送0回・操作1回・新instanceId/revisionの照合を維持し、入力操作をEnterへ変更。旧revision比較に戻した状態で同じ復帰失敗のREDを再確認し、修正を戻して1 passed（exit0、1.6秒）。このRED/GREENで同一のtest SHA-256はbf3fdb00303a193404092b5bada3da838b7d58d0687cafee6e520f5383d4b33c。誤ったcwdでのnpm開始失敗はREDに数えない。
+
+検証: 関連7suiteは96 passed（14.22秒）。起動別namespaceでも実compositionの履歴repositoryがroot直下に固定される回帰2件を追加後、同じ7suiteは98 passed（13.64秒）。全offline `uv run --frozen --offline --no-sync pytest -m 'not live_api' -q --tb=short` は3473 passed/22 skipped/30 deselected/1 failed（102.25秒）。未変更のtest_graph_root_evidence_tolerates_only_runtime_managed_leaf_ctime_driftでos.utime前後のctimeが同一になる既知失敗。全体合格とはしない。Ruff check/format（422 files）、offline lock、Markdown/diff、frontend型/Prettier、Vitest97件、build成功。既存の期限切れ表示ブラウザ回帰1件も成功。
+
+制約: クリックを含む全ブラウザ回帰は上記のChromium描画停止のため未実施。実利用者の入力/停止状態は未取得であり、今回修正した再起動不具合と元の障害の一致、実モデルの同条件再推論は未確認。8765番は稼働しておらず再起動対象がなかったため、ソースとfrontend/distの更新まで実施した。追加の実サービス・モデル起動/推論・画像生成・検索・credential利用・課金・commit/pushなし。採点・旧履歴・モデルprofileを変更していない。
+
+追加確認（2026-09-14）: 利用者から状態取得失敗の表示を受けて再調査。今度は8765番のserverが稼働し、GETでworkingからqueryへの遷移を確認した。返却stateは現行frontendのparseSearchViewを通過し、新しいChromiumでGETだけを許可して実画面を開くと「条件を確認」が表示され、接続エラーなし・pageerror0・状態HTTP200だった。この条件整理は利用者が開始したもので、調査からのPOST/再推論/画像生成/検索は行っていない。Host=localhost:8765は既存の厳密なorigin規則で403、127.0.0.1:8765は200となることも確認した。利用者が開いているURLは照会中であり、元の接続失敗がこのHost差によるものとは断定しない。先行する「server不在」は前の調査時点の状態で、現在の稼働状態とは異なる。
+
+## EXEC-163: Bonsaiの残存と同時起動による競合を防ぐ
+
+状態: 実装・ローカル反映完了。全体回帰には既存ctime依存の失敗1件が残る。作成/更新: 2026-09-13。
+
+目的: アプリ再起動後にBonsaiが残って条件整理を妨げる問題を防ぎ、競合時は理由を表示する。Linux/WSLの起動元終了に連動する子process停止と、同一user/portの起動排他を共通launcherへ追加する。既存の通常終了・timeout回収を維持する。
+
+範囲: Bonsai起動helper、共通runtime、ブラウザへの固定競合エラー、offline回帰とローカルアプリ反映。外部プロセスの無差別停止・接続流用、推論自動retry、モデル/プロンプト/順位/履歴の変更、実推論・画像生成・商品検索・外部API・課金・commit/pushは含めない。
+
+手順: 合成listenerで親SIGTERM/SIGKILL/異常終了後のport解放と再起動、起動競合、外部listener保護、固定エラー表示のREDを作る。同じテストでGREENを確認し、関連/全体offline、Ruff、lock、Markdown/diffを実行する。実モデル品質や本番E2Eとは区別する。
+
+境界: 生入力/応答/credentialを診断へ保存しない。PID探索による自動killを追加せず、起動時にOSへ登録した子だけを回収する。新しい排他はprocess寿命に従って解放し、残存PIDファイルを作らない。既存非Linux経路は維持し、Linux以外へ今回の保護を主張しない。
+
+判断: 現行はstart_new_session=Trueとfinally回収のみで、親の強制終了ではfinallyが実行されない。親終了連動はthreaded親のpreexec_fnを使わず、別の短いPython起動helperで設定して同じPIDのままexecする。排他はLinux abstract Unix socketを同一user/port単位で保持する。
+
+復旧: このPlanのlauncher/helper/固定エラー差分だけを戻す。先行する未commit変更、iGPU設定、検索入力と既存履歴を保持する。
+
+実装結果: 共通launcherでGPU確認前に同一user/portのabstract socketを排他取得し、子へ継承する。Linux helperは親PIDを登録前後で検査してPR_SET_PDEATHSIG/SIGKILLを設定し、同じPIDでexecする。特権付きexecと登録失敗は拒否する。起動元終了時に子と排他が解放される。BonsaiPortBusyErrorをブラウザadapterで固定表示へ変換し、他processの停止・接続流用・推論retryは追加していない。
+
+RED/GREEN: `uv run --frozen --offline --no-sync pytest -q tests/test_bonsai_lifecycle.py --tb=short` は修正前6 failed/1 passed（18.64秒、exit 1）。親SIGTERM/SIGKILL/os._exit後の子残存、待受前の二重起動、汎用エラーしか返らない状態を確認。RED時のtest SHA-256は05a7484d581310ea2c30fbc5b5b0375f5948151cc59e2c88daa2785720613d20、fixtureは1851fb310ed5e72e385e964589081667c048aa87d61f09995458b66691802d22。同一内容で修正後7 passed（5.19秒、exit 0）。最初のnetwork guardとPythonビルドのpidfd未提供による試験準備失敗はREDに数えず、標準guardを変更せずcredential-free subprocess内の合成loopback検証へ分離した。
+
+追加回帰: exec失敗・spawn失敗後の排他解放、親終了の登録前後race、prctl失敗時の停止を追加。対象6 suiteは99 passed/2 skipped（8.38秒）。全offlineは3466 passed/22 skipped/30 deselected/1 failed（95.79秒）。失敗は未変更のtest_graph_root_evidence_tolerates_only_runtime_managed_leaf_ctime_driftで、os.utime前後にctimeが変わらない既知事象。全体合格とはしない。Ruff check/format（421 files）、offline lock、Markdown/diffは成功。
+
+ローカル実行確認: 同じiGPU設定の既知の未使用processを一度回収し、更新launcherで実モデルを起動。health-ready後に起動元をSIGKILLし、モデル終了・18080番の解放・同じ排他の再取得を確認（12.35秒）。推論0回、画像生成・商品検索・外部API・credential利用0回。モデル品質と本番検索E2Eの証拠ではない。
+
+反映: 8765番の接続serverを修正済みコードへ再起動し、API idle/HTTP200、元入力の一致、履歴一覧の一致を確認。入力をargv/file/logへ保存せずstdinで渡し、次のrun保存先を分離した。既存履歴を再採点していない。Frontend資材の変更がないためbuild/実ブラウザ操作は再実行していない。更新前または直接起動したBonsaiにはOS保護を後付けできず、自動kill対象にも含めない。非Linuxの保護と実条件整理の再推論は未検証。未commit/push。
+
+## EXEC-162: 文章対画像と画像対画像の採点分離
+
+状態: 実装・本番ローカル反映完了。全体回帰には既存ctime依存の失敗1件が残る。作成・更新: 2026-09-13。
+
+目的: 視覚条件の文章と商品画像のSigLIP 2比較を独立追加し、既存の否定・タイトル・優先・希望の後で文章対画像、画像対画像、レビューの順に比較する。新しいprofileで旧順位と保存履歴を維持する。両経路の点数を共通結果/履歴UIへ表示し、モックと本番接続に反映する。
+
+方式: 確認済み視覚条件のmatching記述（除外はopposite）を固定SigLIP 2 tokenizer/text encoderへ渡し、正規化した商品画像特徴とのcosineを0〜1へ写像する。条件別の最小値を文章対画像点とする。参考画像・対比画像はこの点の計算に使わない。既存の画像対画像点はそのまま保持し、重み付き合成で順位を決めない。欠損は未評価として扱い、旧履歴に点を補完しない。
+
+手順: 優先順位逆転のRED、採点/有界worker/結合/保存互換/APIの実装、欠損・除外方向・改変拒否・旧profileの回帰、共通UIとfixture更新、Pythonゲートとfrontend型/単体/build/両ブラウザ経路を確認する。生入力・画像・応答をログへ記録せず、追加の本番商品検索/画像生成/外部APIは行わない。新しいローカル文章encoderは既存固定資材を使い追加量子化しない。
+
+復旧: 新規profileと追加任意fieldを外す場合も旧履歴を破壊しない。先行するBonsaiビルド設定・未コミット差分を保持し、今回の範囲だけを戻せるようにする。結果と制約を完了時に追記する。
+
+
+実装結果: 既定をsiglip2_text_imageへ変更し、文章用workerとVisualTextBatchを独立追加した。生成画像の区別が不能でも文章経路の点を計算できる。文章条件別最小点と既存画像点を別々に保存し、新profileで文章点を先に比較する。画像特徴は共用し、文章encodeは最大1 batch、条件は最大3件、600秒を上限とする。Bonsai/iGPU設定や既存の画像encoder/モデル資材は維持した。
+
+RED/GREEN: tests/test_visual_text_priority.pyは文章点0.8対0.7・画像点0対1、および文章点0対欠損で希望順が逆になる2件のRED（exit 1）を確認。SHA-256=b1b3a6ab23279ddc4bd66eb400a20478ccc20d59c4b1ffb19632d98daeea56f8。同一内容で実装後22 passed、後からformatだけ適用。UIのvisual-scores.test.tsは独立点がなく不正な負値が受理される2件のRED（exit 1、SHA-256=39cead18a0680dad3eeb1cb9691a8fb068efb8072b8e9a86616df11a2eb452f1）、同一内容で2 passed。初回UIコマンドのcwd違いとtsx未収録はREDに数えない。追加の画像なしfield拒否は有効な対照入力を用いたRED（SHA-256=db4a0d9a8b9a067f144f80d73380e164192a88ab352e93ae47ead3f72fcd8554）から3 passed。いずれもテストの意味を保ったformatを後で適用した。
+
+検証: 最終関連112 passed（4.89秒）。文章/画像の逆転・欠損・除外反転・複数条件最小値・不正embedding・生成画像が区別不能な場合の独立性・profile混在拒否・日英内訳・SQLite保存/再読込・旧方式を検証した。全offlineは3452 passed/22 skipped/30 deselected/1 failed（98.40秒）。失敗は未変更のtest_graph_root_evidence_tolerates_only_runtime_managed_leaf_ctime_driftで、os.utime前後にctimeが変わらない既知事象。全体合格とはしない。この後の追加2回帰を含む関連112件は成功し、Python実装変更はない。Ruff check/format（418 files）、offline lock、Markdown/diffは成功。
+
+UI: 型/Prettier、Vitest97件、build成功。ビルド配信のモック41件（2.2分）と本番API経路の合成fixture26件（25.1秒）が成功。画像なしguard追加後は接続関連3件（6.8秒）、開発配信の新スコア・controls/motion/frame/navigation15件（20.2秒）も成功。共通の検索詳細で文章点を画像点より上に表示し、新profileの合成点は隠す。モック履歴の保存後にも独立点が残ることを確認し、スコアカードのスクリーンショットを目視確認した。
+
+ローカル実モデル: 既存固定SigLIP 2の文章workerは2文/768次元/有限値で成功（6.742秒）。続けて合成単色画像1枚の実画像encodeと文章比較を実行し、1条件の比較点0.558239を得た（12.494秒）。これはローカル計算経路の確認であり、実商品の順位品質や属性充足精度の合格とはしない。外部商品画像取得・画像生成・商品検索・追加課金は行っていない。
+
+本番反映: 8765番のブラウザserverを新コードへ再起動し、API idle/HTTP200、既存履歴1件と旧詳細HTTP200を確認。実Chromeでも新ラベルを含む本番bundle配信、保存結果の表示、pageerror0を確認して検索画面へ戻した。元履歴DBを保持し、今回の新規run先だけ分離した。新しい点は次の画像あり検索から適用し、保存済み商品を再採点していない。commit/pushは行っていない。
+
+## EXEC-161: Bonsaiの3ビルド分離とiGPU既定化
+
+状態: ビルド分離・設定・iGPUブラウザ試験は完了。精度同等性と連続実行の安定性は未確定。作成・更新: 2026-09-13。
+
+目的: 元のCPU版、EXEC-160で試した最適化版、iGPU版を独立して保持し、設定ファイルの既定をiGPUにする。最適化版の名称は速度向上の保証を意味しない。ユーザーの今回の指示に従い、実推論の試験はiGPU版だけに限定する。
+
+手順: GPUとQ1_0対応backendを調査し、同じllama.cpp sourceから別build directoryへ構築する。元の実行ファイルをhash付きで保持し、CPU/OpenBLAS/iGPUの設定を用意する。設定読込・起動引数・不正設定拒否のRED/GREENを確認し、ブラウザの所有processへ接続する。iGPUへの実際のoffloadと合成入力の応答検証を確認して、稼働アプリへ適用する。
+
+境界: GGUF、プロンプト、条件分類、応答検証、採点、既存履歴を維持する。iGPU設定時にCPUへ暗黙fallbackしない。認証情報を子process環境へ渡さない。公開build依存の取得とローカル合成推論だけを行い、画像生成・商品検索・課金・commit/pushは行わない。
+
+復旧: 設定のactive profileで明示的に元のCPU版へ戻せるようにする。3ビルドの資材と前回の履歴を上書きしない。GPUが利用不能の場合は専用の固定例外で停止し、iGPU実行成功と誤報しない。
+
+進捗: WSLの/dev/dxgからMesa Dozen 26.2.2でIntel Arc 140V（vendor 0x8086、device 0x64a0、integrated GPU）を確認。SYCL backendはQ1_0未実装のためVulkanを選択。元のCPU版105ファイルをbuild-originalへhash付きで保存し、build-optimizedはRelease/native/OpenBLAS、build-igpuはRelease/native/Vulkanとして同一source f12cc6d0fa96d6a3c33952f06b7439ac43a3c3feから構築完了。
+
+設定実装: bonsai-runtime.tomlのactive=igpuを既定にし、profileごとの実行ファイル・library pathを準備開始ごとに読み込む。iGPUはdevice名の照合、全層offload指定、fit off、FP16行列演算経路無効を適用。親のcredential環境は継承しない。CPUへの自動fallbackは追加しない。
+
+TDD: 新しいtests/test_bonsai_profiles.pyはmodule未実装でRED（exit 2）。テストSHA-256=`531c72e181d9623e5828d97c3627425adc1f1bae7e2cb1bfc7b1ee17f11b5a62`。実装後、同ファイルとtest_bonsai_live_e2e/test_browser_runtimeで61 passed/2 skipped。テストの意味は維持し、未使用importと不要f-stringだけ整理した最終SHA-256=`6c6aba452439150bd56f06a48c07700dd2417649e528f575688817cb9f2b7fbd`。既存browser composition fixtureの設定注入先を新しいloaderへ更新した。
+
+ビルドと回帰: build-originalは元の105実体ファイルのhash一致を確認。build-optimized/igpuはそれぞれserverと共有ライブラリ9実体ファイルをmanifest付きで保存。CPU2版の実推論は実行していない。loaderへ移した設定注入をimage-free/WordNetの既存fixtureでも更新し、関連117 passed/2 skipped。全offline再検査は3442 passed/22 skipped/30 deselected（125.45秒）。初回のfixture3件と既存Git metadata/ctimeの一時的な失敗は再検査で解消し、検証条件は弱めていない。
+
+初期iGPU試験（非同期有効）: デバイス検出成功、37/37層のGPU配置とVulkan model buffer 932.68 MiBを確認。形状29.552秒、別起動の部品29.783秒、希望/除外17.337秒で応答検証/条件保持に合格。ただし最初の連続試験の部品条件で検証拒否が1回あったため、キャッシュ依存を追加検証する。CPUとの応答本文hashは一致せず、GPU/CPU出力の完全一致や未知入力の品質保証は主張しない。startup配置ログはllama.cppのtrace levelが必要だったため、試験側で取得levelを修正し、数値だけ記録した。
+
+追加検証: cache無効でもcontrast_proposalで拒否されたため、cache無効化は採用しない。ブラウザの最初のiGPU試験はWSLのdxgvmb_send_sync_msg待ち・CPU進行0を観測し、約300秒で所有model processを停止して失敗を確認。履歴1件は保持。Vulkanの非同期backendを無効にする互換設定を追加した。環境検査テストは必要keyの欠落でRED（exit 1）、SHA-256=`de781d02b4c7e7f488c670ecc04b30c85c2abaced2d87c7c7d234654caf13f92`。同一テストのまま関連117 passed/2 skippedでGREEN。同期設定の最終結果は以下のとおり。
+
+
+最終iGPU試験: 同期実行・FP16経路無効の設定で37/37層をIntel Arc 140Vへ配置し、Vulkan model buffer 932.68 MiB、起動7.798秒を確認。形状例は44.265秒で形式検証と条件保持に合格した。一方、続く部品例では外観条件が空となり、診断側のNone処理不足でAttributeErrorも生じた。この試験は不合格とし、条件欠落を成功へ読み替えない。モデル・プロンプト・既存検証の緩和や再量子化は行っていない。CPUとの本文hash不一致に加えて失敗例もあるため、精度同等性は未確認である。
+
+ブラウザ実行: 同じ同期設定を8765番のアプリへ反映し、実Chromeから合成入力の画像あり条件整理を実行。87.083秒でquery段階へ到達し、形状・価格条件、検索語5件、画像生成ボタン有効を確認した。実行processはbuild-igpuのserver、GGML_VK_DISABLE_ASYNC=1を使用。既存履歴1件を保持し、アプリをこの構成で稼働継続する。画像生成・商品検索は押していない。成功1回を連続実行の安定性保証やCPU版との厳密な速度比較とはしない。数値・合否だけの記録はrepo外のbonsai-igpu-ui-check.jsonへ保存した。
+
+最終回帰: 同期設定後の関連117 passed/2 skippedは成功。全offlineは3441 passed/22 skipped/30 deselected/1 failed（112.45秒、exit 1）。未変更のtest_graph_root_evidence_tolerates_only_runtime_managed_leaf_ctime_driftがos.utime前後でctime同一となり失敗し、全体合格とはしない。同期設定前の3442 passedとは区別する。Ruff check/format、lock整合、Markdownリンク、diffの静的検査を実施。CPU2版のモデル実行は今回行わず、3ビルドの実体とhash/依存分離を確認した。
+
+## EXEC-160: Bonsaiの条件整理の遅延を精度を維持して調査
+
+状態: 実行復旧を確認。恒久修正は未完了（原因未特定）。作成・更新: 2026-09-13。
+
+目的: 画像ありの条件整理が5分以上完了しない現象を切り分け、モデル・原文条件・既存の確認操作を維持して改善する。対象はローカル実行環境と起動設定。モデルの小型化・追加量子化、プロンプトの省略、未完了応答の受理、採点/履歴の変更は行わない。
+
+手順: 同じモデルで入力処理/生成を測定し、並列度・BLAS・待機方法を比較する。設定変更は回帰のRED/GREEN後に評価し、効果がなければ戻す。合成条件例の厳密な検証と同一要求の応答hash比較、ブラウザの条件整理まで確認する。外部画像生成・商品検索・credential利用を追加せず、raw要求/応答を診断ログへ残さない。commit/pushは行わない。
+
+判断: 最初のbenchmarkは8スレッドで入力10.65/生成0.88 token/s、4スレッドで13.55/10.39 token/sだった。しかし再測定では4スレッド14.42/10.86、8スレッド19.04/12.13 token/sとなり優劣が逆転した。同一実要求も8スレッド77.188秒、4スレッド111.335秒だった。4スレッド固定で常に12倍改善するという結論は成り立たず、暫定変更を撤回した。CPU quotaのthrottling記録は0で、初回遅延の原因をCPU性能やスレッド数だけへ特定できていない。
+
+環境比較: 同じllama.cpp sourceからのOpenBLAS版は4スレッドで入力7.54 token/sと遅く不採用。元の実行ファイル105件のhash一致を確認して復元し、追加BLAS共有ライブラリは実行先から退避した。poll=0の8スレッドは入力19.39/生成11.71 token/sで有意な改善なし。利用CPUを4個へ制限した競合条件でもpoll=50/0は入力14.59/14.47、生成7.92/7.83 token/sで改善せず、待機設定も変更しない。OpenBLAS packageは環境に残るが実行backendには使わない。
+
+精度確認: 元の非BLAS版・4スレッドで形状111.335秒、部品112.101秒、希望/除外116.866秒。3件ともfinish_reason=stop、厳密なparse_visual_response成功、原文条件とstrength保持。同一形状要求の8スレッド実行は要求・応答本文・検証後結果のhashが4スレッドと完全一致。最初の部品/希望の試験文は既存構文解析が曖昧として拒否したため、対象商品を明示した合成文に直した。解析・応答検証は緩和していない。有限例の成功を未知入力全体の精度保証としない。
+
+資材: Bonsai GGUF SHA-256=`284a335aa3fb2ced3b1b01fcb40b08aa783e3b70832767f0dd2e3fdfa134bd54`。モデル、元の非BLAS実行ファイル、プロンプト、schema、context、生成上限、推論設定を最終的に変更していない。repo外のbonsai-comparison.jsonへhash・時間・合否だけを保存した。
+
+暫定変更のTDD: `uv run --frozen --offline --no-sync pytest -q tests/test_bonsai_live_e2e.py -k command` はthreads指定の欠落でexit 1。テストSHA-256=`9cb8235799002b89b11ac4b5a2fb5a2f69c24ead5da688619b346ce03eb2bf81`を保持したGREENは `uv run --frozen --offline --no-sync pytest -q tests/test_bonsai_live_e2e.py tests/test_browser_runtime.py` で51 passed/2 skipped。設定に速度改善の根拠がなく、実装・テスト・起動手順の暫定変更をすべて元へ戻した。
+
+回帰確認: lock、Ruff check/format（412 files）、Markdown 17文書、diff check成功。合成APIの接続Playwrightは26 passed（25.4秒）。全offline pytestは3431 passed/22 skipped/30 deselected/1 failed（102.90秒）。失敗は未変更の `test_graph_root_evidence_tolerates_only_runtime_managed_leaf_ctime_drift` でos.utime前後のctimeが同一になるもの。単独suiteも68 passed/1 failed、ext4 basetempでも再現。全体合格とはしない。
+
+実画面: 元の推論構成でアプリを再起動し、合成入力の画像あり条件整理が116.165秒でquery段階へ到達。形状と価格条件、検索語候補5件、参考画像生成ボタンの有効化を確認。既存履歴1件を保持し、画像生成/商品検索は実行していない。アプリは127.0.0.1:8765の確認画面で稼働中。
+
+結果と残課題: 再起動後の正常動作は確認したが、恒久的な遅延解消や初回の根本原因は確認できていない。再発時はホスト負荷と各推論の入力/生成時間を同時に測り、同条件で再現する原因を特定してから最小修正を行う。効果のない性能設定を修正済みとして残さない。最終差分はこの調査記録とWORKLOGだけで、モデル・コード・設定・履歴は維持する。
+
 ## EXEC-159: 不要資料をbinへ退避して追跡を解除
 
 状態: 退避・追跡解除・検証完了（未コミット）。作成/更新: 2026-09-13。
@@ -1005,6 +1219,9 @@ Cloudflare画像、複数query、検索履歴などは承認済み仕様であ�
 
 | 文書 | 状態 | 役割 |
 |---|---|---|
+| [EXEC-166](#exec-166-空行による条件誤判定と修正位置を直す) | 完了 | 空白fragment除外・エラー原文位置・稼働反映 |
+| [EXEC-165](#exec-165-接続失敗の種類を記録して表示) | 完了 | 接続失敗の分類・固定診断と同一タブ内保持 |
+| [EXEC-164](#exec-164-条件整理の再起動後の停止を解消) | 修正・合成回帰完了、実症状照合は未確認 | 起動別作業先・server識別子による再起動回復 |
 | [EXEC-141](#exec-141-新しい条件分類を稼働接続画面へ反映) | 完了 | 最新画面/履歴の稼働接続と初回clarification後の再整理修正 |
 | [EXEC-140](#exec-140-希望条件と否定条件の自然文指定を拡張) | 完了 | 共通条件分類・指定なし除去・文章修正・希望予算と日英照合 |
 | [EXEC-126](#exec-126-商品取得をplaywrightへ移行) | 完了 | Playwright検索・詳細取得、互換adapterとcache移行 |

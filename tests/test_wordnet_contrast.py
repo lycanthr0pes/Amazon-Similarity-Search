@@ -259,6 +259,7 @@ def test_browser_composition_passes_pinned_dictionary_to_preparation(tmp_path, m
     model = tmp_path / "model"
     model.write_bytes(b"synthetic model identity only")
     monkeypatch.setattr(runtime, "MODEL", model)
+    monkeypatch.setattr(runtime, "load_bonsai_config", lambda *_: None)
 
     class Expander:
         def visual_contrasts(self, dictionary=None):

@@ -1,5 +1,70 @@
 # バックエンド設計
 
+## 条件の入力順による重み付け（EXEC-167）
+
+新規candidateは条件の集約へsource-order-linear-v1を使う。日本語のみと日英最大値の両方、画像あり/なしへ適用する。同じ分類内の異なる原文開始位置を昇順に並べ、N位置なら先頭からN..1の重みを付ける。同位置から得た条件は同じ重み。条件ID順、registry順、商品属性の取得順を優先順に使わない。価格は内部で末尾へ追加されても原文位置で扱い、日英経路の視覚語句も同じ分類内へ含める。
+
+条件分類ごとの点はsum(weight * score) / sum(weight)を小数6桁へ丸める。欠損の0点も分母に残し、条件0件は従来どおり優先/希望1、否定0。日英各点と最大値は変更せず、最大値の採用後に重み付けする。否定点は高いほど不利。分類間の順位、タイトル、画像の2経路の計算とレビューは維持する。LLM呼出しは増やさない。
+
+CandidatePlanの任意condition_weightingへprofileと正規化原文の開始位置を固定し、承認/要求digestに含める。新規集約はregistryのdefault_weightに代わって入力順の重みを使う。旧planではfieldを省略し従来のdefault_weight平均を使う。保存済みplanの再実行時は原文との位置一致を検証する。schema5履歴にも同じ任意metadataと条件別weightを保存し、ranking profile digestを分離する。保存済みの旧順位・点数・JSONを補完/再採点しない。
+
+## 空白だけの条件断片とエラー位置（EXEC-166）
+
+GiNZA構造化は条件fragmentの両端から空白tokenと既存の助詞を外し、空白だけのfragmentを作らない。視覚条件抽出でも空白だけのfragmentは候補にせず、既存/注入structureから空行が来ても希望・否定の曖昧条件として扱わない。非空の条件を捨てたり分類規則を緩めたりしない。
+
+fragment単体での条件解釈/観測条件解析がConditionLanguageErrorを返す場合は、fragmentの開始位置を加えて全文の正規化offsetへ戻す。既存のoriginal_rangeで原文へ対応付け、無関係な先頭の商品名を修正箇所にしない。旧保存履歴を再解析・再採点しない。
+
+
+## 条件整理の再起動回復（EXEC-164）
+
+ブラウザserverは起動ごとのランダムなsession識別子で、準備先をoutput直下のsession-IDへ分離する。同じprivate output-dirで再起動しても既存の準備先を再利用せず、履歴は従来どおりoutput直下のhistory.sqlite3へ保存する。session配下のsearch-N/revision-N、mode 0700、symlink拒否、既存の準備先への上書き拒否を維持する。起動/履歴閲覧だけでは作業directoryやproviderを作成しない。
+
+状態APIに起動中一定のinstanceIdを付け、ブラウザは同じinstance内だけでrevisionを比較する。再起動後は低いrevisionも受け取り、検索を自動再送しない。新UIのcommandは表示したinstanceIdを添え、serverは異なる起動のcommandを拒否する。旧clientのinstanceIdなしcommandは既存のrevision/operation検証を維持する。状態pollとcommandの競合ではcommand開始前のpoll結果を破棄する。
+
+
+## Bonsaiのプロセス所有と起動競合（EXEC-163）
+
+Linux/WSLの共通Bonsai launcherは、同一OS user/portのabstract Unix socketをモデル起動前に排他取得する。GPU確認からモデル終了まで保持し、待受開始前の二重起動も拒否する。socketは子へ継承し、process終了時にOSが解放する。PIDファイルや残存lockファイルは作らない。
+
+短いPython helperをisolated modeで起動し、PR_SET_PDEATHSIGにSIGKILLを登録してから同じPIDのままllama-serverへexecする。登録前後に起動元PIDを確認する。親process/生成threadの終了時は子を終了し、通常のfinallyとtimeoutでのterminate/kill/waitも維持する。threaded親のpreexec_fnは使わない。保護を解除するsetuid/setgid/file capability付き実行ファイルは拒否する。非Linuxは既存の起動・終了処理を維持し、今回の親終了連動・排他を保証しない。
+
+既存listenerや他の管理起動がある場合はBonsaiPortBusyErrorとして停止する。外部Bonsaiへの自動接続、PID探索による停止、推論retryはしない。ブラウザadapterはBrowserModelBusyへ変換し、画面は使用中であることと再整理手順だけを表示する。生例外やprocess引数を表示しない。ブラウザの準備3回上限と検索worker1本を維持する。
+
+ブラウザ接続ではBonsaiを別ターミナルから先に起動する必要はない。旧CLIの手動起動とは区別し、18080番を接続画面用に空ける。更新前または直接起動したprocessへ親終了保護を後付けすることはできない。
+
+
+## 視覚条件の文章対画像を優先する2経路（EXEC-162）
+
+新規SigLIP 2の既定modeはsiglip2_text_image、ranking profileはcandidate-siglip2-dual-v2、sort profileはexcluded-title-conditions-text-image-review-v2。否定条件（負）→タイトル一致→優先条件→希望条件→文章対画像→画像対画像→レビュー→取得順で辞書式に比較する。否定条件以外は高得点を優先し、欠損は評価済み0より後にする。文章対画像は先行するタイトル/条件の文字列照合とは独立した画像モデルの点である。
+
+文章経路はvisual_text_scoring.pyとsiglip2_text_worker.pyで実装する。確認済みVisualConditionのcontrast.matching（excludedはopposite）を `this is a photo of {description}.` の小文字文にし、最大3条件をまとめて固定SigLIP 2のtext encoderへ渡す。既存tokenizer/重みのhash・runtime versionを検証し、padding=max_length、max_length=64、truncation=Falseを使う。64 tokensを超えた文は切り捨てず拒否する。ネットワーク/credential継承/追加量子化を使わず、FP32・CPU 2 threads・最大600秒の分離workerで処理する。Bonsaiや画像生成の追加要求はない。
+
+商品画像は既存経路で取得・正規化・encodeした768次元特徴を共用する。条件のtext特徴を正規化して商品画像とのcosineを計算し、clamp((cosine + 1) / 2, 0, 1)を条件別の点、全条件の最小値を文章対画像点とする。生成画像や画像対画像点を入力しない。これは順位比較用の類似度であり、属性充足の確率ではない。個数/寸法/互換性などの確定観測を書き換えない。文章条件欠落・encoder不正応答では停止し、画像点への暗黙fallbackはしない。商品画像欠損だけは両点を未評価として検索を継続する。
+
+画像経路は従来のsiglip2-appearance-image-v1の参考/対比画像marginを保持する。文章条件ID/文hash/商品hash/画像pixel hash/別runtime hashをVisualTextBatchとして独立保持し、Siglip2DualImageBatchで商品集合と条件集合を照合する。文章点の改変・別商品への付替え・新旧profileの混在を検証する。画像同士が区別不能でも文章点を計算でき、画像側だけ未評価になる。参考合成値total_scoreは互換用の診断値として残すが、新順位にも新UIの点数表示にも使わない。
+
+保存はschema5の新規profileと任意visual_textを使用し、旧JSON/SQLite履歴にfieldや点を補完しない。接続APIはscores.textImageとscores.imageを分けて返す。画像なし、明示した旧CLIP/SigLIP modeの動作は従来どおり。UIはConnectedScoresを共用し、モック/接続fixture/本番の新結果と履歴へ同じ表示を適用する。
+
+## Bonsaiビルドの選択（EXEC-161）
+
+接続画面の実行構成はrepo直下の `bonsai-runtime.toml` を準備開始ごとに読む。schema version 1、activeはoriginal/optimized/igpuの3値で、既定はigpu。各profileのserver_binaryを使い、元のBonsai GGUF・モデルhash・context 8192・推論回数/timeout・プロンプト・応答schema・採点/履歴を維持する。HTTPから実行ファイルやprofileを指定することはできない。オフラインfixtureはこの設定を読み込まない。
+
+originalは元の非BLAS実行ファイルをbuild-originalへ保存したもの。optimizedは同じsourceでRelease/native/OpenBLASを有効にしたbuild-optimized、igpuはRelease/native/Vulkanを有効にしたbuild-igpu。どのprofileも自身のbinをLD_LIBRARY_PATHの先頭へ置き、別ビルドの共有ライブラリを混在させない。元のbuild directoryも維持する。
+
+構築sourceは `/home/llama.cpp` のcommit `f12cc6d0fa96d6a3c33952f06b7439ac43a3c3fe`。各directoryのbuild-manifest.jsonに実行ファイル/共有ライブラリのhashを保存する。新規2ビルドの再構築は次を使い、元のsnapshotへ上書きしない。
+
+```sh
+cmake -S /home/llama.cpp -B /home/llama.cpp/build-optimized -DCMAKE_BUILD_TYPE=Release -DGGML_NATIVE=ON -DGGML_BLAS=ON -DGGML_BLAS_VENDOR=OpenBLAS -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF
+cmake --build /home/llama.cpp/build-optimized --target llama-server -j4
+cmake -S /home/llama.cpp -B /home/llama.cpp/build-igpu -G Ninja -DCMAKE_BUILD_TYPE=Release -DGGML_NATIVE=ON -DGGML_VULKAN=ON -DGGML_BLAS=OFF -DLLAMA_BUILD_TESTS=OFF -DLLAMA_BUILD_EXAMPLES=OFF
+cmake --build /home/llama.cpp/build-igpu --target llama-server -j3
+```
+
+
+iGPUの設定はVulkan0、Intel Arc 140Vの完全なdevice_name、D3D12用ICD、WSLのlibrary_pathsを持つ。起動前の `--list-devices` で指定GPU名を照合し、未検出・別GPU・不正設定では停止する。`--device Vulkan0 --n-gpu-layers 99 --fit off` を渡し、GPUメモリに合わせた自動CPU移行やcontext縮小を無効にする。GPU行列演算のFP16経路は `GGML_VK_DISABLE_F16=1` で無効にし、既存モデルの追加量子化は行わない。WSLのGPU driver待ちで停止した試験を受け、`GGML_VK_DISABLE_ASYNC=1` で非同期実行も無効にする。GPU/CPUの演算順序差による完全な数値一致を一般には保証しない。
+
+子process環境はLC_ALL、profileのLD_LIBRARY_PATH、iGPUのVK_DRIVER_FILES/GGML_VK_DISABLE_F16/GGML_VK_DISABLE_ASYNCだけを組み立て、親のAPIキーなどは継承しない。モデルの推論はiGPU版だけを実行検証し、CPUの2ビルドは配置/構築と設定のoffline検査に限定する。設定選択はこのブラウザ所有processへ適用され、既存の明示 `--server-bin` 診断CLIや外部起動済みBonsaiの接続先を上書きしない。
+
 ## 辞書に対比候補がない場合（EXEC-156）
 
 画像あり準備の要求にcontrast_inference_tasksを追加し、ローカル確定案も辞書候補もない条件だけを入れる。reasonはno_contrast_candidate、targetは分類表と同じ原文の照合対象。通常の外観はoutput=matching_oppositeでBonsaiが一致側/対比側の具体的な英語記述を補完し、部品有無はoutput=part_enで部品名を補完してコードで有無指示を作る。辞書候補がある曖昧語義は従来のdictionary_contrast_candidatesへ、確定済み語義はlocal_contrastsへ渡す。
@@ -47,7 +112,7 @@ VisualConditionの任意contrastにはprofile/origin/matching/oppositeを保存�
 
 BrowserSearchはworkingAction・researchStep・referenceRemainingと操作可否を返す。progressは実行境界でだけ更新し、revisionを単調増加させる。cancelは取得中に限って受け付け、進行中の取得終了後のcheckpointで比較/保存を開始せず終了する。resetは実行中に拒否し、停止/完了時だけ古いgenerator・確認・入力を破棄する。履歴は削除しない。reviseは画像/最終確認からも元入力で準備し直せるが、各検索3回の上限を維持する。
 
-regenerateはcandidateの既存作り直しを使い、参考画像2回上限と新しい画像の了承を維持する。表示画像は新しい作成分だけへ切り替える。保存に失敗した場合は結果とpending snapshotを保持し、retry_saveで保存だけを再試行する。プロバイダ・画像・採点の再実行は行わない。新規検索の準備番号はprocess内で再利用せず、3つの準備先ごとにsearch-Nを分ける。履歴DBは起動時指定output直下に共通化し、後続検索も同じ履歴一覧から開く。既存revision DBの読込は保持する。
+regenerateはcandidateの既存作り直しを使い、参考画像2回上限と新しい画像の了承を維持する。表示画像は新しい作成分だけへ切り替える。保存に失敗した場合は結果とpending snapshotを保持し、retry_saveで保存だけを再試行する。プロバイダ・画像・採点の再実行は行わない。新規検索の準備番号はprocess内で再利用せず、起動ごとのsession-ID配下で3つの準備先ごとにsearch-Nを分ける。履歴DBは起動時指定output直下に共通化し、後続検索も同じ履歴一覧から開く。既存revision DBの読込は保持する。
 
 
 ## 履歴内容の永続保存（EXEC-144）

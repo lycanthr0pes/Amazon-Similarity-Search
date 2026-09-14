@@ -21,10 +21,14 @@ function ScoreRow({
   label,
   score,
   negative = false,
+  showWeight = false,
+  weight,
 }: {
   label: string;
   score: LanguageScore;
   negative?: boolean;
+  showWeight?: boolean;
+  weight?: number;
 }) {
   return (
     <tr>
@@ -34,6 +38,11 @@ function ScoreRow({
       <td {...stylex.props(styles.cell)}>{points(score.score_ja, negative)}</td>
       <td {...stylex.props(styles.cell)}>{points(score.score_en, negative)}</td>
       <td {...stylex.props(styles.cell)}>{points(score.score, negative)}</td>
+      {showWeight && (
+        <td {...stylex.props(styles.cell)}>
+          {weight === undefined ? "—" : `${weight}倍`}
+        </td>
+      )}
     </tr>
   );
 }
@@ -49,14 +58,25 @@ export function ConnectedScores({
   sortProfile?: string | null;
   imageMode?: "off";
 }) {
-  const negative = sortProfile === "excluded-title-conditions-image-review-v1";
+  const dual = sortProfile === "excluded-title-conditions-text-image-review-v2";
+  const weighted = scores.conditions.some(
+    (condition) => condition.weight !== undefined,
+  );
+  const negative =
+    dual || sortProfile === "excluded-title-conditions-image-review-v1";
   return (
     <>
       <div {...stylex.props(styles.wrapper)}>
         <table aria-label="点数の内訳" {...stylex.props(styles.table)}>
           <thead>
             <tr>
-              {["評価項目", "日本語", "英語", "採用点"].map((label) => (
+              {[
+                "評価項目",
+                "日本語",
+                "英語",
+                "採用点",
+                ...(weighted ? ["重み"] : []),
+              ].map((label) => (
                 <th
                   key={label}
                   scope="col"
@@ -68,25 +88,43 @@ export function ConnectedScores({
             </tr>
           </thead>
           <tbody>
-            <ScoreRow label="タイトル一致" score={scores.title} />
+            <ScoreRow
+              label="タイトル一致"
+              score={scores.title}
+              showWeight={weighted}
+            />
             {scores.conditions.map((condition, index) => (
               <ScoreRow
                 key={condition.requirement_id}
                 label={`${{ required: "優先", preferred: "希望", excluded: "除外" }[condition.strength]}：${labels?.[condition.requirement_id] ?? `条件${index + 1}`}`}
                 score={condition}
+                showWeight={weighted}
+                weight={condition.weight}
                 negative={negative && condition.strength === "excluded"}
               />
             ))}
           </tbody>
         </table>
       </div>
+      {dual && imageMode !== "off" && (
+        <p>
+          文章と画像：{points(scores.textImage)}
+          {scores.textImage == null ? "（未評価）" : ""}
+        </p>
+      )}
       {scores.image !== undefined && (
         <p>
-          画像評価：{imageMode === "off" ? "未使用" : points(scores.image)}
+          {dual ? "画像同士" : "画像評価"}：
+          {imageMode === "off" ? "未使用" : points(scores.image)}
           {imageMode !== "off" && scores.image === null ? "（未評価）" : ""}
         </p>
       )}
-      {scores.total !== undefined && imageMode !== "off" && (
+      {dual && (
+        <p>
+          視覚条件は文章と画像の点数を優先し、同点の場合に画像同士の点数を使います。
+        </p>
+      )}
+      {!dual && scores.total !== undefined && imageMode !== "off" && (
         <p>参考合成点：{points(scores.total)}</p>
       )}
     </>

@@ -251,10 +251,10 @@ def test_cli_passes_runtime_configuration_before_any_live_call(
         assert config.bonsai_port == 18080
         assert config.asset_root == Path(tmp_path)
         assert options["image_score_mode"] == (
-            "siglip2_appearance" if image_model == "siglip2" else "appearance"
+            "siglip2_text_image" if image_model == "siglip2" else "appearance"
         )
         assert type(services.encoder).__name__ == (
-            "LocalSiglip2ImageEncoder"
+            "LocalSiglip2MultimodalEncoder"
             if image_model == "siglip2"
             else "ProcessIsolatedClipImageEncoder"
         )

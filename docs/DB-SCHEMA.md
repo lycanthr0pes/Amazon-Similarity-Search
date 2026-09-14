@@ -1,5 +1,18 @@
 # データ保存と論理スキーマ
 
+## 条件入力順の集約metadata（EXEC-167）
+
+CandidatePlanとschema5表示履歴に任意のcondition_weightingを追加する。profile_idはsource-order-linear-v1、positionsは条件IDと正規化原文開始位置（0〜2000）の組、最大64件でIDを重複させない。新規ConditionTextScore/BilingualConditionScoreへ整数weight（1〜64）を保存する。各条件のscore/score_ja/score_enは元の一致点を保持する。
+
+旧plan/履歴/条件は追加fieldを省略し、既存JSON/digestを保持する。新規の履歴ranking_profile_sha256には集約metadataを結合し、単条件の点が旧方式と同じでも区別する。SQLite table/user_versionは変更しない。履歴のweightは保存位置と分類から検証し、本文の再取得・翻訳・再採点はしない。日本語のみの旧表示契約では条件内訳の追加保存を行わず、位置metadataと順位を保持する。
+
+## 文章対画像の独立保存（EXEC-162）
+
+schema5のranking_profile_idへcandidate-siglip2-dual-v2、provisional_profile_idへcounterfactual-siglip2-dual-v2、sort_profile_idへexcluded-title-conditions-text-image-review-v2を追加する。3値は同時に一致しなければならない。新規profileの商品は任意field visual_textを必須とし、商品hash・商品画像pixel hash（欠損時null）・最大3件の条件ID/文章hash/0〜1点・条件別最小値scoreを保存する。画像欠損では空条件とnull点だけを許容する。既存image_scoreは画像同士の点として別に保持する。
+
+既存のpayload/digest/transaction/期限/owner境界を利用し、SQL schema移行は不要。旧profileにvisual_textを追加したり、旧履歴を再計算・並べ替えたりしない。旧fieldなしJSONのserialize結果も維持する。新profileの欠落fieldや旧profileに新fieldが混在する履歴は拒否する。現在結果と履歴のAPIはscores.textImage（文章対画像）とscores.image（画像同士）を別に返す。
+
+
 ## 画像なし準備の識別（EXEC-155）
 
 CandidatePlanへ任意image_preparation=text-only-v1を追加する。未設定の旧計画ではJSONから省略してdigestを保持する。設定時は視覚Bonsaiのrequest/response hashとfocus/contrastの混在を拒否し、ローカルで保持した原文条件を日英テキスト採点にだけ使用する。画像ありへ進むには新しい準備が必要。既存のimage_mode=offの履歴契約・SQLite schema5・期限/削除を維持し、保存済み結果を再解釈/再採点しない。

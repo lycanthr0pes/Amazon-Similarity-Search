@@ -1,5 +1,22 @@
 # セキュリティ
 
+## 接続診断の保存境界（EXEC-165）
+
+frontendの接続診断は同じタブのsessionStorageに最大10件・読込文字数上限16384で保持する。保存前/読込時に固定種別、操作種別、ISO時刻、所要時間、HTTP status、許可済み検証理由のみを再構築し、未知fieldを引き継がない。入力・商品/画像・providerデータ・URL・要求/応答本文・例外原文・stack・credentialは記録もconsole出力も外部送信もしない。JSON解析エラーが本文の断片を含んでいても、固定コードへ置き換える。既存SQLite履歴やログには追加保存しない。
+
+
+## 再起動時の作業先と操作の分離（EXEC-164）
+
+新UIはcommandへ表示中のinstanceIdを添え、異なるserver起動への古い確認操作を拒否する。旧clientの省略形式は既存検証を維持する。起動別session-IDはserverだけが生成しHTTPからpathを受け取らない。private出力rootとsessionのsymlink・modeを検査し、既存準備directoryへ上書きしない。新規準備はsession配下、履歴は起動時指定rootの既存DBに保持し、schema移行・旧履歴補完は行わない。
+
+
+## Bonsai所有processの終了保護（EXEC-163）
+
+Linux/WSLでは共通launcherの子にPR_SET_PDEATHSIG/SIGKILLを登録し、起動元終了時のモデル残存を防ぐ。登録前後に親PIDを確認し、登録失敗や保護を解除する特権付きexecは停止する。同一user/portのabstract socket排他を子の寿命まで保持する。排他取得失敗と既存listener検出では外部processをkillせず、要求を流用しない。非Linuxの従来経路にはこの保護を主張しない。
+
+helperはisolated Pythonで実行し、既存の限定環境と標準出力/標準エラー破棄を維持する。検索入力、credential、生応答をhelper引数やlockへ含めない。競合表示は固定文のみで、生例外を返さない。更新前の残存processを自動識別・停止する仕組みは追加しない。
+
+
 ## UI共通操作の実行境界（EXEC-145）
 
 新規検索/修正/作り直し/保存再試行/中止は既存同一originのcommand APIでrevisionとoperationを照合する。取得中の中止要求は記録後に次の処理境界で停止し、通信を即時取消できたとは返さない。比較/保存開始後の中止・実行中のresetを拒否する。resetで旧操作のrevisionを再利用しない。新しい準備先のsearch-Nはsymlinkを拒否し、private作業先と共通履歴DBだけを使う。モックとの表示統一を理由とする外部実行やcredential取得は行わない。

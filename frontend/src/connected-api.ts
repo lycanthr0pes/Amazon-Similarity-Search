@@ -1,4 +1,10 @@
 import type { ImagePrompts } from "./image-prompt-values";
+import {
+  ConnectionError,
+  CONNECTION_TIMEOUT_MS,
+  validationReason,
+  type ConnectionOperation,
+} from "./connection-diagnostics";
 const STAGES = [
   "idle",
   "working",
@@ -22,10 +28,12 @@ export interface LanguageScore {
 export interface ProductScores {
   title: LanguageScore;
   image?: number | null;
+  textImage?: number | null;
   total?: number;
   conditions: (LanguageScore & {
     requirement_id: string;
     strength: "required" | "preferred" | "excluded";
+    weight?: number;
   })[];
 }
 export interface SearchView {
@@ -44,6 +52,7 @@ export interface SearchView {
   canGenerateImages?: boolean;
   stage: SearchStage;
   revision: number;
+  instanceId?: string;
   mode?: "fixture" | "live";
   input?: string;
   editable?: boolean;
@@ -54,6 +63,7 @@ export interface SearchView {
   sortProfile?:
     | "title-image-conditions-v1"
     | "excluded-title-conditions-image-review-v1"
+    | "excluded-title-conditions-text-image-review-v2"
     | null;
   conditionLabels?: Record<string, string>;
   productName?: string;
@@ -123,6 +133,9 @@ function productScores(value: unknown): value is ProductScores {
     (scores.image === undefined ||
       scores.image === null ||
       unit(scores.image)) &&
+    (scores.textImage === undefined ||
+      scores.textImage === null ||
+      unit(scores.textImage)) &&
     (scores.total === undefined || unit(scores.total)) &&
     Array.isArray(scores.conditions) &&
     scores.conditions.length <= 32 &&
@@ -131,6 +144,10 @@ function productScores(value: unknown): value is ProductScores {
         languageScore(row) &&
         typeof row.requirement_id === "string" &&
         row.requirement_id.length <= 100 &&
+        (row.weight === undefined ||
+          (Number.isInteger(row.weight) &&
+            row.weight >= 1 &&
+            row.weight <= 64)) &&
         ["required", "preferred", "excluded"].includes(row.strength),
     )
   );
@@ -166,6 +183,7 @@ export function parseSearchView(
     ![
       "title-image-conditions-v1",
       "excluded-title-conditions-image-review-v1",
+      "excluded-title-conditions-text-image-review-v2",
     ].includes(data.sortProfile as string)
   )
     throw new Error("Invalid ranking profile");
@@ -352,6 +370,13 @@ export function parseSearchView(
   ) {
     throw new Error("Invalid search state");
   }
+  if (
+    data.instanceId !== undefined &&
+    (typeof data.instanceId !== "string" ||
+      !/^[0-9a-f]{32}$/.test(data.instanceId))
+  ) {
+    throw new Error("Invalid server instance");
+  }
   for (const field of ["queries", "conditions", "images", "unresolved"]) {
     if (data[field] !== undefined && !strings(data[field])) {
       throw new Error("Invalid search list");
@@ -383,7 +408,10 @@ export function parseSearchView(
     (!Array.isArray(data.products) ||
       data.products.length > maximumProducts ||
       !data.products.every((product) => {
-        if (data.imageMode === "off" && product?.scores?.image != null)
+        if (
+          data.imageMode === "off" &&
+          (product?.scores?.image != null || product?.scores?.textImage != null)
+        )
           return false;
         if (
           product?.reviewRating !== undefined &&
@@ -490,15 +518,69 @@ export function parseSearchView(
   return view;
 }
 
-export async function readSearch(): Promise<SearchView> {
-  const response = await fetch("/api/state", {
-    cache: "no-store",
-    signal: AbortSignal.timeout(10_000),
-  });
-  if (!response.ok) {
-    throw new Error("Search state unavailable");
+async function searchRequest(
+  operation: ConnectionOperation,
+  init: RequestInit,
+): Promise<SearchView> {
+  const started = performance.now();
+  const signal = AbortSignal.timeout(CONNECTION_TIMEOUT_MS);
+  const transportCode = () =>
+    signal.aborted
+      ? signal.reason?.name === "TimeoutError"
+        ? "timeout"
+        : "aborted"
+      : "network";
+  let response: Response;
+  try {
+    response = await fetch(
+      operation === "state" ? "/api/state" : "/api/command",
+      { ...init, signal },
+    );
+  } catch {
+    throw new ConnectionError(
+      transportCode(),
+      operation,
+      performance.now() - started,
+    );
   }
-  return parseSearchView(await response.json());
+  if (!response.ok) {
+    throw new ConnectionError(
+      "http",
+      operation,
+      performance.now() - started,
+      response.status,
+    );
+  }
+  let value: unknown;
+  try {
+    value = await response.json();
+  } catch (error) {
+    throw new ConnectionError(
+      signal.aborted
+        ? transportCode()
+        : error instanceof SyntaxError
+          ? "json"
+          : "network",
+      operation,
+      performance.now() - started,
+      response.status,
+    );
+  }
+  try {
+    return parseSearchView(value);
+  } catch (error) {
+    throw new ConnectionError(
+      "schema",
+      operation,
+      performance.now() - started,
+      response.status,
+      validationReason(error),
+    );
+  }
+}
+
+export async function readSearch(): Promise<SearchView> {
+  return searchRequest("state", { cache: "no-store" });
 }
 
 export async function sendSearch(
@@ -506,7 +588,7 @@ export async function sendSearch(
   view: SearchView,
   values: object = {},
 ): Promise<SearchView> {
-  const response = await fetch("/api/command", {
+  return searchRequest("command", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -517,11 +599,7 @@ export async function sendSearch(
       revision: view.revision,
       operation: crypto.randomUUID(),
       ...values,
+      ...(view.instanceId === undefined ? {} : { instanceId: view.instanceId }),
     }),
-    signal: AbortSignal.timeout(10_000),
   });
-  if (!response.ok) {
-    throw new Error("Search command unavailable");
-  }
-  return parseSearchView(await response.json());
 }

@@ -69,6 +69,7 @@ def image_free_history(ranking, *, source_text, completed_at):
     if source_hash != plan.source_sha256:
         raise ValueError("Image-free history source changed")
     return ProvisionalHistoryWrite(
+        condition_weighting=plan.condition_weighting,
         schema_version="5.0",
         image_mode="off",
         owner_id=plan.owner_id,
@@ -89,7 +90,14 @@ def image_free_history(ranking, *, source_text, completed_at):
         provisional_profile_id="image-free-v1",
         ranking_profile_id=PROFILE,
         known_holdout_accuracy=None,
-        ranking_profile_sha256=PROFILE_HASH,
+        ranking_profile_sha256=_digest(
+            {
+                "base": PROFILE_HASH,
+                "condition_weighting": plan.condition_weighting.model_dump(mode="json"),
+            }
+        )
+        if plan.condition_weighting is not None
+        else PROFILE_HASH,
         sort_profile_id=SORT,
         text_profile_id="candidate-text-bilingual-v2"
         if plan.condition_terms

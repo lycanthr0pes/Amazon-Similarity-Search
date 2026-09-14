@@ -32,7 +32,7 @@ def embedding(pixel, x, y):
 def test_candidate_default_and_runtime_are_siglip2():
     assert (
         inspect.signature(CandidateSearchFlow).parameters["image_score_mode"].default
-        == "siglip2_appearance"
+        == "siglip2_text_image"
     )
     assert siglip2.runtime_sha256() != clip_runtime_profile_sha256()
 
@@ -95,7 +95,7 @@ def test_missing_and_indistinguishable_references_are_not_forced_to_zero(failure
     assert all(m.normalized_margin is None for m in result.condition_margins)
 
 
-def test_candidate_default_approval_ranking_and_history_with_siglip2(tmp_path, monkeypatch):
+def test_legacy_approval_ranking_and_history_with_siglip2(tmp_path, monkeypatch):
     import test_candidate_search_live_e2e as live
     from src.search_v2 import counterfactual_product_evaluator as evaluator
 
@@ -110,7 +110,7 @@ def test_candidate_default_approval_ranking_and_history_with_siglip2(tmp_path, m
         )
 
     monkeypatch.setattr(evaluator, "run_pinned_siglip2_image_encoder", encode)
-    result = module.run_candidate_e2e(config, services)
+    result = module.run_candidate_e2e(config, services, image_score_mode="siglip2_appearance")
     assert result["status"] == "succeeded"
     assert len(events) == 2 and result["cloudflare_calls"] == 2
     assert result["ranking_profile_id"] == "candidate-siglip2-appearance-v1"

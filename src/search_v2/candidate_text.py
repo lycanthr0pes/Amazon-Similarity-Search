@@ -6,7 +6,9 @@ import re
 from typing import Literal
 import unicodedata
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_serializer
+
+from src.search_v2.condition_weighting import condition_weights
 
 from src.search_v2.dynamic_attributes import _unit_spellings
 from src.search_v2.dynamic_product_evidence import _UNITS
@@ -41,6 +43,14 @@ class ConditionTextScore(BaseModel):
     strength: Literal["required", "preferred", "excluded"]
     source: Literal["evidence", "description", "missing"]
     score: float = Field(ge=0.0, le=1.0)
+    weight: int | None = Field(default=None, ge=1, le=64)
+
+    @model_serializer(mode="wrap")
+    def serialize_compatible(self, handler):
+        data = handler(self)
+        if self.weight is None:
+            data.pop("weight", None)
+        return data
 
 
 class CandidateTextScore(BaseModel):
@@ -164,8 +174,13 @@ def _structured_present(product, definition, label):
     )
 
 
-def score_conditions(product, requirements, registry, evaluation, labels):
+def score_conditions(product, requirements, registry, evaluation, labels, *, weighting=None):
     definitions = {d.attribute_key: d for d in registry.definitions}
+    weights = condition_weights(
+        requirements,
+        {r.requirement_id: definitions[r.attribute_key].default_weight for r in requirements},
+        weighting,
+    )
     decisions = {d.requirement_id: d for d in evaluation.decisions}
     description = product.description if "description" not in product.truncated_fields else None
     clauses = _clauses(description or "")
@@ -192,6 +207,7 @@ def score_conditions(product, requirements, registry, evaluation, labels):
                 strength=requirement.strength,
                 source=source,
                 score=score,
+                weight=weights[requirement.requirement_id] if weighting is not None else None,
             )
         )
 
@@ -199,11 +215,10 @@ def score_conditions(product, requirements, registry, evaluation, labels):
         selected = [
             (r, row) for r, row in zip(requirements, rows, strict=True) if r.strength == strength
         ]
-        denominator = sum(definitions[r.attribute_key].default_weight for r, _ in selected)
+        denominator = sum(weights[r.requirement_id] for r, _ in selected)
         return (
             round(
-                sum(definitions[r.attribute_key].default_weight * row.score for r, row in selected)
-                / denominator,
+                sum(weights[r.requirement_id] * row.score for r, row in selected) / denominator,
                 RATIO_DECIMALS,
             )
             if denominator

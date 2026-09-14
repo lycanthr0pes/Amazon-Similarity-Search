@@ -47,6 +47,15 @@ from src.search_v2.relative_image_ranking import (
 )
 
 
+from src.search_v2.visual_text_scoring import (
+    Siglip2DualImageBatch,
+    VisualTextComponent,
+    condition_texts,
+    SORT_PROFILE as TEXT_IMAGE_SORT_PROFILE,
+    RANKING_PROFILE as DUAL_PROFILE,
+)
+
+
 PROFILE_ID = "candidate-lexical-clip-v3"
 IMAGE_WEIGHT = 0.5
 LEGACY_IMAGE_WEIGHT = 0.2
@@ -132,12 +141,20 @@ class CandidateVisualProduct(BaseModel):
     )
     candidate: CandidateRankedProduct = Field(repr=False)
     image: ProvisionalImageComponent | RelativeImageComponent | AttributeImageComponent
+    visual_text: VisualTextComponent | None = None
+
+    @property
+    def visual_text_score(self):
+        return self.visual_text.score if self.visual_text is not None else None
+
     total_score: float = Field(ge=0.0, le=1.0)
     image_weight: Literal[0.5] | None = None
 
     @model_serializer(mode="wrap")
     def serialize_compatible(self, handler):
         data = handler(self)
+        if self.visual_text is None:
+            data.pop("visual_text", None)
         if self.image_weight is None:
             data.pop("image_weight", None)
         return data
@@ -196,11 +213,13 @@ def _priority_sort_key(row, source):
     text = candidate.text_score
     image = row.image.image_score
     rating = candidate.product.rating
+    visual_text = getattr(row, "visual_text_score", None)
     return (
         text.excluded_ratio if text else _observed_excluded_ratio(candidate, source),
         -candidate.lexical_score,
         -(text.required_ratio if text else candidate.evaluation.required_match_ratio),
         -(text.preferred_ratio if text else candidate.evaluation.preferred_match_ratio),
+        -(visual_text if visual_text is not None else -1.0),
         -(image if image is not None else -1.0),
         -(rating if rating is not None else -1.0),
         candidate.product.provenance.response_index,
@@ -218,10 +237,12 @@ class CandidateVisualRanking(BaseModel):
         "candidate-attribute-image-v2",
         "candidate-appearance-v1",
         "candidate-siglip2-appearance-v1",
+        "candidate-siglip2-dual-v2",
     ] = PROFILE_ID
     source: CandidateRanking = Field(repr=False)
     image_batch: (
-        Siglip2AppearanceImageBatch
+        Siglip2DualImageBatch
+        | Siglip2AppearanceImageBatch
         | AppearanceImageBatch
         | ProvisionalCounterfactualBatch
         | RelativeImageBatch
@@ -233,7 +254,12 @@ class CandidateVisualRanking(BaseModel):
     text_profile_id: Literal["candidate-text-v1", "candidate-text-bilingual-v2"] | None = None
     image_weight: Literal[0.5] | None = None
     sort_profile_id: (
-        Literal["title-image-conditions-v1", "excluded-title-conditions-image-review-v1"] | None
+        Literal[
+            "title-image-conditions-v1",
+            "excluded-title-conditions-image-review-v1",
+            "excluded-title-conditions-text-image-review-v2",
+        ]
+        | None
     ) = None
 
     @model_serializer(mode="wrap")
@@ -250,6 +276,31 @@ class CandidateVisualRanking(BaseModel):
     @model_validator(mode="after")
     def validate_bindings(self):
         source = self.source
+        dual = self.profile_id == DUAL_PROFILE
+        if dual != isinstance(self.image_batch, Siglip2DualImageBatch) or dual != (
+            self.sort_profile_id == TEXT_IMAGE_SORT_PROFILE
+        ):
+            raise ValueError("Candidate visual text profile mismatch")
+        if any((p.visual_text is not None) != dual for p in self.products):
+            raise ValueError("Candidate visual text evidence is missing or unexpected")
+        if dual:
+            text_rows = {
+                c.normalized_product_sha256: c for c in self.image_batch.text_batch.candidates
+            }
+            conditions = source.retrieval_plan.visual_conditions
+            expected = tuple(
+                (c.condition_id, hashlib.sha256(t.encode()).hexdigest())
+                for c, t in zip(conditions.conditions, condition_texts(conditions), strict=True)
+            )
+            for row in self.products:
+                if row.visual_text != text_rows.get(row.image.normalized_product_sha256):
+                    raise ValueError("Candidate visual text evidence changed")
+                if (
+                    row.visual_text.candidate_image_pixel_sha256 is not None
+                    and tuple((c.condition_id, c.text_sha256) for c in row.visual_text.conditions)
+                    != expected
+                ):
+                    raise ValueError("Candidate visual descriptions changed")
         if self.sort_profile_id is not None and self.image_weight != IMAGE_WEIGHT:
             raise ValueError("Candidate sort profile requires current score weighting")
         if any(row.image_weight != self.image_weight for row in self.products):
@@ -263,7 +314,7 @@ class CandidateVisualRanking(BaseModel):
             BILINGUAL_PROFILE_ID if source.retrieval_plan.condition_terms else TEXT_PROFILE_ID
         ):
             raise ValueError("Candidate visual language profile is inconsistent")
-        if (self.profile_id == SIGLIP2_PROFILE_ID) != isinstance(
+        if (self.profile_id in {SIGLIP2_PROFILE_ID, DUAL_PROFILE}) != isinstance(
             self.image_batch, Siglip2AppearanceImageBatch
         ):
             raise ValueError("Candidate SigLIP profile does not match its image model")
@@ -335,7 +386,7 @@ class CandidateVisualRanking(BaseModel):
                 self.products,
                 key=lambda row: (
                     _priority_sort_key(row, source)
-                    if self.sort_profile_id == SORT_PROFILE_ID
+                    if self.sort_profile_id in {SORT_PROFILE_ID, TEXT_IMAGE_SORT_PROFILE}
                     else _title_image_sort_key(row, source)
                     if self.sort_profile_id == "title-image-conditions-v1"
                     else _sort_key(row)
@@ -373,9 +424,14 @@ def complete_candidate_ranking(
     asset_root,
     encoder,
     region_extractor=None,
-    image_score_mode="siglip2_appearance",
+    image_score_mode="siglip2_text_image",
 ):
-    if image_score_mode not in {"siglip2_appearance", "appearance", "relative"}:
+    if image_score_mode not in {
+        "siglip2_text_image",
+        "siglip2_appearance",
+        "appearance",
+        "relative",
+    }:
         raise ValueError("Invalid candidate image score mode")
     source = CandidateRanking.model_validate(source)
     approved = ApprovedCounterfactualReferences.model_validate(approved)
@@ -400,6 +456,11 @@ def complete_candidate_ranking(
         region_extractor=region_extractor,
     )
     by_product = {image.normalized_product_sha256: image for image in images.candidates}
+    texts = (
+        {c.normalized_product_sha256: c for c in images.text_batch.candidates}
+        if isinstance(images, Siglip2DualImageBatch)
+        else {}
+    )
     rows = []
     for candidate in source.products:
         image = by_product[normalized_product_candidate_sha256(candidate.product)]
@@ -407,20 +468,23 @@ def complete_candidate_ranking(
             CandidateVisualProduct(
                 candidate=candidate,
                 image=image,
+                visual_text=texts.get(image.normalized_product_sha256),
                 image_weight=IMAGE_WEIGHT,
                 total_score=_total(candidate, image, IMAGE_WEIGHT),
             )
         )
     return CandidateVisualRanking(
         image_weight=IMAGE_WEIGHT,
-        sort_profile_id=SORT_PROFILE_ID,
+        sort_profile_id=TEXT_IMAGE_SORT_PROFILE if texts else SORT_PROFILE_ID,
         text_profile_id=BILINGUAL_PROFILE_ID
         if source.retrieval_plan.condition_terms
         else TEXT_PROFILE_ID
         if source.profile_id == "candidate-confirmed-lexical-v4"
         else None,
         profile_id=(
-            SIGLIP2_PROFILE_ID
+            DUAL_PROFILE
+            if isinstance(images, Siglip2DualImageBatch)
+            else SIGLIP2_PROFILE_ID
             if isinstance(images, Siglip2AppearanceImageBatch)
             else APPEARANCE_PROFILE_ID
             if isinstance(images, AppearanceImageBatch)
@@ -474,7 +538,7 @@ def candidate_history_snapshot(ranking, approved, *, source_text, completed_at):
             rank=index,
             title=row.candidate.product.title,
             review_rating=row.candidate.product.rating
-            if ranking.sort_profile_id == SORT_PROFILE_ID
+            if ranking.sort_profile_id in {SORT_PROFILE_ID, TEXT_IMAGE_SORT_PROFILE}
             else None,
             title_en=row.candidate.product.title_en,
             title_en_status=row.candidate.product.title_en_status,
@@ -487,11 +551,13 @@ def candidate_history_snapshot(ranking, approved, *, source_text, completed_at):
             required_status=row.candidate.evaluation.required_status,
             image_component_status=row.image.status,
             image_score=row.image.image_score,
+            visual_text=row.visual_text,
             total_score=row.total_score,
         )
         for index, row in enumerate(ranking.products, 1)
     )
     return ProvisionalHistoryWrite(
+        condition_weighting=plan.condition_weighting,
         image_weight=ranking.image_weight,
         sort_profile_id=ranking.sort_profile_id,
         text_profile_id=ranking.text_profile_id,
@@ -515,7 +581,9 @@ def candidate_history_snapshot(ranking, approved, *, source_text, completed_at):
         summary=summary,
         product_name=plan.title_comparison.product_name_ja if plan.title_comparison else None,
         provisional_profile_id=(
-            "counterfactual-siglip2-appearance-v1"
+            "counterfactual-siglip2-dual-v2"
+            if ranking.profile_id == DUAL_PROFILE
+            else "counterfactual-siglip2-appearance-v1"
             if ranking.profile_id == SIGLIP2_PROFILE_ID
             else "counterfactual-appearance-v1"
             if ranking.profile_id == APPEARANCE_PROFILE_ID
@@ -541,7 +609,16 @@ def candidate_history_snapshot(ranking, approved, *, source_text, completed_at):
 
 def _history_profile_digest(ranking):
     base = (
-        SIGLIP2_RANKING_SHA256
+        _digest(
+            {
+                "base": SIGLIP2_RANKING_SHA256,
+                "text_image": ranking.image_batch.text_batch.runtime_sha256,
+                "score": "minimum-condition-unit-cosine-v1",
+                "profile": DUAL_PROFILE,
+            }
+        )
+        if ranking.profile_id == DUAL_PROFILE
+        else SIGLIP2_RANKING_SHA256
         if ranking.profile_id == SIGLIP2_PROFILE_ID
         else APPEARANCE_RANKING_SHA256
         if ranking.profile_id == APPEARANCE_PROFILE_ID
@@ -570,8 +647,14 @@ def _history_profile_digest(ranking):
         if ranking.image_weight is not None
         else digest
     )
-    return (
+    digest = (
         _digest({"base": digest, "sort_profile_id": ranking.sort_profile_id})
         if ranking.sort_profile_id is not None
+        else digest
+    )
+    weighting = ranking.source.retrieval_plan.condition_weighting
+    return (
+        _digest({"base": digest, "condition_weighting": weighting.model_dump(mode="json")})
+        if weighting is not None
         else digest
     )
